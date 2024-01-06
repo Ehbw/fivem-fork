@@ -13,6 +13,9 @@
 #include <boost/mpl/at.hpp>
 #include <boost/function_types/parameter_types.hpp>
 
+#include <ServerInstanceBaseRef.h>
+#include <ResourceManager.h>
+
 namespace fx
 {
 #pragma region helpers
@@ -294,6 +297,7 @@ void DisownEntityScript(const fx::sync::SyncEntityPtr& entity)
 	}
 }
 
+#define MATH_PI 3.14159265358979323846f
 static InitFunction initFunction([]()
 {
 	fx::ServerInstanceBase::OnServerCreate.Connect([](fx::ServerInstanceBase* ref)
@@ -469,6 +473,190 @@ static InitFunction initFunction([]()
 			auto entity = sgs->CreateEntityFromTree(sync::NetObjEntityType::Object, tree);
 
 			ctx.SetResult(sgs->MakeScriptHandle(entity));
+		});
+
+		//ALOT of duplicated code here.
+		fx::ScriptEngine::RegisterNativeHandler("ATTACH_ENTITY_TO_ENTITY", [=](fx::ScriptContext& ctx)
+		{
+			auto resourceManager = fx::ResourceManager::GetCurrent();
+			// get the owning server instance
+			auto instance = resourceManager->GetComponent<fx::ServerInstanceBaseRef>()->Get();
+			// get the server's game state
+			auto gameState = instance->GetComponent<fx::ServerGameState>();
+			// parse the client ID
+			auto id = ctx.GetArgument<uint32_t>(0);
+
+			if (!id)
+			{
+				ctx.SetResult(0);
+				return;
+			}
+
+			auto entity = gameState->GetEntity(id);
+
+			//Make sure entity exists.
+			if (!entity)
+			{
+				throw std::runtime_error(va("Tried to access invalid entity: %d", id));
+
+				ctx.SetResult(0);
+				return;
+			}
+
+			auto attachId = ctx.GetArgument<uint32_t>(1);
+
+			if (!attachId)
+			{
+				ctx.SetResult(0);
+				return;
+			}
+
+			auto attachTo = gameState->GetEntity(attachId);
+
+			if (!attachTo)
+			{
+				throw std::runtime_error(va("Tried to access invalid entity: %d", attachId));
+
+				ctx.SetResult(0);
+				return;
+			}
+
+			//Matches attachBone sync node type 
+			uint16_t attachBone = ctx.GetArgument<uint16_t>(2);
+
+			float offsetX = ctx.GetArgument<float>(3);
+			float offsetY = ctx.GetArgument<float>(4);
+			float offsetZ = ctx.GetArgument<float>(5);
+
+			float rotX = ctx.GetArgument<float>(6);
+			float rotY = ctx.GetArgument<float>(7);
+			float rotZ = ctx.GetArgument<float>(8);
+
+			bool p9 = ctx.GetArgument<bool>(9);
+			bool softPinning = ctx.GetArgument<bool>(10);
+			bool collision = ctx.GetArgument<bool>(11);
+			bool isPed = ctx.GetArgument<bool>(12);
+
+			//seems to be an enum
+			uint32_t attachFlags = (1 << 14);
+
+			bool isEntityPed = entity->type == fx::sync::NetObjEntityType::Player || entity->type == fx::sync::NetObjEntityType::Ped;
+
+			attachFlags |= (isEntityPed ? 6 : 2) | (1 << 7);
+
+			// p9 seems to use this flag?
+			if (p9 && isEntityPed && !isPed)
+			{
+			   attachFlags |= (1 << 9);
+			}
+
+			if (softPinning && isEntityPed && !isPed)
+			{
+				attachFlags |= (1 << 10);
+			}
+
+			if (collision)
+			{
+				attachFlags |= (1 << 11);
+			}
+
+			if (!isPed)
+			{
+				attachFlags |= (1 << 15);
+			}
+
+			glm::vec3 rotVec{ rotX, rotY, rotZ };
+			rotVec *= (180.f / MATH_PI);
+			glm::mat4 m4;
+			glm::extractEulerAngleZXY(m4, rotVec.z, rotVec.x, rotVec.y);
+			if (isEntityPed)
+			{
+				auto pedAttachNode = [entity, attachFlags, attachBone, rotVec, attachTo, offsetX, offsetY, offsetZ, softPinning, collision](sync::CPedAttachDataNode& cdn) {
+					cdn.data.attached = true;
+					cdn.data.attachedTo = attachTo->handle;
+					cdn.data.unk_0x241 = false;
+
+					bool hasOffset = true;
+					cdn.data.hasOffset = hasOffset;
+					if (hasOffset)
+					{
+						cdn.data.x = offsetX;
+						cdn.data.y = offsetY;
+						cdn.data.z = offsetZ;
+					}
+
+					bool hasOrientation = true;
+					cdn.data.hasOrientation = hasOrientation;
+					if (hasOrientation)
+					{
+
+						cdn.data.qx = rotVec.x;
+						cdn.data.qy = rotVec.y;
+						cdn.data.qz = rotVec.z;
+						cdn.data.qw = rotVec.z;
+					}
+
+
+					cdn.data.attachBone = attachBone;
+					cdn.data.attachmentFlags = attachFlags;
+
+					//TODO: Heading;
+					bool hasHeading = true;
+					cdn.data.hasHeading = hasHeading;
+					if (hasHeading)
+					{
+
+					}
+				};
+				//EditNode(gameState.GetRef(), entity, pedAttachNode);
+			}
+			else
+			{
+				auto tree = std::dynamic_pointer_cast<sync::CObjectSyncTree>(entity->syncTree);
+				SetupNode(tree, [entity, rotVec, attachFlags, attachBone, attachTo, offsetX, offsetY, offsetZ, softPinning, collision](sync::CPhysicalAttachDataNode & cdn)
+				{
+					cdn.data.attached = true;
+					cdn.data.attachedTo = attachTo->handle;
+
+					bool hasOffset = true;
+					cdn.data.hasOffset = hasOffset;
+					if (hasOffset)
+					{
+						cdn.data.x = offsetX;
+						cdn.data.y = offsetY;
+						cdn.data.z = offsetZ;
+					}
+
+					bool hasOrientation = true;
+					cdn.data.hasOrientation = hasOrientation;
+					if (hasOrientation)
+					{
+						cdn.data.qx = rotVec.x;
+						cdn.data.qy = rotVec.y;
+						cdn.data.qz = rotVec.z;
+						cdn.data.qw = rotVec.z;
+					}
+
+					//TODO: Parent offset
+					if (cdn.data.hasParentOffset)
+					{
+
+					}
+
+					cdn.data.hasAttachBones = true;
+					cdn.data.attachBone = attachBone;
+					//seems to be -1 from sync node created by client ATTACH_ENTITY_TO_ENTITY 
+					cdn.data.otherAttachBone = -1;
+
+					cdn.data.attachmentFlags = attachFlags;
+					cdn.data.allowInitialSeparation = true;
+					// From testing these always seemed to be 1.0f;
+					cdn.data.unk_0x10c = 1.0f;
+					cdn.data.unk_0x110 = 1.0f;
+					// TODO: fun
+					cdn.data.isCargoVehicle = false;
+				});
+			}
 		});
 	});
 });
