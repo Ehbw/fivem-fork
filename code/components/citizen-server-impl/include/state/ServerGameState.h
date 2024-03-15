@@ -924,6 +924,8 @@ struct SyncEntityState
 #ifdef STATE_FIVE
 	bool allowRemoteSyncedScenes = false;
 #endif
+	bool serverCreated = false;
+	bool rejectClientDeletion = false;
 
 	std::list<std::function<void(const fx::ClientSharedPtr& ptr)>> onCreationRPC;
 
@@ -937,6 +939,14 @@ public:
 	SyncEntityState(const SyncEntityState&) = delete;
 
 	virtual ~SyncEntityState();
+
+	inline void ResetStateForSlot(const uint32_t slotId)
+	{
+		std::lock_guard<std::shared_mutex> _(guidMutex);
+		relevantTo.reset(slotId);
+		deletedFor.reset(slotId);
+		outOfScopeFor.reset(slotId);
+	}
 
 	inline bool HasStateBag()
 	{
@@ -999,12 +1009,12 @@ public:
 
 	inline bool IsOwnedByClientScript()
 	{
-		return GetScriptHash() != 0 && creationToken == 0;
+		return (GetScriptHash() != 0 && creationToken == 0) && !serverCreated;
 	}
 
 	inline bool IsOwnedByServerScript()
 	{
-		return GetScriptHash() != 0 && creationToken != 0;
+		return (GetScriptHash() != 0 && creationToken != 0) || serverCreated;
 	}
 
 	// MAKE SURE YOU HAVE A LOCK BEFORE CALLING THIS
@@ -1618,6 +1628,12 @@ private:
 	void SendArrayData(const fx::ClientSharedPtr& client);
 
 public:
+	/// <summary>
+	/// Moves the entity to another player that the entity is relevant to
+	/// </summary>
+	/// <param name="entity"></param>
+	/// <param name="client"></param>
+	/// <returns>This returns false if there wasn't a client this entity is relevant to, AND the entity wasn't server created</returns>
 	bool MoveEntityToCandidate(const fx::sync::SyncEntityPtr& entity, const fx::ClientSharedPtr& client);
 
 	void SendPacket(int peer, net::packet::StateBagPacket& packet) override;
