@@ -16,6 +16,25 @@
 #include <regex>
 #include <boost/algorithm/string/replace.hpp>
 
+#define ESCAPE_REGEX_CHARACTERS(pattern) \
+     { \
+		boost::replace_all(pattern, "\\", "\\\\"); \
+		boost::replace_all(pattern, "^", "\\^"); \
+		boost::replace_all(pattern, ".", "\\."); \
+		boost::replace_all(pattern, "$", "\\$"); \
+		boost::replace_all(pattern, "|", "\\|"); \
+		boost::replace_all(pattern, "(", "\\("); \
+		boost::replace_all(pattern, ")", "\\)"); \
+		boost::replace_all(pattern, "[", "\\["); \
+		boost::replace_all(pattern, "]", "\\]"); \
+		boost::replace_all(pattern, "*", "\\*"); \
+		boost::replace_all(pattern, "+", "\\+"); \
+		boost::replace_all(pattern, "?", "\\?"); \
+		boost::replace_all(pattern, "/", "\\/"); \
+		boost::replace_all(pattern, "\\?", "."); \
+		boost::replace_all(pattern, "\\*", ".*"); \
+	 };
+
 std::string path_normalize(const std::string& pathRef);
 
 namespace fx
@@ -190,21 +209,7 @@ struct Match
 
 		auto patternCopy = after;
 
-		boost::replace_all(patternCopy, "\\", "\\\\");
-		boost::replace_all(patternCopy, "^", "\\^");
-		boost::replace_all(patternCopy, ".", "\\.");
-		boost::replace_all(patternCopy, "$", "\\$");
-		boost::replace_all(patternCopy, "|", "\\|");
-		boost::replace_all(patternCopy, "(", "\\(");
-		boost::replace_all(patternCopy, ")", "\\)");
-		boost::replace_all(patternCopy, "[", "\\[");
-		boost::replace_all(patternCopy, "]", "\\]");
-		boost::replace_all(patternCopy, "*", "\\*");
-		boost::replace_all(patternCopy, "+", "\\+");
-		boost::replace_all(patternCopy, "?", "\\?");
-		boost::replace_all(patternCopy, "/", "\\/");
-		boost::replace_all(patternCopy, "\\?", ".");
-		boost::replace_all(patternCopy, "\\*", ".*");
+		ESCAPE_REGEX_CHARACTERS(patternCopy)
 
 		this->re = std::regex{ "^" + patternCopy + "$" };
 
@@ -303,6 +308,20 @@ private:
 	bool has;
 };
 
+static bool IsPatternValid(std::string pattern)
+{
+	ESCAPE_REGEX_CHARACTERS(pattern)
+
+	try {
+		std::regex re = std::regex{ "^" + pattern + "$" };
+		return true;
+	}
+	catch (std::regex_error)
+	{
+		return false;
+	}
+}
+
 template<typename TFn>
 static void MatchFiles(const fwRefContainer<vfs::Device>& device, const std::string& pattern, const TFn& fn, bool* found)
 {
@@ -363,7 +382,7 @@ static void MatchFiles(const fwRefContainer<vfs::Device>& device, const std::str
 		}
 	}
 }
-
+ 
 void ResourceMetaDataComponent::GlobEntries(const std::string& key, const std::function<void(const std::string&)>& entryCallback)
 {
 	for (auto& entry : GetEntries(key))
@@ -384,7 +403,7 @@ void ResourceMetaDataComponent::GlobMissingEntries(const std::string& key, const
 		const auto& value = it1->second;
 		int valueCount = 0;
 
-		bool result = GlobValueInternal(
+		ResourceMetaDataComponent::MetadataResult result = GlobValueInternal(
 		value, [&valueCount](auto)
 		{
 			++valueCount;
@@ -396,9 +415,10 @@ void ResourceMetaDataComponent::GlobMissingEntries(const std::string& key, const
 			const auto& location = it2->second;
 			
 			MissingEntry entry;
+			entry.isInvalid = result == MetadataResult::INVALID;
 			entry.source = location;
 			entry.value = value;
-			entry.wasPrefix = !result;
+			entry.wasPrefix = result == MetadataResult::MISSING;
 
 			entryCallback(entry);
 		}
@@ -420,13 +440,13 @@ void ResourceMetaDataComponent::GlobValue(const std::string& value, const std::f
 }
 
 template<typename TFn>
-bool ResourceMetaDataComponent::GlobValueInternal(const std::string& value, const TFn& entryCallback)
+ResourceMetaDataComponent::MetadataResult ResourceMetaDataComponent::GlobValueInternal(const std::string& value, const TFn& entryCallback)
 {
 	// why... would anyone pass an empty value?!
 	// this makes the VFS all odd so let's ignore it
 	if (value.empty())
 	{
-		return true;
+		return MetadataResult::OK;
 	}
 
 	const auto& rootPath = m_resource->GetPath() + "/";
@@ -434,12 +454,17 @@ bool ResourceMetaDataComponent::GlobValueInternal(const std::string& value, cons
 
 	if (!device.GetRef())
 	{
-		return false;
+		return MetadataResult::MISSING;
 	}
 
 	auto relRoot = path_normalize(rootPath);
 
 	const auto& pattern = value;
+
+	if (!IsPatternValid(pattern))
+	{
+		return MetadataResult::INVALID;
+	}
 
 	// @ prefixes for files are special and handled later on
 	if (pattern.length() >= 1 && pattern[0] == '@')
@@ -447,7 +472,7 @@ bool ResourceMetaDataComponent::GlobValueInternal(const std::string& value, cons
 		std::string patternCopy = pattern;
 		entryCallback(std::move(patternCopy));
 
-		return true;
+		return MetadataResult::OK;
 	}
 
 	bool found = true;
@@ -462,7 +487,7 @@ bool ResourceMetaDataComponent::GlobValueInternal(const std::string& value, cons
 		entryCallback(file.substr(relRoot.length() + 1));
 	}, &found);
 
-	return found;
+	return found ? MetadataResult::OK : MetadataResult::MISSING;
 }
 
 void ResourceMetaDataComponent::AddMetaData(const std::string& key, const std::string& value, const Location& location /* = */)

@@ -123,26 +123,31 @@ static void HandleServerEvent(fx::ServerInstanceBase* instance, const fx::Client
 	);
 }
 
-static void CheckResourceGlobs(fx::Resource* resource, int* numWarnings)
+static void CheckResourceGlobs(fx::Resource* resource, int* numWarnings, int* numErrors)
 {
 	auto metaDataComponent = resource->GetComponent<fx::ResourceMetaDataComponent>();
 
 	for (auto type : { "client_script", "server_script", "shared_script", "file" })
 	{
-		metaDataComponent->GlobMissingEntries(type, [resource, type, numWarnings](const fx::ResourceMetaDataComponent::MissingEntry& entry)
+		metaDataComponent->GlobMissingEntries(type, [resource, type, numWarnings, numErrors](const fx::ResourceMetaDataComponent::MissingEntry& entry)
 		{
+			auto channel = fmt::sprintf("resources:%s", resource->GetName());
+			auto file = entry.source.file;
+
+			if (auto slash = file.rfind('/'); slash != std::string::npos)
+			{
+				file = file.substr(slash + 1);
+			}
+
 			if (entry.wasPrefix)
 			{
-				auto channel = fmt::sprintf("resources:%s", resource->GetName());
-				auto file = entry.source.file;
-
-				if (auto slash = file.rfind('/'); slash != std::string::npos)
-				{
-					file = file.substr(slash + 1);
-				}
-
 				console::PrintWarning(channel, "could not find %s `%s` (defined in %s:%d)\n", type, entry.value, file, entry.source.line);
 				++*numWarnings;
+			}
+			else if (entry.isInvalid)
+			{
+				++*numErrors;
+				console::PrintError(channel, "could not parse invalid globbing syntax '%s' (defined in %s:%d)\n", entry.value, file, entry.source.line);
 			}
 		});
 	}
@@ -543,19 +548,20 @@ static InitFunction initFunction([]()
 			resource->OnStart.Connect([=]()
 			{
 				int numWarnings = 0;
-				CheckResourceGlobs(resource, &numWarnings);
+				int numErrors = 0;
+				CheckResourceGlobs(resource, &numWarnings, &numErrors);
 
 				auto streamComponent = resource->GetComponent<fx::ResourceStreamComponent>();
 				streamComponent->CheckSizes(&numWarnings);
 				
-				if (numWarnings == 0)
+				if (numWarnings == 0 && numErrors == 0)
 				{
 					console::Printf("resources", "Started resource %s\n", resource->GetName());
 				}
 				else
 				{
-					console::Printf("resources", "Started resource %s (%d warning%s)\n",
-						resource->GetName(), numWarnings, numWarnings == 1 ? "" : "s");
+					console::Printf("resources", "Started resource %s (%d warning%s, %d error%s)\n",
+						resource->GetName(), numWarnings, numWarnings == 1 ? "" : "s", numErrors, numErrors == 1 ? "" : "s");
 				}
 
 				auto metaData = resource->GetComponent<fx::ResourceMetaDataComponent>();

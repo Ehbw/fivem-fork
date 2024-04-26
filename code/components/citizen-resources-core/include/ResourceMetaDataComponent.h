@@ -51,6 +51,12 @@ public:
 		}
 	};
 
+	enum MetadataResult
+	{
+		OK,
+		MISSING,
+		INVALID
+	};
 private:
 	Resource* m_resource;
 
@@ -104,6 +110,8 @@ public:
 
 		// wasPrefix is true if this was a prefix (i.e. explicitly-specified) part being missing
 		bool wasPrefix = false;
+		// isInvalid is true if the syntax is invalid
+		bool isInvalid = false;
 
 		Location source;
 	};
@@ -149,7 +157,7 @@ public:
 
 private:
 	template<typename TFn>
-	bool GlobValueInternal(const std::string& value, const TFn& entryCallback);
+	MetadataResult GlobValueInternal(const std::string& value, const TFn& entryCallback);
 
 public:
 	template<typename OutputIterator>
