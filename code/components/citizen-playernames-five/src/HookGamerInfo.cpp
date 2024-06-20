@@ -402,6 +402,9 @@ static HookFunction hookFunction([]()
 	{
 		LimitPatch(hook::pattern("83 FB ? 77 ? 48 69 DB").count(1).get(0).get<void>(0));
 		LimitPatch(hook::pattern("83 FB 33 77 74 48 8B FB").count(1).get(0).get<void>(0));
+
+		// There's a new unknown "privilege" check that needs to be patched. Nuking the whole code block.
+		hook::nop(hook::get_pattern("8A CB E8 ? ? ? ? 48 85 C0 74 22 48 8B"), 0x2A);
 	}
 	else
 	{

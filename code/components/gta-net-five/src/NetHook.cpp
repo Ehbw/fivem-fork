@@ -16,6 +16,8 @@
 
 #include <GameInit.h>
 
+#include <netTimeSync.h>
+
 #include <scrEngine.h>
 #include <ScriptEngine.h>
 
@@ -371,16 +373,10 @@ static hook::cdecl_stub<void(int, int, int)> hostGame([] () -> void*
 	return (void*)hook::get_adjusted(0x1410494F8);
 });
 
+static void** g_networkMgrPtr = nullptr;
 static void* getNetworkManager()
 {
-	static void** networkMgrPtr = nullptr;
-
-	if (networkMgrPtr == nullptr)
-	{
-		networkMgrPtr = hook::get_address<void**>(hook::get_pattern("84 C0 74 2E 48 8B 0D ? ? ? ? 48 8D 54 24 20", 7));
-	}
-
-	return *networkMgrPtr;
+	return *g_networkMgrPtr;
 }
 
 struct OnlineAddress
@@ -452,8 +448,6 @@ struct HostStateHolder
 	}
 };
 
-bool IsWaitingForTimeSync();
-
 struct  
 {
 	HostStateHolder state;
@@ -480,7 +474,7 @@ struct
 
 			if (cgi->OneSyncEnabled)
 			{
-				if (IsWaitingForTimeSync())
+				if (sync::IsWaitingForTimeSync())
 				{
 					return;
 				}
@@ -905,19 +899,9 @@ static HookFunction initFunction([]()
 		auto idx = buffer.Read<uint32_t>();
 
 		auto icgi = Instance<ICoreGameInit>::Get();
-
-		uint8_t strictLockdown = 0;
-		uint8_t syncStyle = 0;
-
-		if (icgi->NetProtoVersion >= 0x202002271209)
-		{
-			strictLockdown = buffer.Read<uint8_t>();
-		}
-
-		if (icgi->NetProtoVersion >= 0x202011231556)
-		{
-			syncStyle = buffer.Read<uint8_t>();
-		}
+		
+		uint8_t strictLockdown = buffer.Read<uint8_t>();
+		uint8_t syncStyle = buffer.Read<uint8_t>();
 
 		static uint8_t lastStrictLockdown;
 
@@ -1078,6 +1062,9 @@ static HookFunction initFunction([]()
 			doTickNextFrame = false;
 		}
 	});
+
+
+	g_networkMgrPtr = hook::get_address<void**>(hook::get_pattern("84 C0 74 2E 48 8B 0D ? ? ? ? 48 8D 54 24 20", 7));
 });
 
 static uint64_t* g_globalNetSecurityKey;
@@ -1453,7 +1440,7 @@ static HookFunction hookFunction([] ()
 
 	static ConsoleCommand quitCommand("quit", [](const std::string& message)
 	{
-		g_quitMsg = message;
+		g_quitMsg = "Quit: " + message;
 		ExitProcess(-1);
 	});
 

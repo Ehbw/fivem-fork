@@ -30,42 +30,6 @@ using json = nlohmann::json;
 
 int StoreDecryptedBlob(void* a1, void* a2, uint32_t a3, void* inOutBlob, uint32_t a5, void* a6);
 
-// TODO: turn into a generic utility
-static std::map<std::string, std::string> ParsePOSTString(const std::string& postDataString)
-{
-	std::map<std::string, std::string> postMap;
-
-	// split the string by the usual post map characters
-	int curPos = 0;
-
-	while (true)
-	{
-		int endPos = postDataString.find_first_of('&', curPos);
-
-		int equalsPos = postDataString.find_first_of('=', curPos);
-
-		std::string key;
-		std::string value;
-
-		UrlDecode(postDataString.substr(curPos, equalsPos - curPos), key);
-		UrlDecode(postDataString.substr(equalsPos + 1, endPos - equalsPos - 1), value);
-
-		postMap[key] = value;
-
-		// save and continue
-		curPos = endPos;
-
-		if (curPos == std::string::npos)
-		{
-			break;
-		}
-
-		curPos++;
-	}
-
-	return postMap;
-}
-
 extern std::string g_entitlementSource;
 
 bool LoadOwnershipTicket();
@@ -748,13 +712,13 @@ mapper->AddGameService("ugc.asmx/Publish", [](const std::string& body)
 <?xml version="1.0" encoding="utf-8"?>
 <Response xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" ms="0" xmlns="GetBuildManifestFull">
   <Status>1</Status>
-  <Result BuildId="87" VersionNumber="1.0.1491.18" BuildDateUtc="2019-11-05T11:39:37.0266667">
+  <Result BuildId="89" VersionNumber="1.0.1491.50" BuildDateUtc="2019-11-05T11:39:37.0266667">
     <FileManifest>
-		<FileDetails FileEntryId="9178" FileEntryVersionId="9648" FileSize="89004016" TimestampUtc="2019-11-05T11:39:34.8800000">
+		<FileDetails FileEntryId="9178" FileEntryVersionId="9648" FileSize="89562608" TimestampUtc="2019-11-05T11:39:34.8800000">
 			<RelativePath>RDR2.exe</RelativePath>
-			<SHA256Hash>b950fadd7408982437549d8b926b6fb8f962c5aff483e6a2fdffaf3f07a485f9</SHA256Hash>
+			<SHA256Hash>b56c9548f670654a9b73bf25def3cd73af12e269f6e47dba28a34079adaf465e</SHA256Hash>
 			<FileChunks>
-				<Chunk FileChunkId="13046" SHA256Hash="b950fadd7408982437549d8b926b6fb8f962c5aff483e6a2fdffaf3f07a485f9" StartByteOffset="0" Size="89004016" />
+				<Chunk FileChunkId="13046" SHA256Hash="b56c9548f670654a9b73bf25def3cd73af12e269f6e47dba28a34079adaf465e" StartByteOffset="0" Size="89562608" />
 			</FileChunks>
 		</FileDetails>
 %s
@@ -831,27 +795,7 @@ mapper->AddGameService("ugc.asmx/Publish", [](const std::string& body)
 		}
 		else if (postData["branchAccessToken"].find("GTA5") != std::string::npos)
 		{
-			if (xbr::IsGameBuild<372>())
-			{
-				return fmt::sprintf(R"(
-<?xml version="1.0" encoding="utf-8"?>
-<Response xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" ms="0" xmlns="GetBuildManifestFull">
-  <Status>1</Status>
-  <Result BuildId="4" VersionNumber="1.0.372.2" BuildDateUtc="2019-11-05T11:39:37.0266667">
-    <FileManifest>
-		<FileDetails FileEntryId="9178" FileEntryVersionId="9648" FileSize="55559560" TimestampUtc="2019-11-05T11:39:34.8800000">
-			<RelativePath>GTA5.exe</RelativePath>
-			<SHA256Hash>7b3c0053db37eca7c6cdd0ecd268882cdd5f693f416e5a8e97fd31de66324d04</SHA256Hash>
-			<FileChunks>
-				<Chunk FileChunkId="13046" SHA256Hash="7b3c0053db37eca7c6cdd0ecd268882cdd5f693f416e5a8e97fd31de66324d04" StartByteOffset="0" Size="55559560" />
-			</FileChunks>
-		</FileDetails>
-    </FileManifest>
-    <IsPreload>false</IsPreload>
-  </Result>
-</Response>)");
-			}
-			else if (xbr::IsGameBuild<3095>())
+			if (xbr::IsGameBuild<3095>())
 			{
 				return fmt::sprintf(R"(
 <?xml version="1.0" encoding="utf-8"?>
@@ -1115,7 +1059,6 @@ mapper->AddGameService("ugc.asmx/Publish", [](const std::string& body)
 	mapper->AddGameService("app.asmx/GetApps", [](const std::string& body)
 	{
 		static std::map<int, int> fiveBuildsToVersions{
-			{ 372, 4 },
 			{ 1604, 80 },
 			{ 2060, 83 },
 			{ 2189, 88 },
@@ -1132,7 +1075,7 @@ mapper->AddGameService("ugc.asmx/Publish", [](const std::string& body)
 			{ 1311, 79 },
 			{ 1355, 80 },
 			{ 1436, 84 },
-			{ 1491, 87 },
+			{ 1491, 89 },
 		};
 
 		return fmt::sprintf(R"(<?xml version="1.0" encoding="utf-8"?>

@@ -31,11 +31,6 @@ inline uintptr_t GetTriggerEP()
 		return ep;
 	}
 
-	if (Is372())
-	{
-		return 0x141623FC8;
-	}
-
 	if (xbr::IsGameBuild<3095>())
 	{
 		return 0x141821200;
@@ -76,17 +71,14 @@ inline uintptr_t GetTriggerEP()
 		return 0x1417ACE74;
 	}
 
-	if (Is2060())
+	if (xbr::IsGameBuild<2060>())
 	{
 		return 0x141796A34;
 	}
 
-	return 0x14175DE00;
+	return 0x14175DE00; // 1604
 }
 
-// 1604
-// 1868 now...!
-// 2060 realities
 #define TRIGGER_EP (GetTriggerEP())
 #elif defined(IS_RDR3)
 inline uintptr_t GetTriggerEP()
@@ -108,7 +100,7 @@ inline uintptr_t GetTriggerEP()
 
 	if (xbr::IsGameBuild<1491>())
 	{
-		return 0x142E31F84; // 1491.18
+		return 0x142E4FAD0; // 1491.50
 	}
 
 	return 0x142E0F92C; // 1311.20

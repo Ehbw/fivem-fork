@@ -935,15 +935,33 @@ concurrency::task<void> NetLibrary::ConnectToServer(const std::string& rootUrl)
 	postMap["method"] = "initConnect";
 	postMap["name"] = GetPlayerName();
 	postMap["protocol"] = va("%d", NETWORK_PROTOCOL);
-	postMap["gameBuild"] = fmt::sprintf("%d", xbr::GetGameBuild());
 
 #if defined(IS_RDR3)
-	postMap["gameName"] = "rdr3";
+	std::string gameName = "rdr3";
 #elif defined(GTA_FIVE)
-	postMap["gameName"] = "gta5";
+	std::string gameName = "gta5";
 #elif defined(GTA_NY)
-	postMap["gameName"] = "gta4";
+	std::string gameName = "gta4";
+#else
+	std::string gameName = "unk";
 #endif
+
+	auto gameBuild = xbr::GetGameBuild();
+	const auto identifier = xbr::GetGameBuildUniquifier(gameName, gameBuild);
+
+	// Revision "0" shouldn't be included for backward compatibility.
+	if (identifier && identifier->m_revision > 0)
+	{
+		// Now we're providing major build number and our own revision number to the server.
+		postMap["gameBuild"] = fmt::sprintf("%d_%d", gameBuild, identifier->m_revision);
+	}
+	else
+	{
+		// The old way, to keep backward compatibility.
+		postMap["gameBuild"] = fmt::sprintf("%d", gameBuild);	
+	}
+
+	postMap["gameName"] = gameName;
 
 	static std::function<void()> performRequest;
 
@@ -1166,6 +1184,13 @@ concurrency::task<void> NetLibrary::ConnectToServer(const std::string& rootUrl)
 #endif
 
 				auto bitVersion = (!node["bitVersion"].is_null() ? node["bitVersion"].get<uint64_t>() : 0);
+				if (bitVersion != 0 && bitVersion < 0x202103292050)
+				{
+					OnConnectionError(fmt::sprintf("Server is outdated. Please update the server or contact the server owner."));
+					m_connectionState = CS_IDLE;
+					return true;
+				}
+				
 				auto rawEndpoints = (node.find("endpoints") != node.end()) ? node["endpoints"] : json{};
 
 				auto continueAfterEndpoints = [=, capNode = node](const json& capEndpointsJson)
@@ -1250,8 +1275,9 @@ concurrency::task<void> NetLibrary::ConnectToServer(const std::string& rootUrl)
 						Instance<ICoreGameInit>::Get()->EnhancedHostSupport = (!node["enhancedHostSupport"].is_null() && node.value("enhancedHostSupport", false));
 						Instance<ICoreGameInit>::Get()->OneSyncEnabled = (!node["onesync"].is_null() && node["onesync"].get<bool>());
 						Instance<ICoreGameInit>::Get()->OneSyncBigIdEnabled = (!node["onesync_lh"].is_null() && node["onesync_lh"].get<bool>());
-						Instance<ICoreGameInit>::Get()->NetProtoVersion = bitVersion;
 
+						Instance<ICoreGameInit>::Get()->BitVersion = bitVersion;
+						
 						bool big1s = (!node["onesync_big"].is_null() && node["onesync_big"].get<bool>());
 
 						if (big1s)
@@ -1611,40 +1637,33 @@ concurrency::task<void> NetLibrary::ConnectToServer(const std::string& rootUrl)
 
 					return false;
 				};
+				
+				// to not complain about 'closed connection while deferring'
+				isLegacyDeferral = true;
 
-				if (bitVersion >= 0x202004201223)
+				fwMap<fwString, fwString> epMap;
+				epMap["method"] = "getEndpoints";
+				epMap["token"] = m_token;
+
+				OnConnectionProgress("Requesting server endpoints...", 0, 100, false);
+
+				m_httpClient->DoPostRequest(fmt::sprintf("%sclient", url), m_httpClient->BuildPostString(epMap), [rawEndpoints, continueAfterEndpoints](bool success, const char* data, size_t size)
 				{
-					// to not complain about 'closed connection while deferring'
-					isLegacyDeferral = true;
-
-					fwMap<fwString, fwString> epMap;
-					epMap["method"] = "getEndpoints";
-					epMap["token"] = m_token;
-
-					OnConnectionProgress("Requesting server endpoints...", 0, 100, false);
-
-					m_httpClient->DoPostRequest(fmt::sprintf("%sclient", url), m_httpClient->BuildPostString(epMap), [rawEndpoints, continueAfterEndpoints](bool success, const char* data, size_t size)
+					if (success)
 					{
-						if (success)
+						try
 						{
-							try
-							{
-								continueAfterEndpoints(nlohmann::json::parse(data, data + size));
-								return;
-							}
-							catch (std::exception& e)
-							{
-
-							}
+							continueAfterEndpoints(nlohmann::json::parse(data, data + size));
+							return;
 						}
+						catch (std::exception& e)
+						{
 
-						continueAfterEndpoints(rawEndpoints);
-					});
-				}
-				else
-				{
+						}
+					}
+
 					continueAfterEndpoints(rawEndpoints);
-				}
+				});
 			}
 			catch (std::exception & e)
 			{

@@ -1036,9 +1036,9 @@ static hook::cdecl_stub<void()> _reloadMapIfNeeded([]()
 	return hook::get_pattern("74 1F 48 8D 0D ? ? ? ? E8 ? ? ? ? 48 8D 0D ? ? ? ? E8 ? ? ? ? C6 05", -0xB);
 });
 
+static char* loadChangeSet = nullptr;
 static void ReloadMapStoreNative()
 {
-	static auto loadChangeSet = hook::get_pattern<char>("48 81 EC 50 03 00 00 49 8B F0 4C", -0x18);
 	uint8_t origCode[0x4F3];
 	memcpy(origCode, loadChangeSet, sizeof(origCode));
 
@@ -3109,6 +3109,17 @@ static void fwMapDataStore__FinishLoadingHook(streaming::strStreamingModule* sto
 		}
 	}
 
+	// b2802 - four-april-virginia
+	// b2699 - skylark-whiskey-jig
+	CDistantLODLight& lodLights = mapData->distantLodLights;
+	if (lodLights.numStreetLights > lodLights.positions.GetCount())
+	{
+		auto name = streaming::GetStreamingNameForIndex(idx + store->baseIdx);
+		trace("Fixed CMapData DistantLODLightsSOA (numStreetLights > positions.GetCount()) in %s.\n", name);
+
+		lodLights.numStreetLights = lodLights.positions.GetCount();
+	}
+
 	return g_origfwMapDataStore__FinishLoading(store, idx, data);
 }
 #endif
@@ -3301,6 +3312,8 @@ DLL_IMPORT extern fwEvent<> PreSetupLoadingScreens;
 static HookFunction hookFunction([]()
 {
 #ifdef GTA_FIVE
+	loadChangeSet = hook::get_pattern<char>("48 81 EC 50 03 00 00 49 8B F0 4C", -0x18);
+
 	PreSetupLoadingScreens.Connect([]()
 	{
 		FlushCustomAssets();

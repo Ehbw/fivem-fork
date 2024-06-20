@@ -932,14 +932,28 @@ static void Init()
 
 	fx::ScriptEngine::RegisterNativeHandler("HAS_ENTITY_BEEN_MARKED_AS_NO_LONGER_NEEDED", makeEntityFunction([](fx::ScriptContext& context, const fx::sync::SyncEntityPtr& entity)
 	{
-		auto vn = entity->syncTree->GetVehicleGameState();
+		// GH-2203:
+		// Since CScriptEntityExtension is not explicitly be synchronized, use
+		// knowledge about CScriptEntityExtension's back-to-ambient conversion
+		// as it cleans up an entities mission state. This approximation may
+		// require refinement.
+		bool result = entity->deleting;
 
-		if (vn)
+		fx::sync::ePopType popType;
+		if (entity->syncTree->GetPopulationType(&popType))
 		{
-			return vn->noLongerNeeded;
+			result |= popType == fx::sync::POPTYPE_RANDOM_AMBIENT;
 		}
 
-		return false;
+#if 0
+		// Previous implementation
+		if (auto vn = entity->syncTree->GetVehicleGameState())
+		{
+			result |= vn->isStationary;
+		}
+#endif
+
+		return result;
 	}));
 
 	fx::ScriptEngine::RegisterNativeHandler("GET_ALL_VEHICLES", [](fx::ScriptContext& context)
@@ -1149,6 +1163,13 @@ static void Init()
 		return uint32_t(node ? node->curWeapon : 0);
 	}));
 
+	fx::ScriptEngine::RegisterNativeHandler("GET_CURRENT_PED_WEAPON", makeEntityFunction([](fx::ScriptContext& context, const fx::sync::SyncEntityPtr& entity)
+	{
+		auto node = entity->syncTree->GetPedGameState();
+
+		return uint32_t(node ? node->curWeapon : 0);
+	}));
+
 	fx::ScriptEngine::RegisterNativeHandler("IS_PED_A_PLAYER", makeEntityFunction([](fx::ScriptContext& context, const fx::sync::SyncEntityPtr& entity)
 	{
 		return entity->type == fx::sync::NetObjEntityType::Player;
@@ -1263,12 +1284,10 @@ static void Init()
 			// get the current resource manager
 			auto resourceManager = fx::ResourceManager::GetCurrent();
 
-			// get the owning server instance
-			auto instance = resourceManager->GetComponent<fx::ServerInstanceBaseRef>()->Get();
+			// get the state bag component
+			auto stateBagComponent = resourceManager->GetComponent<fx::StateBagComponent>();
 
-			// get the server's game state
-			auto gameState = instance->GetComponent<fx::ServerGameState>();
-			auto stateBag = gameState->GetStateBags()->RegisterStateBag(fmt::sprintf("entity:%d", entity->handle & 0xFFFF));
+			auto stateBag = stateBagComponent->RegisterStateBag(fmt::sprintf("entity:%d", entity->handle & 0xFFFF));
 
 			std::set<int> rts{ -1 };
 

@@ -107,6 +107,7 @@ void netPlayerMgrBase::UpdatePlayerListsForPlayer(CNetGamePlayer* player)
 }
 
 static rage::netPlayerMgrBase* g_playerMgr;
+static size_t g_CNetGamePlayerSize;
 
 void* g_tempRemotePlayer;
 
@@ -740,21 +741,6 @@ static hook::cdecl_stub<CNetGamePlayer*(void*)> _netPlayerCtor([]()
 #endif
 });
 
-#ifdef GTA_FIVE
-// Offset is usually 0xA0, but can differ on ancient builds
-static int g_CNetPlayerOffset_PlayerInfo = 0;
-struct CPlayerInfo_Five;
-static hook::cdecl_stub<CPlayerInfo_Five*(void*, uint64_t, void*)> _playerInfoCtor([]() 
-{
-	return hook::get_pattern("48 83 EC 30 65 4C 8B 0C 25 ? 00 00 00 0F 29 70 C8 45 33 ED", -0x18);
-});
-// this appears to be a substruct that makes up a good chunk of the beginning of the CPlayerInfo
-static hook::cdecl_stub<void*()> _getLocalGamerInfo([]() 
-{
-	return hook::get_address<void*>(hook::get_pattern("E8 ? ? ? ? 33 D2 48 8B CB 4C 8B C0 E8 ? ? ? ? 4D 8B CE"), 1, 5);
-});
-#endif	
-
 static CNetGamePlayer*(*g_origAllocateNetPlayer)(void*);
 
 static CNetGamePlayer* AllocateNetPlayer(void* mgr)
@@ -764,11 +750,9 @@ static CNetGamePlayer* AllocateNetPlayer(void* mgr)
 		return g_origAllocateNetPlayer(mgr);
 	}
 
-#ifdef GTA_FIVE
-	void* plr = malloc(xbr::IsGameBuildOrGreater<3095>() ? 816 : xbr::IsGameBuildOrGreater<2824>() ? 800 : xbr::IsGameBuildOrGreater<2372>() ? 704: xbr::IsGameBuildOrGreater<2060>() ? 688 : 672);
-#elif IS_RDR3
-	void* plr = malloc(xbr::IsGameBuildOrGreater<1436>() ? 2736 : 2784);
-#endif
+	// We assume this never fails (for now)
+	void *plr = malloc(g_CNetGamePlayerSize);
+	memset(plr, 0, g_CNetGamePlayerSize);
 
 	auto player = _netPlayerCtor(plr);
 
@@ -778,31 +762,6 @@ static CNetGamePlayer* AllocateNetPlayer(void* mgr)
 #endif
 
 	return player;
-}
-
-// fix: some Events expect the CPlayerInfo to be non-null in the CNetGamePlayer (It is not set in the constructor)
-static void Player31_ApplyPlayerInfo(CNetGamePlayer* player)
-{
-#ifdef GTA_FIVE
-	static void* infoMem = nullptr;
-	if (!infoMem)
-	{
-		infoMem = malloc(0x2000);
-		CPlayerInfo_Five* info = _playerInfoCtor(infoMem, 0, _getLocalGamerInfo());
-		*(CPlayerInfo_Five**)((uint64_t)player + g_CNetPlayerOffset_PlayerInfo) = info;
-	}
-	else
-	{
-		*(CPlayerInfo_Five**)((uint64_t)player + g_CNetPlayerOffset_PlayerInfo) = (CPlayerInfo_Five*)infoMem;
-	}
-#endif
-}
-// Clear the playerInfo after events
-static void Player31_ClearPlayerInfo(CNetGamePlayer* player)
-{
-#ifdef GTA_FIVE
-	*(CPlayerInfo_Five**)((uint64_t)player + g_CNetPlayerOffset_PlayerInfo) = nullptr;
-#endif
 }
 
 #include <minhook.h>
@@ -1568,11 +1527,14 @@ static CScenarioInfo* GetTaskScenarioInfo(void* task)
 	if (!scenario && *(uint64_t*)task == (uint64_t)g_taskUseScenarioVtable)
 	{
 		auto scenarioInfoMgr = *g_scenarioInfoManager;
+
+#if _DEBUG
 		auto pointId = (*(uint32_t(__fastcall**)(void*))(*(uint64_t*)task + g_pointIdGetterVtableOffset))(task);
 
 		trace("Failed to get scenario info by id %d for task (address %p, vtable %p). Loaded %d and %d scenario infos.\n",
 			pointId, (void*)hook::get_unadjusted(task), (void*)hook::get_unadjusted(*(void**)task),
 			scenarioInfoMgr->m_scenarioInfos.GetCount(), scenarioInfoMgr->m_scenarioUnks.GetCount());
+#endif
 
 		// Try to avoid crash by returning first scenario from the array.
 		return scenarioInfoMgr->m_scenarioInfos[0];
@@ -1731,6 +1693,15 @@ static HookFunction hookFunction([]()
 #elif IS_RDR3
 	g_playerMgr = *hook::get_address<rage::netPlayerMgrBase**>(hook::get_pattern("80 E1 07 80 F9 03 0F 84 ? ? ? ? 48 8B 0D", 15));
 #endif
+
+	// CNetGamePlayer size
+	{
+#ifdef GTA_FIVE
+		g_CNetGamePlayerSize = *hook::get_pattern<int32_t>("48 81 C7 ? ? ? ? FF CD 79 ED 33 ED", 3);
+#elif IS_RDR3
+		g_CNetGamePlayerSize = *hook::get_pattern<int32_t>("48 21 B3 ? ? ? ? 48 8B C3 48 21 B3 ? ? ? ? 48 21 B3", -10);
+#endif
+	}
 
 #ifdef GTA_FIVE
 	// use cached sector if no gameobject (weird check in IProximityMigrateableNodeDataAccessor impl)
@@ -2345,7 +2316,7 @@ static HookFunction hookFunction([]()
 
 	// 32 array size for network object limiting
 	// #TODO: unwind info for these??
-	if (!Is372() && !xbr::IsGameBuildOrGreater<2060>()) // only validated for 1604 so far
+	if (!xbr::IsGameBuildOrGreater<2060>()) // only validated for 1604 so far
 	{
 		auto location = hook::get_pattern<char>("48 85 C0 0F 84 C3 06 00 00 E8", -0x4A);
 
@@ -2401,9 +2372,96 @@ static HookFunction hookFunction([]()
 // event stuff
 static void* g_netEventMgr;
 
+static std::unordered_set<uint16_t> g_eventBlacklist;
 #ifdef IS_RDR3
-static std::map<uint16_t, const char*> g_eventNames;
+static std::unordered_map<uint16_t, const char*> g_eventNames;
 #endif
+
+#ifdef GTA_FIVE
+static hook::cdecl_stub<const char*(void*, uint16_t)> _netEventMgr_GetNameFromType([]()
+{
+	return hook::get_pattern("66 83 FA ? 73 12 0F B7 D2 48 8B 8C D1 ? ? ? ? 48 85 C9", -7);
+});
+#endif
+
+// #TODO: Once file is reorganized dump into netEventMgr as utility functions
+static uint16_t netEventMgr_GetMaxEventType()
+{
+#ifdef GTA_FIVE
+	return (xbr::IsGameBuildOrGreater<2060>() ? 0x5B : 0x5A);
+#elif IS_RDR3
+	return 0xA5;
+#endif
+}
+
+static void netEventMgr_PopulateEventBlacklist()
+{
+	std::unordered_map<std::string_view, uint16_t> eventIdents;
+	auto BlacklistEvent = [&](const char* name)
+	{
+		if (auto it = eventIdents.find(name); it != eventIdents.end())
+		{
+			g_eventBlacklist.emplace(it->second);
+		}
+	};
+
+#ifdef GTA_FIVE
+	auto eventMgr = *(char**)g_netEventMgr;
+	for (uint16_t i = 0; i < netEventMgr_GetMaxEventType(); ++i)
+	{
+		if (auto name = _netEventMgr_GetNameFromType(eventMgr, i))
+		{
+			eventIdents.insert({ name, i });
+		}
+	}
+#elif IS_RDR3
+	for (auto [type, name] : g_eventNames)
+	{
+		eventIdents.insert({ name, type });
+	}
+#endif
+
+	BlacklistEvent("GIVE_CONTROL_EVENT"); // don't give control using events!
+	BlacklistEvent("BLOW_UP_VEHICLE_EVENT"); // used only during migration
+	BlacklistEvent("KICK_VOTES_EVENT");
+	BlacklistEvent("NETWORK_CRC_HASH_CHECK_EVENT");
+	BlacklistEvent("NETWORK_CHECK_EXE_SIZE_EVENT");
+	BlacklistEvent("NETWORK_CHECK_CODE_CRCS_EVENT");
+	BlacklistEvent("NETWORK_CHECK_CATALOG_CRC");
+}
+
+/// Ignore processing events that do not apply to OneSyncEnabled.
+///
+/// If the event implements a Reply method, or is exposed via script command,
+/// ensure blacklisting it will not negatively impact the game or network state.
+static bool netEventMgr_IsBlacklistedEvent(uint16_t type)
+{
+	static std::once_flag generated;
+	std::call_once(generated, netEventMgr_PopulateEventBlacklist);
+
+	return g_eventBlacklist.find(type) != g_eventBlacklist.end();
+}
+
+/// TEMPORARY: Event ID overriding process. Should be used for RedM only for now
+static uint16_t netEventMgr_MapEventId(uint16_t type, bool isSend)
+{
+#if IS_RDR3
+	if (xbr::IsGameBuildOrGreater<1491>())
+	{
+		if (isSend && type >= 51)
+		{
+			return type + 1;
+		}
+		else if (!isSend && type >= 52)
+		{
+			return type - 1;
+		}
+	}
+#endif
+
+	return type;
+}
+
 
 namespace rage
 {
@@ -2737,12 +2795,14 @@ static void EventMgr_AddEvent(void* eventMgr, rage::netGameEvent* ev)
 		return g_origAddEvent(eventMgr, ev);
 	}
 
-	// don't give control using events!
-	if (strcmp(ev->GetName(), "GIVE_CONTROL_EVENT") == 0)
+	if (netEventMgr_IsBlacklistedEvent(ev->eventType))
 	{
 		delete ev;
 		return;
 	}
+
+	// TEMPORARY: use event type mapping
+	ev->eventType = netEventMgr_MapEventId(ev->eventType, true);
 
 #ifdef GTA_FIVE
 	if (strcmp(ev->GetName(), "ALTER_WANTED_LEVEL_EVENT") == 0)
@@ -2931,13 +2991,14 @@ static void SendGameEventRaw(uint16_t eventId, rage::netGameEvent* ev)
 	}
 
 	outBuffer.Write<uint16_t>(eventId);
-	outBuffer.Write<uint8_t>(0);
+	outBuffer.Write<uint8_t>(0); // is reply
 	outBuffer.Write<uint16_t>(ev->eventType);
 
 	uint32_t len = rlBuffer.GetDataLength();
 	outBuffer.Write<uint16_t>(len); // length (short)
 	outBuffer.Write(rlBuffer.m_data, len); // data
 
+	// max packet size and the buffer layout should match up with the serverside handler in ServerGameState.cpp
 	g_netLibrary->SendReliableCommand("msgNetGameEvent", (const char*)outBuffer.GetData().data(), outBuffer.GetCurOffset());
 }
 
@@ -3037,6 +3098,9 @@ static void HandleNetGameEvent(const char* idata, size_t len)
 	auto eventType = buf.Read<uint16_t>();
 	auto length = buf.Read<uint16_t>();
 
+	// TEMPORARY: mapping back on receiving event from server
+	eventType = netEventMgr_MapEventId(eventType, false);
+
 	auto player = g_playersByNetId[sourcePlayerId];
 
 	if (!player)
@@ -3050,13 +3114,7 @@ static void HandleNetGameEvent(const char* idata, size_t len)
 	rage::datBitBuffer rlBuffer(const_cast<uint8_t*>(data.data()), data.size());
 	rlBuffer.m_f1C = 1;
 
-#ifdef GTA_FIVE
-	static auto maxEvent = (xbr::IsGameBuildOrGreater<2060>() ? 0x5B : 0x5A);
-#elif IS_RDR3
-	static auto maxEvent = 0xA5;
-#endif
-
-	if (eventType > maxEvent)
+	if (eventType > netEventMgr_GetMaxEventType())
 	{
 		return;
 	}
@@ -3071,8 +3129,6 @@ static void HandleNetGameEvent(const char* idata, size_t len)
 
 			if (ev)
 			{
-				Player31_ApplyPlayerInfo(g_player31);
-
 				ev->HandleReply(&rlBuffer, player);
 
 #ifdef GTA_FIVE
@@ -3088,14 +3144,17 @@ static void HandleNetGameEvent(const char* idata, size_t len)
 
 				delete ev;
 				g_events.erase({ eventType, eventHeader });
-
-				Player31_ClearPlayerInfo(g_player31);
 			}
 		}
 	}
 	else
 	{
 		using TEventHandlerFn = void(*)(rage::datBitBuffer* buffer, CNetGamePlayer* player, CNetGamePlayer* unkConn, uint16_t, uint32_t, uint32_t);
+		if (netEventMgr_IsBlacklistedEvent(eventType))
+		{
+			//trace("Rejecting Blacklisted Event: %d\n", eventType);
+			return;
+		}
 
 		bool rejected = false;
 
@@ -3161,13 +3220,14 @@ static void DecideNetGameEvent(rage::netGameEvent* ev, CNetGamePlayer* player, C
 			outBuffer.Write<uint16_t>(g_netIdsByPlayer[player]);
 
 			outBuffer.Write<uint16_t>(evH);
-			outBuffer.Write<uint8_t>(1);
+			outBuffer.Write<uint8_t>(1); // is reply
 			outBuffer.Write<uint16_t>(ev->eventType);
 
 			uint32_t len = rlBuffer.GetDataLength();
 			outBuffer.Write<uint16_t>(len); // length (short)
 			outBuffer.Write(rlBuffer.m_data, len); // data
 
+			// max packet size and the buffer layout should match up with the serverside handler in ServerGameState.cpp
 			g_netLibrary->SendReliableCommand("msgNetGameEvent", (const char*)outBuffer.GetData().data(), outBuffer.GetCurOffset());
 		}
 	}
@@ -3258,6 +3318,11 @@ static bool SendGameEvent(void* eventMgr, void* ev)
 }
 
 #if GTA_FIVE
+static hook::cdecl_stub<void*(CNetGamePlayer*)> CNetGamePlayer_GetPlayerPed([]()
+{
+	return hook::get_pattern("48 8B 91 ? ? ? ? 33 C0 48 85 D2 74 07 48 8B 82");
+});
+
 static uint32_t(*g_origGetFireApplicability)(void* event, void* pos);
 
 static uint32_t GetFireApplicability(void* event, void* pos)
@@ -3269,6 +3334,17 @@ static uint32_t GetFireApplicability(void* event, void* pos)
 
 	// send all fires to all remote players
 	return (1 << 31);
+}
+
+/// CPlayerTauntEvent: Ensure CNetGamePlayer::GetPlayerPed returns a value Ped.
+static bool (*g_origCPlayerTauntEventDecide)(void*, CNetGamePlayer*, void*);
+static bool CPlayerTauntEvent_Decide(void* self, CNetGamePlayer* sourcePlayer, void* connUnk)
+{
+	if (!CNetGamePlayer_GetPlayerPed(sourcePlayer))
+	{
+		return true;
+	}
+	return g_origCPlayerTauntEventDecide(self, sourcePlayer, connUnk);
 }
 #elif IS_RDR3
 static uint32_t*(*g_origGetFireApplicability)(void* event, uint32_t*, void* pos);
@@ -3285,6 +3361,17 @@ static uint32_t* GetFireApplicability(void* event, uint32_t* result, void* pos)
 
 	*result = value;
 	return &value;
+}
+#endif
+
+#if defined(GTA_FIVE) || IS_RDR3
+/// ReportCashSpawnEvent: Sanitize the gamer handle pointer since player31 may
+/// not include a reference that value. Since we really aren't doing much with
+/// rlMetric, this path will be nop'd.
+static bool (*g_origMetricCASHIsGamerHandleValid)(void*);
+static bool MetricCASH_IsGamerHandleValid(void* pGamerHandle)
+{
+	return false;
 }
 #endif
 
@@ -3445,6 +3532,25 @@ static HookFunction hookFunctionEv([]()
 		MH_CreateHook(hook::get_pattern("4C 8B 78 10 48 85 ED 74 74 66 39 55", -0x58), SendAlterWantedLevelEvent2Hook, (void**)&g_origSendAlterWantedLevelEvent2);
 	}
 #endif
+
+	// CPlayerTauntEvent may interact negatively with player31.
+#ifdef GTA_FIVE
+	{
+		auto location = hook::get_pattern("33 F6 48 39 B0 ? ? ? ? 74 7B 48 8B CB 48 C7 45", -41);
+		MH_CreateHook(location, CPlayerTauntEvent_Decide, (void**)&g_origCPlayerTauntEventDecide);
+	}
+#endif
+
+	// CReportCashSpawnEvent may interact negatively with player31.
+	{
+#ifdef GTA_FIVE
+		auto location = hook::get_pattern<char>("8B 44 24 50 48 89 5E 18 89 7E 40 89 46 44", 0x15);
+#elif IS_RDR3
+		auto location = hook::get_pattern<char>("8B 44 24 ? 89 46 44 89 7E 40 C6 46 20 00", 0xE);
+#endif
+		hook::set_call(&g_origMetricCASHIsGamerHandleValid, location);
+		hook::call(location, MetricCASH_IsGamerHandleValid);
+	}
 
 	// CheckForSpaceInPool error display
 #ifdef GTA_FIVE
@@ -3796,532 +3902,6 @@ static HookFunction hookFunction2([]()
 	}
 });
 
-#include <mmsystem.h>
-
-static hook::cdecl_stub<void*()> _getConnectionManager([]()
-{
-#ifdef GTA_FIVE
-	return hook::get_call(hook::get_pattern("E8 ? ? ? ? C7 44 24 40 60 EA 00 00"));
-#elif IS_RDR3
-	return hook::get_call(hook::get_pattern("48 8B D0 8B 46 ? 44 8B CD C7", -13));
-#endif
-});
-
-static bool (*g_origInitializeTime)(void* timeSync, void* connectionMgr, int flags, void* trustHost,
-	uint32_t sessionSeed, int* deltaStart, int packetFlags, int initialBackoff, int maxBackoff);
-
-static bool g_initedTimeSync;
-
-struct EmptyStruct
-{
-
-};
-
-#ifdef GTA_FIVE
-struct TrustAddressData
-{
-	uint32_t addr;
-	uint16_t port;
-};
-
-struct TrustAddress1604
-{
-	TrustAddressData m_addr1;
-	TrustAddressData m_addr2;
-};
-
-struct TrustAddress2060
-{
-	TrustAddressData m_addr1;
-	TrustAddressData m_addr2;
-	TrustAddressData m_addr3;
-};
-
-struct TrustAddress2372
-{
-	uint32_t m_addr;
-};
-
-template<int Build>
-using TrustAddress = std::conditional_t<(Build >= 2372), TrustAddress2372, std::conditional_t<(Build >= 2060), TrustAddress2060, TrustAddress1604>>;
-
-template<int Build>
-class netTimeSync
-{
-public:
-	void Update()
-	{
-		if (!icgi->OneSyncEnabled)
-		{
-			return;
-		}
-
-		if (/*m_connectionMgr /*&& m_flags & 2 && */ !m_disabled)
-		{
-			uint32_t curTime = timeGetTime();
-
-			if (!m_nextSync || int32_t(timeGetTime() - m_nextSync) >= 0)
-			{
-				m_requestSequence++;
-
-				net::Buffer outBuffer;
-				outBuffer.Write<uint32_t>(curTime); // request time
-				outBuffer.Write<uint32_t>(m_requestSequence); // request sequence
-
-				g_netLibrary->SendReliableCommand("msgTimeSyncReq", (const char*)outBuffer.GetData().data(), outBuffer.GetCurOffset());
-
-				m_nextSync = (curTime + m_effectiveTimeBetweenSyncs) | 1;
-			}
-		}
-	}
-
-	void HandleTimeSync(net::Buffer& buffer)
-	{
-		auto reqTime = buffer.Read<uint32_t>();
-		auto reqSequence = buffer.Read<uint32_t>();
-		auto resDelta = buffer.Read<uint32_t>();
-
-		if (m_disabled)
-		{
-			return;
-		}
-
-		/*if (!(m_flags & 2))
-		{
-			return;
-		}*/
-
-		// out of order?
-		if (int32_t(reqSequence - m_replySequence) <= 0)
-		{
-			return;
-		}
-
-		auto rtt = timeGetTime() - reqTime;
-
-		// bad timestamp, negative time passed
-		if (int32_t(rtt) <= 0)
-		{
-			return;
-		}
-
-		int32_t timeDelta = resDelta + (rtt / 2) - timeGetTime();
-
-		// is this a low RTT, or did we retry often enough?
-		if (rtt <= 300 || m_retryCount >= 10)
-		{
-			if (!m_lastRtt)
-			{
-				m_lastRtt = rtt;
-			}
-
-			// is RTT within variance, low, or retried?
-			if (rtt <= 100 || (rtt / m_lastRtt) < 2 || m_retryCount >= 10)
-			{
-				m_timeDelta = timeDelta;
-				m_replySequence = reqSequence;
-
-				// progressive backoff once we've established a valid time base
-				if (m_effectiveTimeBetweenSyncs < m_configMaxBackoff)
-				{
-					m_effectiveTimeBetweenSyncs = std::min(m_configMaxBackoff, m_effectiveTimeBetweenSyncs * 2);
-				}
-
-				m_retryCount = 0;
-
-				// use flag 4 to reset time at least once, even if game session code has done so to a higher value
-				if (!(m_applyFlags & 4))
-				{
-					m_lastTime = m_timeDelta + timeGetTime();
-				}
-
-				m_applyFlags |= 7;
-			}
-			else
-			{
-				m_nextSync = 0;
-				m_retryCount++;
-			}
-
-			// update average RTT
-			m_lastRtt = (rtt + m_lastRtt) / 2;
-		}
-		else
-		{
-			m_nextSync = 0;
-			m_retryCount++;
-		}
-	}
-
-	bool IsInitialized()
-	{
-		if (!g_initedTimeSync)
-		{
-			g_origInitializeTime(this, _getConnectionManager(), 1, nullptr, 0, nullptr, 7, 2000, 60000);
-
-			// to make the game not try to get time from us
-			m_connectionMgr = nullptr;
-
-			g_initedTimeSync = true;
-
-			return false;
-		}
-
-		return (m_applyFlags & 4) != 0;
-	}
-
-	inline void SetConnectionManager(void* mgr)
-	{
-		m_connectionMgr = mgr;
-	}
-
-private:
-	void* m_vtbl; // 0
-	void* m_connectionMgr; // 8
-	TrustAddress<Build> m_trustAddr; // 16
-	uint32_t m_sessionKey; // 32
-	int32_t m_timeDelta; // 36
-	struct
-	{
-		void* self;
-		void* cb;
-	} messageDelegate; // 40
-	char m_pad_38[32]; // 56
-	uint32_t m_nextSync; // 88
-	uint32_t m_configTimeBetweenSyncs; // 92
-	uint32_t m_configMaxBackoff; // 96, usually 60000
-	uint32_t m_effectiveTimeBetweenSyncs; // 100
-	uint32_t m_lastRtt; // 104
-	uint32_t m_retryCount; // 108
-	uint32_t m_requestSequence; // 112
-	uint32_t m_replySequence; // 116
-	uint32_t m_flags; // 120
-	uint32_t m_packetFlags; // 124
-	uint32_t m_lastTime; // 128, used to prevent time from going backwards
-	uint8_t m_applyFlags; // 132
-	uint8_t m_disabled; // 133
-};
-#elif IS_RDR3
-struct ExtraPaddingData
-{
-	char extra_padding[24];
-};
-
-template<bool Enable>
-using ExtraPadding = std::conditional_t<Enable, ExtraPaddingData, EmptyStruct>;
-
-
-template<int Build>
-class netTimeSync
-{
-public:
-	void Update()
-	{
-		if (!icgi->OneSyncEnabled)
-		{
-			return;
-		}
-
-		if (/*m_connectionMgr /*&& m_flags & 2 && */ !m_disabled)
-		{
-			uint32_t curTime = timeGetTime();
-
-			if (!m_nextSync || int32_t(timeGetTime() - m_nextSync) >= 0)
-			{
-				m_requestSequence++;
-
-				net::Buffer outBuffer;
-				outBuffer.Write<uint32_t>(curTime); // request time
-				outBuffer.Write<uint32_t>(m_requestSequence); // request sequence
-
-				g_netLibrary->SendReliableCommand("msgTimeSyncReq", (const char*)outBuffer.GetData().data(), outBuffer.GetCurOffset());
-
-				m_nextSync = (curTime + m_effectiveTimeBetweenSyncs) | 1;
-			}
-		}
-	}
-
-	void HandleTimeSync(net::Buffer& buffer)
-	{
-		auto reqTime = buffer.Read<uint32_t>();
-		auto reqSequence = buffer.Read<uint32_t>();
-		auto resDelta = buffer.Read<uint32_t>();
-
-		if (m_disabled)
-		{
-			return;
-		}
-
-		/*if (!(m_flags & 2))
-		{
-			return;
-		}*/
-
-		// out of order?
-		if (int32_t(reqSequence - m_replySequence) <= 0)
-		{
-			return;
-		}
-
-		auto rtt = timeGetTime() - reqTime;
-
-		// bad timestamp, negative time passed
-		if (int32_t(rtt) <= 0)
-		{
-			return;
-		}
-
-		int32_t timeDelta = resDelta + (rtt / 2) - timeGetTime();
-
-		// is this a low RTT, or did we retry often enough?
-		if (rtt <= 300 || m_retryCount >= 10)
-		{
-			if (!m_lastRtt)
-			{
-				m_lastRtt = rtt;
-			}
-
-			// is RTT within variance, low, or retried?
-			if (rtt <= 100 || (rtt / m_lastRtt) < 2 || m_retryCount >= 10)
-			{
-				m_timeDelta = timeDelta;
-				m_replySequence = reqSequence;
-
-				// progressive backoff once we've established a valid time base
-				if (m_effectiveTimeBetweenSyncs < m_configMaxBackoff)
-				{
-					m_effectiveTimeBetweenSyncs = std::min(m_configMaxBackoff, m_effectiveTimeBetweenSyncs * 2);
-				}
-
-				m_retryCount = 0;
-
-				// use flag 4 to reset time at least once, even if game session code has done so to a higher value
-				if (!(m_applyFlags & 4))
-				{
-					m_lastTime = m_timeDelta + timeGetTime();
-				}
-
-				m_applyFlags |= 7;
-			}
-			else
-			{
-				m_nextSync = 0;
-				m_retryCount++;
-			}
-
-			// update average RTT
-			m_lastRtt = (rtt + m_lastRtt) / 2;
-		}
-		else
-		{
-			m_nextSync = 0;
-			m_retryCount++;
-		}
-	}
-
-	bool IsInitialized()
-	{
-		if (!g_initedTimeSync)
-		{
-			// we don't want to use cloud time
-			m_useCloudTime = false;
-
-			g_origInitializeTime(this, _getConnectionManager(), 1, nullptr, 0, nullptr, 7, 2000, 60000);
-
-			// to make the game not try to get time from us
-			m_connectionMgr = nullptr;
-
-			g_initedTimeSync = true;
-
-			return false;
-		}
-
-		return (m_applyFlags & 4) != 0;
-	}
-
-	inline void SetConnectionManager(void* mgr)
-	{
-		m_connectionMgr = mgr;
-	}
-
-public:
-	void* m_vtbl; // +0
-	void* m_connectionMgr; // +8
-	uint32_t m_unkTrust; // +16
-	uint32_t m_sessionKey; // +20
-	char m_pad_24[44]; // +24
-	ExtraPadding<(Build >= 1355)> m_pad_72;
-	uint32_t m_nextSync; // +72
-	uint32_t m_configTimeBetweenSyncs; // +76
-	uint32_t m_configMaxBackoff; // +80, usually 60000
-	uint32_t m_effectiveTimeBetweenSyncs; // +84
-	uint32_t m_lastRtt; // +88
-	uint32_t m_retryCount; // +92
-	uint32_t m_requestSequence; // +96
-	uint32_t m_replySequence; // +100
-	uint32_t m_flags; // +104
-	uint32_t m_packetFlags; // +108
-	int32_t m_timeDelta; // +112
-	char m_pad_116[28];
-	uint32_t m_lastTime; // +144, used to prevent time from going backwards
-	uint8_t m_applyFlags; // +148
-	uint8_t m_unk5; // +149
-	uint8_t m_disabled; // +150
-	uint8_t m_useCloudTime; // +151
-};
-#endif
-
-template<int Build>
-static netTimeSync<Build>** g_netTimeSync;
-
-template<int Build>
-bool netTimeSync__InitializeTimeStub(netTimeSync<Build>* timeSync, void* connectionMgr, int flags, void* trustHost,
-	uint32_t sessionSeed, int* deltaStart, int packetFlags, int initialBackoff, int maxBackoff)
-{
-	if (!icgi->OneSyncEnabled)
-	{
-		return g_origInitializeTime(timeSync, connectionMgr, flags, trustHost, sessionSeed, deltaStart, packetFlags, initialBackoff, maxBackoff);
-	}
-
-	timeSync->SetConnectionManager(connectionMgr);
-
-	return true;
-}
-
-bool IsWaitingForTimeSync()
-{
-#ifdef GTA_FIVE
-	if (xbr::IsGameBuildOrGreater<2372>())
-	{
-		return !(*g_netTimeSync<2372>)->IsInitialized();
-	}
-	else if (xbr::IsGameBuildOrGreater<2060>())
-	{
-		return !(*g_netTimeSync<2060>)->IsInitialized();
-	}
-
-	return !(*g_netTimeSync<1604>)->IsInitialized();
-#elif IS_RDR3
-	if (xbr::IsGameBuildOrGreater<1355>())
-	{
-		return !(*g_netTimeSync<1355>)->IsInitialized();
-	}
-
-	return !(*g_netTimeSync<1311>)->IsInitialized();
-#endif
-}
-
-static InitFunction initFunctionTime([]()
-{
-	NetLibrary::OnNetLibraryCreate.Connect([](NetLibrary* lib)
-	{
-		lib->AddReliableHandler("msgTimeSync", [](const char* data, size_t len)
-		{
-			net::Buffer buf(reinterpret_cast<const uint8_t*>(data), len);
-
-#ifdef GTA_FIVE
-			if (xbr::IsGameBuildOrGreater<2372>())
-			{
-				(*g_netTimeSync<2372>)->HandleTimeSync(buf);
-			}
-			else if (xbr::IsGameBuildOrGreater<2060>())
-			{
-				(*g_netTimeSync<2060>)->HandleTimeSync(buf);
-			}
-			else
-			{
-				(*g_netTimeSync<1604>)->HandleTimeSync(buf);
-			}
-#elif IS_RDR3
-			if (xbr::IsGameBuildOrGreater<1355>())
-			{
-				(*g_netTimeSync<1355>)->HandleTimeSync(buf);
-			}
-			else
-			{
-				(*g_netTimeSync<1311>)->HandleTimeSync(buf);
-			}
-#endif
-		});
-	});
-});
-
-static HookFunction hookFunctionTime([]()
-{
-	MH_Initialize();
-
-#ifdef GTA_FIVE
-	void* func = (xbr::IsGameBuildOrGreater<2372>()) ? (void*)&netTimeSync__InitializeTimeStub<2372> :
-		(xbr::IsGameBuildOrGreater<2060>()) ? (void*)&netTimeSync__InitializeTimeStub<2060> : &netTimeSync__InitializeTimeStub<1604>;
-
-	MH_CreateHook(hook::get_pattern("48 8B D9 48 39 79 08 0F 85 ? ? 00 00 41 8B E8", -32), func, (void**)&g_origInitializeTime);
-#elif IS_RDR3
-	void* func = (xbr::IsGameBuildOrGreater<1355>()) ? (void*)&netTimeSync__InitializeTimeStub<1355> : &netTimeSync__InitializeTimeStub<1311>;
-	MH_CreateHook((xbr::IsGameBuildOrGreater<1436>()) ? hook::get_pattern("83 C8 FF 4C 89 77 08 83 FD", -87) : hook::get_pattern("48 89 51 08 41 83 F8 02 44 0F 45 C8", -49), func, (void**)&g_origInitializeTime);
-#endif
-
-	MH_EnableHook(MH_ALL_HOOKS);
-
-#ifdef GTA_FIVE
-	char* loc = hook::get_pattern<char>("48 8B 81 ? 00 00 00 48 83 C0 20 C3");
-	loc += 3;
-	g_CNetPlayerOffset_PlayerInfo = *(int*)loc;
-#endif
-
-#ifdef GTA_FIVE
-	if (xbr::IsGameBuildOrGreater<2372>())
-	{
-		g_netTimeSync<2372> = hook::get_address<netTimeSync<2372>**>(hook::get_pattern("48 8B 0D ? ? ? ? 45 33 C9 45 33 C0 41 8D 51 01 E8", 3));
-	}
-	else if (xbr::IsGameBuildOrGreater<2060>())
-	{
-		g_netTimeSync<2060> = hook::get_address<netTimeSync<2060>**>(hook::get_pattern("48 8B 0D ? ? ? ? 45 33 C9 45 33 C0 41 8D 51 01 E8", 3));
-	}
-	else
-	{
-		g_netTimeSync<1604> = hook::get_address<netTimeSync<1604>**>(hook::get_pattern("EB 16 48 8B 0D ? ? ? ? 45 33 C9 45 33 C0", 5));
-	}
-#elif IS_RDR3
-	auto location = hook::get_pattern("4C 8D 45 50 41 03 C7 44 89 6D 50 89", -4);
-
-	if (xbr::IsGameBuildOrGreater<1355>())
-	{
-		g_netTimeSync<1355> = hook::get_address<netTimeSync<1355>**>(location);
-	}
-	else
-	{
-		g_netTimeSync<1311> = hook::get_address<netTimeSync<1311>**>(location);
-	}
-#endif
-
-	OnMainGameFrame.Connect([]()
-	{
-#if GTA_FIVE
-		if (xbr::IsGameBuildOrGreater<2372>())
-		{
-			(*g_netTimeSync<2372>)->Update();
-		}
-		else if (xbr::IsGameBuildOrGreater<2060>())
-		{
-			(*g_netTimeSync<2060>)->Update();
-		}
-		else
-		{
-			(*g_netTimeSync<1604>)->Update();
-		}
-#elif IS_RDR3
-		if (xbr::IsGameBuildOrGreater<1355>())
-		{
-			(*g_netTimeSync<1355>)->Update();
-		}
-		else
-		{
-			(*g_netTimeSync<1311>)->Update();
-		}
-#endif
-	});
-});
-
 template<typename TIndex>
 struct WorldGridEntry
 {
@@ -4396,56 +3976,33 @@ bool DoesLocalPlayerOwnWorldGrid(float* pos)
 
 	// #TODO1S: make server able to send current range for player (and a world grid granularity?)
 	constexpr float maxRange = (424.0f * 424.0f);
+	
+	int sectorX = std::max(pos[0] + 8192.0f, 0.0f) / 150;
+	int sectorY = std::max(pos[1] + 8192.0f, 0.0f) / 150;
 
-	if (icgi->NetProtoVersion < 0x202007021121)
+	auto playerIdx = g_netIdsByPlayer[GetLocalPlayer()];
+
+	bool does = false;
+
+	for (const auto& entry : g_worldGrid2[0].entries)
 	{
-		int sectorX = std::max(pos[0] + 8192.0f, 0.0f) / 75;
-		int sectorY = std::max(pos[1] + 8192.0f, 0.0f) / 75;
-
-		auto playerIdx = GetLocalPlayer()->physicalPlayerIndex();
-
-		bool does = false;
-
-		for (const auto& entry : g_worldGrid[playerIdx].entries)
+		if (entry.sectorX == sectorX && entry.sectorY == sectorY && entry.slotID == playerIdx)
 		{
-			if (entry.sectorX == sectorX && entry.sectorY == sectorY && entry.slotID == playerIdx)
-			{
-				does = true;
-				break;
-			}
+			does = true;
+			break;
 		}
-
-		return does;
 	}
-	else
+
+	// if the entity would be created outside of culling range, suppress it
+	if (((dX * dX) + (dY * dY)) > maxRange)
 	{
-		int sectorX = std::max(pos[0] + 8192.0f, 0.0f) / 150;
-		int sectorY = std::max(pos[1] + 8192.0f, 0.0f) / 150;
-
-		auto playerIdx = g_netIdsByPlayer[GetLocalPlayer()];
-
-		bool does = false;
-
-		for (const auto& entry : g_worldGrid2[0].entries)
+		if (does)
 		{
-			if (entry.sectorX == sectorX && entry.sectorY == sectorY && entry.slotID == playerIdx)
-			{
-				does = true;
-				break;
-			}
+			does = false;
 		}
-
-		// if the entity would be created outside of culling range, suppress it
-		if (((dX * dX) + (dY * dY)) > maxRange)
-		{
-			if (does)
-			{
-				does = false;
-			}
-		}
-
-		return does;
 	}
+
+	return does;
 }
 
 static int GetScriptParticipantIndexForPlayer(CNetGamePlayer* player)
@@ -4658,11 +4215,6 @@ static InitFunction initFunction([]()
 		{
 			em->ClearEvents();
 		}
-#endif
-
-#ifdef IS_RDR3
-		// RDR3 doesn't restart netTimeSync after disconnecting from a server with enabled onesync
-		g_initedTimeSync = false;
 #endif
 
 		g_events.clear();

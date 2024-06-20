@@ -75,14 +75,82 @@ workspace "CitizenMP"
 		"../vendor/rapidjson/include/",
 		"../vendor/fmtlib/include/",
 		"deplibs/include/",
-		"../vendor/boost-preprocessor/include/",
-		os.getenv("BOOST_ROOT")
+		"../vendor/boost-submodules/boost-context/include/",
+		"../vendor/boost-submodules/boost-filesystem/include/",
+		"../vendor/boost-submodules/boost-locale/include/",
+		"../vendor/boost-submodules/boost-preprocessor/include/",
+		"../vendor/boost-submodules/boost-program-options/include/",
+		"../vendor/boost-submodules/boost-random/include/",
+		"../vendor/boost-submodules/boost-system/include/",
+		"../vendor/boost-submodules/boost-thread/include/",
+		
+		"../vendor/boost-submodules/boost-config/include/",
+		"../vendor/boost-submodules/boost-any/include/",
+		"../vendor/boost-submodules/boost-assert/include/",
+		"../vendor/boost-submodules/boost-detail/include/",
+		"../vendor/boost-submodules/boost-function/include/",
+		"../vendor/boost-submodules/boost-smart-ptr/include/",
+		"../vendor/boost-submodules/boost-static-assert/include/",
+		"../vendor/boost-submodules/boost-throw-exception/include/",
+		"../vendor/boost-submodules/boost-type-traits/include/",
+		"../vendor/boost-submodules/boost-type-index/include/",
+		"../vendor/boost-submodules/boost-predef/include/",
+		"../vendor/boost-submodules/boost-core/include/",
+		"../vendor/boost-submodules/boost-iterator/include/",
+		"../vendor/boost-submodules/boost-move/include/",
+		"../vendor/boost-submodules/boost-winapi/include/",
+		"../vendor/boost-submodules/boost-mpl/include/",
+		"../vendor/boost-submodules/boost-integer/include/",
+		"../vendor/boost-submodules/boost-container-hash/include/",
+		"../vendor/boost-submodules/boost-bind/include/",
+		"../vendor/boost-submodules/boost-unordered/include/",
+		"../vendor/boost-submodules/boost-lexical-cast/include/",
+		"../vendor/boost-submodules/boost-io/include/",
+		"../vendor/boost-submodules/boost-date-time/include/",
+		"../vendor/boost-submodules/boost-range/include/",
+		"../vendor/boost-submodules/boost-tuple/include/",
+		"../vendor/boost-submodules/boost-concept-check/include/",
+		"../vendor/boost-submodules/boost-utility/include/",
+		"../vendor/boost-submodules/boost-numeric-conversion/include/",
+		"../vendor/boost-submodules/boost-chrono/include/",
+		"../vendor/boost-submodules/boost-array/include/",
+		"../vendor/boost-submodules/boost-ratio/include/",
+		"../vendor/boost-submodules/boost-container/include/",
+		"../vendor/boost-submodules/boost-math/include/",
+		"../vendor/boost-submodules/boost-tokenizer/include/",
+		"../vendor/boost-submodules/boost-property-tree/include/",
+		"../vendor/boost-submodules/boost-optional/include/",
+		"../vendor/boost-submodules/boost-fusion/include/",
+		"../vendor/boost-submodules/boost-function-types/include/",
+		"../vendor/boost-submodules/boost-circular-buffer/include/",
+		"../vendor/boost-submodules/boost-bimap/include/",
+		"../vendor/boost-submodules/boost-algorithm/include/",
+		"../vendor/boost-submodules/boost-variant/include/",
+		"../vendor/boost-submodules/boost-serialization/include/",
+		"../vendor/boost-submodules/boost-exception/include/",
+		"../vendor/boost-submodules/boost-multi-index/include/",
+		"../vendor/boost-submodules/boost-foreach/include/",
+		"../vendor/boost-submodules/boost-uuid/include/",
+		"../vendor/boost-submodules/boost-regex/include/",
+		"../vendor/boost-submodules/boost-crc/include/",
+		"../vendor/boost-submodules/boost-tti/include/",
+		"../vendor/boost-submodules/boost-outcome/include/",
+		"../vendor/boost-submodules/boost-coroutine/include/",
+		"../vendor/boost-submodules/boost-asio/include/",
+		"../vendor/boost-submodules/boost-atomic/include/",
+		"../vendor/boost-submodules/boost-beast/include/",
+		"../vendor/boost-submodules/boost-intrusive/include/",
+		"../vendor/boost-submodules/boost-iostreams/include/",
+		"../vendor/boost-submodules/boost-mp11/include/",
+		"../vendor/boost-submodules/boost-logic/include/",
+		"../vendor/boost-submodules/boost-endian/include/",
 	}
 
 	filter { 'language:C or language:C++'}
 		defines { "GTEST_HAS_PTHREAD=0", "BOOST_ALL_NO_LIB" }
-
+ 		defines { "BOOST_NULLPTR=nullptr" }
 		defines { "_HAS_AUTO_PTR_ETC" } -- until boost gets fixed
+		defines { "_PPLTASK_ASYNC_LOGGING=0"}
 
 	filter {}
 
@@ -207,6 +275,7 @@ workspace "CitizenMP"
 		include 'client/diag'
 	else
 		include 'server/launcher'
+		include 'tests'
 	end
 	
 	if os.istarget('windows') then
@@ -565,16 +634,24 @@ if _OPTIONS['game'] ~= 'launcher' then
 			'client/clrcore-v2/Math/Vector4.cs',
 		}
 		
+		-- Add MsgPack source files directly, otherwise we'd get a cyclic dependency
+		files { '../vendor/msgpack-cs/MsgPack/**.cs' }
+		removefiles {
+			'../vendor/msgpack-cs/MsgPack/AssemblyInfo.cs',
+			'../vendor/msgpack-cs/MsgPack/PlatformTypes/**',
+			'../vendor/msgpack-cs/MsgPack/obj/**', -- allows working in the submodule
+		}
+		
 		defines { 'MONO_V2' }
 		
-		if _OPTIONS['game'] ~= 'rdr3' then -- remove rdr3 check when its natives are fixed
+		do  -- prev. disabled on certain games
 			defines { 'NATIVE_SHARED_INCLUDE' }
 		end
 		
 		cstargets 'v2'
 	end
 	
-	if _OPTIONS['game'] ~= 'server' and  _OPTIONS['game'] ~= 'rdr3' then -- remove rdr3 check when its natives are fixed
+	if _OPTIONS['game'] ~= 'server' then
 		do csproject ("CitizenFX."..program.publicName..".NativeImpl")
 			clr 'Unsafe'
 			files { 'client/clrcore-v2/Native/'..program.cSharp.nativesFile }
@@ -591,7 +668,7 @@ if _OPTIONS['game'] ~= 'launcher' then
 		end
 	end
 	
-	if _OPTIONS['game'] ~= 'rdr3' then -- remove rdr3 check when its natives are fixed
+	do -- prev. disabled on certain games
 		do csproject ("CitizenFX."..program.publicName)
 			clr 'Unsafe'
 			files { 'client/clrcore-v2/'..program.cSharp.gameFiles, 'client/clrcore-v2/Game/Shared/*.cs' }
