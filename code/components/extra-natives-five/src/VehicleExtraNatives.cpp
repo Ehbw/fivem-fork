@@ -316,6 +316,7 @@ static int VehicleDamageStructOffset;
 static bool* g_trainsForceDoorsOpen;
 static int TrainDoorCountOffset;
 static int TrainDoorArrayPointerOffset;
+static int g_trainFlagOffset;
 
 static int VehicleRepairMethodVtableOffset;
 
@@ -588,6 +589,8 @@ static HookFunction initFunction([]()
 		WheelHealthOffset = *hook::get_pattern<uint32_t>("75 24 F3 0F 10 ? ? ? 00 00 F3 0F", 6);
 		LightMultiplierGetOffset = *hook::get_pattern<uint32_t>("00 00 48 8B CE F3 0F 59 ? ? ? 00 00 F3 41", 9);
 		VehicleRepairMethodVtableOffset = *hook::get_pattern<uint32_t>("C1 E8 19 A8 01 74 ? 48 8B 81", -14);
+		g_trainFlagOffset = *hook::get_pattern<uint32_t>("80 8B ? ? ? ? ? 8B 05 ? ? ? ? FF C8", 2);
+
 	}
 
 	{
@@ -1465,6 +1468,19 @@ static HookFunction initFunction([]()
 
 		GetTrainDoor(train, doorIndex)->ratio = ratio;
 	}));
+
+	fx::ScriptEngine::RegisterNativeHandler("SET_TRAIN_STOPS_AT_STATION", makeTrainFunction([](fx::ScriptContext& context, fwEntity* train)
+	{
+		bool state = context.GetArgument<bool>(1);
+
+		//This has never changed
+		static const ptrdiff_t stopsAtStationFlagMask = 16;
+
+		*(int*)((uintptr_t)train + g_trainFlagOffset) &= ~stopsAtStationFlagMask;
+		*(int*)((uintptr_t)train + g_trainFlagOffset) |= stopsAtStationFlagMask * (state & 1);
+	}));
+
+	fx::ScriptEngine::RegisterNativeHandler("DOES_TRAIN_STOPS_AT_STATION", std::bind(readVehicleMemoryBit<&g_trainFlagOffset, 4>, _1, "DOES_TRAIN_STOPS_AT_STATION"));
 
 	fx::ScriptEngine::RegisterNativeHandler("GET_VEHICLE_WHEEL_X_OFFSET", makeWheelFunction([](fx::ScriptContext& context, fwEntity* vehicle, uintptr_t wheelAddr)
 	{
