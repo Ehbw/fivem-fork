@@ -10,6 +10,7 @@
 #include "InputHook.h"
 #include "Hooking.h"
 #include <MinHook.h>
+#include <CrossBuildRuntime.h>
 
 WNDPROC origWndProc;
 
@@ -233,7 +234,7 @@ void InitInputHook()
 
 	// RGSC UI hook for overlay checking (on QueryInterface)
 	{
-		auto location = hook::get_pattern("51 FF 10 85 C0 0F 85 41 02 00 00", 1);
+		auto location = xbr::IsGameBuildOrGreater<59>() ? hook::get_pattern("51 FF 10 85 C0 0F 85 ? ? ? ? 8B 0D", 1) : hook::get_pattern("51 FF 10 85 C0 0F 85 41 02 00 00", 1);
 		hook::nop(location, 10);
 		hook::call(location, QueryRgscUI);
 	}

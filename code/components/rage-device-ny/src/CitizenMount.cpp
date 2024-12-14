@@ -8,7 +8,7 @@
 #include "StdInc.h"
 #include "fiDevice.h"
 #include "Hooking.h"
-#include "boost/assign.hpp"
+//#include "boost/assign.hpp"
 
 #include <boost/algorithm/string.hpp>
 
@@ -59,7 +59,7 @@ static InitFunction initFunction([] ()
 			std::string narrowPath;
 
 			std::wstring_convert<std::codecvt_utf8_utf16<wchar_t>, wchar_t> converter;
-			narrowPath = converter.to_bytes(MakeRelativeCitPath(L"citizen\\common"s + (CfxIsSinglePlayer() ? L"-sp" : L"")));
+			narrowPath = converter.to_bytes(MakeRelativeCitPath(L"citizen\\common"));
 
 			rage::fiDeviceRelative* relativeDevice = new rage::fiDeviceRelative();
 			relativeDevice->SetPath(narrowPath.c_str(), true);
@@ -79,7 +79,7 @@ static InitFunction initFunction([] ()
 			std::string narrowPath;
 
 			std::wstring_convert<std::codecvt_utf8_utf16<wchar_t>, wchar_t> converter;
-			narrowPath = converter.to_bytes(MakeRelativeCitPath(L"citizen\\platform"s + (CfxIsSinglePlayer() ? L"-sp" : L"")));
+			narrowPath = converter.to_bytes(MakeRelativeCitPath(L"citizen\\platform"));
 
 			rage::fiDeviceRelative* relativeDevice = new rage::fiDeviceRelative();
 			relativeDevice->SetPath(narrowPath.c_str(), true);

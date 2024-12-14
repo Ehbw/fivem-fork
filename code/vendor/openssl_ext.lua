@@ -240,13 +240,13 @@
 				defines {
 					"WIN32_LEAN_AND_MEAN",
 					"_CRT_SECURE_NO_DEPRECATE",
-					"OPENSSL_SYSNAME_WIN32",
+					--"OPENSSL_SYSNAME_WIN32",
 					"OPENSSL_NO_EC_NISTP_64_GCC_128",
-					[[OPENSSLDIR="C:\\Program Files\\Common Files\\SSL"]],
 				}
 
 				if _OPTIONS["game"] ~= "ny" then
 					defines {
+						[[OPENSSLDIR="C:\\Program Files\\Common Files\\SSL"]],
 						--'AES_ASM',
 						'CPUID_ASM',
 						'OPENSSL_BN_ASM_MONT',
@@ -268,6 +268,10 @@
 						'RMD160_ASM',
 						'WHIRLPOOL_ASM',
 						'WP_ASM',
+					}
+				else
+					defines {
+						[[OPENSSLDIR="C:\\Program Files (x86)\\Common Files\\SSL"]],
 					}
 				end
 

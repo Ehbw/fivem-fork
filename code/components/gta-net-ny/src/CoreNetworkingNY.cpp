@@ -12,6 +12,9 @@
 
 #include <botan/base64.h>
 
+#include "HeHost.h"
+#include "IHost.h"
+
 #pragma comment(lib, "ws2_32.lib")
 
 NetLibrary* g_netLibrary;
@@ -359,8 +362,7 @@ static bool* didPresenceStuff;
 
 static hook::cdecl_stub<void()> _doPresenceStuff([]()
 {
-	// .43
-	return (void*)0x6C3E60;
+	return hook::get_pattern("53 32 DB 38 1D ? ? ? ? 75");
 });
 
 static void (*g_origSetFilterMenuOn)(void*);
@@ -437,18 +439,21 @@ static HookFunction hookFunction([]()
 
 	g_netLibrary->SetBase(GetTickCount());
 
-	g_netLibrary->OnBuildMessage.Connect([](const std::function<void(uint32_t, const char*, int)>& writeReliable)
+	g_netLibrary->OnBuildMessage.Connect([]()
 	{
 		static bool lastHostState;
-
-		// hostie
+		// host
 		bool isHost = isNetworkHost();
 		if (isHost != lastHostState)
 		{
 			if (isHost)
 			{
 				auto base = g_netLibrary->GetServerBase();
-				writeReliable(HashRageString("msgIHost"), (char*)&base, sizeof(base));
+				net::packet::ClientIHostPacket iHostPacket;
+				iHostPacket.data.baseNum = g_netLibrary->GetServerBase();
+				g_netLibrary->SendNetPacket(iHostPacket);
+				//auto base = g_netLibrary->GetServerBase();
+				//writeReliable(HashRageString("msgIHost"), (char*)&base, sizeof(base));
 			}
 
 			lastHostState = isHost;

@@ -9,6 +9,7 @@
 
 #ifndef IS_FXSERVER
 #include <Pool.h>
+
 #include <Streaming.h>
 #endif
 
@@ -788,6 +789,7 @@ static InitFunction initFunction([]()
 		}
 	});
 
+#ifndef GTA_NY
 #ifndef IS_FXSERVER
 	static ConVar<bool> poolVar("net_showPools", ConVar_Archive | ConVar_UserPref, false, &m_enabledPools);
 
@@ -1025,5 +1027,6 @@ static InitFunction initFunction([]()
 
 		ImGui::End();
 	});
+#endif
 #endif
 });

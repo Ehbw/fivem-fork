@@ -457,3 +457,6 @@
 [submodule "vendor/boost-submodules/boost-static-string"]
 	path = vendor/boost-submodules/boost-static-string
 	url = https://github.com/boostorg/static_string.git
+[submodule "vendor/enet"]
+	path = vendor/enet
+	url = https://github.com/freeminer/enet.git

@@ -248,12 +248,6 @@ void GtaGameInterface::InvokeOnRender(void(*cb)(void*), void* arg)
 	}
 	else
 	{
-#if defined(GTA_NY)
-		int argRef = (int)arg;
-
-		auto dc = new(0) CGenericDC1Arg((void(*)(int))cb, &argRef);
-		dc->Enqueue();
-#else
 		uintptr_t argRef = (uintptr_t)arg;
 
 		EnqueueGenericDrawCommand([] (uintptr_t a, uintptr_t b)
@@ -266,7 +260,6 @@ void GtaGameInterface::InvokeOnRender(void(*cb)(void*), void* arg)
 
 			D3DPERF_EndEvent();
 		}, (uintptr_t*)&cb, &argRef);
-#endif
 	}
 }
 
@@ -301,10 +294,6 @@ static InitFunction initFunction([] ()
 	static std::mt19937 random(random_core());
 
 	static bool inGame = false;
-
-#ifdef GTA_NY
-	inGame = true;
-#endif
 
 	if (!getenv("CitizenFX_ToolMode"))
 	{

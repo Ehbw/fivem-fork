@@ -249,25 +249,25 @@ static InitFunction initFunction([]()
 	{
 		g_netLibrary = netLibrary;
 
-		g_netLibrary->OnBuildMessage.Connect([](const std::function<void(uint32_t, const char*, int)>& writeReliable)
+#if 0
+		g_netLibrary->OnBuildMessage.Connect([]()
 		{
-			//if (*(BYTE*)0x18A82FD) // is server running
+
 			if (*(BYTE*)hook::get_pattern<char>("0F 86 ? ? ? ? 6A FF 6A 00 6A 01", -33))
 			{
 				auto base = g_netLibrary->GetServerBase();
-				writeReliable(0xB3EA30DE, (char*)&base, sizeof(base));
+				net::packet::ClientIHostPacket iHostPacket;
+				iHostPacket.data.baseNum = g_netLibrary->GetServerBase();
+				g_netLibrary->SendNetPacket(iHostPacket);
+				//writeReliable(0xB3EA30DE, (char*)&base, sizeof(base));
 			}
 		});
+#endif
 
 		g_netLibrary->OnInitReceived.Connect([](NetAddress server)
 		{
 			GameFlags::ResetFlags();
 
-			/*nui::SetMainUI(false);
-
-			nui::DestroyFrame("mpMenu");*/
-
-			//m_connectionState = CS_DOWNLOADING;
 
 			if (!g_gameInit->GetGameLoaded())
 			{

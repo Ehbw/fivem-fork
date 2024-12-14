@@ -310,6 +310,16 @@ struct pgRawEntry
 };
 static_assert(sizeof(pgRawEntry) == 40, "Wrong size of pgRawEntry for RDR3");
 static_assert(offsetof(pgRawEntry, name) == 0x20, "Wrong offset for asset name in pgRawEntry");
+#elif GTA_NY
+//TODO: Verify for NY
+struct pgRawEntry
+{
+	char pad[16];
+	uint64_t timestamp;
+	const char* name;
+};
+static_assert(sizeof(pgRawEntry) == 32, "Wrong size of pgRawEntry for GTA4");
+static_assert(offsetof(pgRawEntry, name) == 0x18, "Wrong offset for asset name in pgRawEntry");
 #endif
 
 template<typename T, uint32_t chunkSize, uint32_t chunksCountUnused>

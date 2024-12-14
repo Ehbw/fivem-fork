@@ -46,7 +46,7 @@ inline unsigned int GetDefaultGameBuild()
 #elif defined(GTA_FIVE)
 	return GetDefaultGTA5Build();
 #elif defined(GTA_NY)
-	return 43;
+	return 59;
 #else
 	return 0;
 #endif

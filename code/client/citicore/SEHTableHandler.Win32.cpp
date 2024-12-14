@@ -10,6 +10,10 @@
 #include <MinHook.h>
 #include "Hooking.Aux.h"
 
+#ifdef GTA_NY
+#include <winternl.h>
+#endif
+
 #include <Error.h>
 
 #include <udis86.h>

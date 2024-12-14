@@ -18,6 +18,7 @@
 #define EXE_TEXT_SIZE 0xA7181A
 #define EXE_RDATA_SIZE 0x1BCD03
 #define EXE_DATA_SIZE 0xC6B50C
+#define LINK_PROTOCOL L"libertym"
 #elif defined(PAYNE)
 #define PRODUCT_NAME L"CitizenPayne"
 #define CONTENT_NAME "paynefx"

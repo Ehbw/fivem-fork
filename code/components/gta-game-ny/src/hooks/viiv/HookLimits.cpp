@@ -1,5 +1,6 @@
 #include "StdInc.h"
 
+
 void AdjustLimit(std::string limit, int value)
 {
 	if (limit == "static_bounds")
@@ -28,6 +29,7 @@ void AdjustLimit(std::string limit, int value)
 
 static HookFunction hookFunction([] ()
 {
+#if 0
 	AdjustLimit("static_bounds", 5800);
 	AdjustLimit("transform_matrix", 13000 * 6);
 	AdjustLimit("building", 32000 * 8);
@@ -53,7 +55,7 @@ static HookFunction hookFunction([] ()
 		*(DWORD*)(loc.get(1).get<void*>(1)) += 90 * 1024 * 1024;
 		*(DWORD*)(loc.get(2).get<void*>(1)) += 90 * 1024 * 1024;
 	}
-
+#endif
 	// don't kill the networked player when out of range
 	hook::return_function(hook::get_pattern("F6 81 6C 02 00 00 04 0F 28 CA", -0x42));
 });

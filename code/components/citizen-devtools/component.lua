@@ -18,6 +18,6 @@ return function()
 	end
 
 	if _OPTIONS['game'] == 'ny' then
-		add_dependencies { 'net' }
+		add_dependencies { 'net', 'gta:core:ny', 'gta:streaming:ny' }
 	end
 end

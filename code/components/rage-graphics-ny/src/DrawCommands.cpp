@@ -87,7 +87,7 @@ CGenericDC2Args::CGenericDC2Args(void (*cb)(int arg, int arg2), int* arg, int* a
 
 static hook::cdecl_stub<void*(size_t, int)> _allocDC([]()
 {
-	return hook::get_pattern("53 56 57 8B 7C 24 10 FF 74 24 14");
+	return hook::get_pattern("53 56 57 8B 7C 24 ? FF 74 24");
 });
 
 void* CBaseDC::operator new(size_t size, int a2) 
@@ -102,6 +102,7 @@ void CBaseDC::operator delete(void* ptr, int a2)
 
 bool IsOnRenderThread()
 {
+	//A1 ? ? ? ? 8D 3C 85
 	static auto tlsOffset = *hook::get_pattern<int>("8B 04 88 83 B8 ? ? ? ? 00 0F 84 ? ? ? ? 6A 00", 5);
 
 	DWORD* gtaTLS = *(DWORD**)(__readfsdword(44));
@@ -110,7 +111,7 @@ bool IsOnRenderThread()
 
 static hook::cdecl_stub<void(void*)> _queueDC([]()
 {
-	return hook::get_pattern("56 57 8B 7C 24 0C 8B CF 8B 07 FF 50 08");
+	return hook::get_call(hook::get_pattern("E8 ? ? ? ? 8D 04 F6")); //hook::get_pattern("56 57 8B 7C 24 0C 8B CF 8B 07 FF 50 08");
 });
 
 void CBaseDC::Enqueue() 
@@ -120,7 +121,7 @@ void CBaseDC::Enqueue()
 
 static hook::cdecl_stub<void(rage::grcTexture*)> _setTexture([]()
 {
-	return hook::get_pattern("8B 44 24 04 85 C0 0F 44");
+	return hook::get_call(hook::get_pattern("E8 ? ? ? ? 0F B6 04 F5"));
 });
 
 void SetTexture(rage::grcTexture* texture) 
@@ -130,12 +131,12 @@ void SetTexture(rage::grcTexture* texture)
 
 static hook::cdecl_stub<void(int, int)> _beginImVertices([]()
 {
-	return (void*)hook::get_call(hook::get_pattern<char>("F3 0F 10 44 24 28 8B 74 24 34", -0x41) + 0x3C);
+	return hook::get_call(hook::get_pattern("E8 ? ? ? ? 83 C4 14 33 FF")); //(void*)hook::get_call(hook::get_pattern<char>("F3 0F 10 44 24 28 8B 74 24 34", -0x41) + 0x3C);
 });
 
 static hook::cdecl_stub<void(float, float, float, float, float, float, uint32_t, float, float)> _addImVertex([]()
 {
-	return (void*)hook::get_call(hook::get_pattern<char>("F3 0F 10 44 24 28 8B 74 24 34", -0x41) + 0x9C);
+	return hook::get_call(hook::get_pattern("E8 ? ? ? ? 83 C4 24 4E"));//(void*)hook::get_call(hook::get_pattern<char>("F3 0F 10 44 24 28 8B 74 24 34", -0x41) + 0x9C);
 });
 
 static hook::cdecl_stub<void()> _drawImVertices([]()
@@ -250,7 +251,7 @@ void SetTextureGtaIm(rage::grcTexture* texture)
 
 static hook::cdecl_stub<void(float, float, float, float, float, float, float, float, float, uint32_t*, int)> _drawImSprite([]()
 {
-	return hook::get_pattern("F3 0F 10 44 24 28 8B 74 24 34", -0x41);
+	return hook::get_call(hook::get_pattern("E8 ? ? ? ? 83 C4 2C E8 ? ? ? ? E9")); // hook::get_pattern("F3 0F 10 44 24 28 8B 74 24 34", -0x41);
 });
 
 void DrawImSprite(float x1, float y1, float x2, float y2, float z, float u1, float v1, float u2, float v2, uint32_t* color, int subShader)
@@ -283,7 +284,7 @@ void GetGameResolution(int& resX, int& resY)
 
 static hook::cdecl_stub<void(int, int)> _setRenderState([]()
 {
-	return hook::get_call(hook::get_pattern("6A 02 6A 04 E8 ? ? ? ? 6A 01", 4));
+	return hook::get_call(hook::get_pattern("E8 ? ? ? ? 83 C4 ? C3 CC 8B 44 24 ? FF 74 24"));
 });
 
 void SetRenderState(int rs, int val)

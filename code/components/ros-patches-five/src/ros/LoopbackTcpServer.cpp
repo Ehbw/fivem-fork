@@ -1224,11 +1224,13 @@ static void SetForegroundProcesses()
 		}
 	}
 
+#ifdef _M_AMD64
 	// TEMP: needed as long as this is a LAF: set AppModelFeatureState flag 1 so we pass win32kfull!EditionCanSetAdditionalForegroundBoostProcesses
 	uint8_t* peb = (uint8_t*)__readgsqword(0x60);
 	peb[0x340] |= 1;
 
 	_SetAdditionalForegroundBoostProcesses(window, numProcesses, processes);
+#endif
 }
 
 static BOOL __stdcall EP_CreateProcessW(const wchar_t* applicationName, wchar_t* commandLine, SECURITY_ATTRIBUTES* processAttributes, SECURITY_ATTRIBUTES* threadAttributes,

@@ -3,6 +3,10 @@ return function()
 	
 	add_dependencies { 'vendor:mbedtls', 'vendor:xz', 'vendor:zstd', 'vendor:hdiffpatch', 'vendor:openssl_crypto', 'vendor:tinyxml2-dll', 'ros-patches', 'vendor:botan' }
 
+	if _OPTIONS['game'] ~= 'ny' then
+		--add_dependencies { "pool-sizes-state" }
+	end
+
 	if _OPTIONS['game'] == 'five' then
 		add_dependencies { 'gta:streaming:five' }
 	end

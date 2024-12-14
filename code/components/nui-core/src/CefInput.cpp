@@ -744,6 +744,9 @@ static HookFunction initFunction([] ()
 			} break;
 
 			case WM_MOUSEWHEEL: {
+#ifdef GTA_NY
+				inputTarget.MouseWheel(GET_WHEEL_DELTA_WPARAM(wParam) / 120.0);
+#else
 				int x = GET_X_LPARAM(lParam);
 				int y = GET_Y_LPARAM(lParam);
 
@@ -773,6 +776,7 @@ static HookFunction initFunction([] ()
 				}
 
 				suppressInput();
+#endif
 				break;
 			}
 			case WM_KEYUP:

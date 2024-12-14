@@ -366,6 +366,28 @@ struct
 
 static InitFunction initFunction([]()
 {
+	fx::ResourceManager::OnInitializeInstance.Connect([](fx::ResourceManager* manager)
+	{
+		fwRefContainer<fx::ResourceEventManagerComponent> eventComponent = manager->GetComponent<fx::ResourceEventManagerComponent>();
+		if (eventComponent.GetRef())
+		{
+			eventComponent->OnQueueEvent.Connect([](const std::string& eventName, const std::string& eventPayload, const std::string& eventSource)
+			{
+				if (eventName == "sessionHostResult")
+				{
+					// deserialize the arguments
+					msgpack::unpacked msg;
+					msgpack::unpack(msg, eventPayload.c_str(), eventPayload.size());
+					msgpack::object obj = msg.get();
+					// convert to an array
+					std::vector<msgpack::object> arguments;
+					obj.convert(arguments);
+					hostSystem.handleHostResult(arguments[0].as<std::string>());
+				}
+			});
+		}
+	});
+
 	OnMainGameFrame.Connect([]()
 	{
 		static bool gameLoaded = false;
