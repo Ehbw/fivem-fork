@@ -61,6 +61,16 @@ static hook::cdecl_stub<void(void*, int)> setTrainState([]
 	return hook::get_call(hook::get_pattern("E8 ? ? ? ? 4C 89 AF ? ? ? ? 49 8B 0F"));
 });
 
+static hook::cdecl_stub<void*(void*, int)> getVehicleDoor([]
+{
+	return hook::get_call(hook::get_pattern("E8 ? ? ? ? 0F BE 53 ? 48 8B F8"));
+});
+
+static hook::cdecl_stub<void(void*, float, uint32_t, fwEntity*)> setVehicleDoorOpenRatio([]
+{
+	return hook::get_call(hook::get_pattern("E8 ? ? ? ? 45 8A F5 EB"));
+});
+
 struct PatternPair
 {
 	std::string_view pattern;
@@ -286,6 +296,7 @@ static int VisualHeightSetOffset = 0x07C;
 static int LightMultiplierGetOffset;
 static int VehiclePitchBiasOffset;
 static int VehicleRollBiasOffset;
+static int32_t* VehicleDoorArray;
 
 static int VehicleDamageParentOffset;
 static int VehicleHandlingOffset;
@@ -603,6 +614,7 @@ static HookFunction initFunction([]()
 		TrainStateOffset = *hook::get_pattern<uint32_t>("89 91 ? ? ? ? 80 3D ? ? ? ? ? 0F 84", 2);
 		TrainCruiseSpeedOffset = *hook::get_pattern<uint32_t>("C7 87 ? ? ? ? ? ? ? ? E8 ? ? ? ? 4C 89 AF", 2);
 		TrainSpeedOffset = *hook::get_pattern<uint32_t>("4C 89 AF ? ? ? ? 44 89 AF ? ? ? ? 4C 89 AF ? ? ? ? 49 8B 0E", 3);
+		VehicleDoorArray = hook::get_address<int32_t*>(hook::get_pattern<uint32_t>("48 8D 15 ? ? ? ? 48 8B C8 8B 14 9A E8 ? ? ? ? 48 85 C0 74 ? F3 0F 10 70", 3));
 	}
 
 	{
@@ -1906,6 +1918,26 @@ static HookFunction initFunction([]()
 		if (fwEntity* vehicle = getAndCheckVehicle(context, "DOES_VEHICLE_USE_FUEL"))
 		{
 			context.SetResult<bool>(DoesVehicleUseFuel(vehicle));
+		}
+	});
+
+	fx::ScriptEngine::RegisterNativeHandler("SET_VEHICLE_DOOR_ANGLE_RATIO", [](fx::ScriptContext& context)
+	{
+		int doorIndex = context.GetArgument<int>(1);
+		if (doorIndex < 0 || doorIndex > 6)
+		{
+			trace("The vehicle door index must be between 0 and 6\n");
+			return;
+		}
+
+		float angleRatio = std::clamp(context.GetArgument<float>(2), 0.0f, 1.0f);
+		if (fwEntity* vehicle = getAndCheckVehicle(context, "SET_VEHICLE_DOOR_ANGLE_RATIO"))
+		{
+			void* door = getVehicleDoor(vehicle, VehicleDoorArray[doorIndex]);
+			if (door)
+			{
+				setVehicleDoorOpenRatio(door, angleRatio, 17408, vehicle);
+			}
 		}
 	});
 
