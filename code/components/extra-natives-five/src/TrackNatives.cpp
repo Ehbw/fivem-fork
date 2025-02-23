@@ -447,11 +447,52 @@ static InitFunction initFunction([]()
 	});
 });
 
+static int32_t FindTrackFromNode(void* node)
+{
+	for (int i = 0; i < rage::CTrainTrack::kMaxTracks; i++)
+	{
+		rage::CTrainTrack* track = CTrainTrack__getTrainTrack(i);
+
+		if (!track || !track->m_enabled)
+		{
+			continue;
+		}
+
+		void* maxNode = &track->m_nodes[track->m_nodeCount - 1];
+		if (node >= track->m_nodes && node <= maxNode)
+		{
+			return i;
+		}
+	}
+
+	return -1;
+}
+
+static bool CTrain__IsTrackActive(int32_t trackIndex)
+{
+	if (trackIndex <= 0 || trackIndex > rage::CTrainTrack::kMaxTracks)
+	{
+		return false;
+	}
+
+	rage::CTrainTrack* track = CTrainTrack__getTrainTrack(trackIndex);
+
+	if (!track || !track->m_enabled || !track->m_isActive)
+	{
+		return false;
+	}
+
+	return true;
+}
+
 static HookFunction hookFunction([]()
 {
 	MH_Initialize();
 	// add missing enabled check for script created trains.
 	MH_CreateHook(hook::get_call(hook::get_pattern("E8 ? ? ? ? 8B D8 E8 ? ? ? ? 44 8A CF")), FindClosestTrack, NULL);
+	MH_CreateHook(hook::get_call(hook::get_pattern("E8 ? ? ? ? 4C 63 E0 41 83 FC ? 0F 84 ? ? ? ? 49 8B FC")), FindTrackFromNode, NULL);
+	// Doesn't account for negative indexes or disabled tracks.
+	MH_CreateHook(hook::get_call(hook::get_pattern("E8 ? ? ? ? 84 C0 74 ? 33 D2 8B CF")), CTrain__IsTrackActive, NULL);
 	MH_EnableHook(MH_ALL_HOOKS);
 
 	// Prevent game code from constantly setting the trains speed while in moving state if it has the "stopsAtStations" flag enabled from setting the train speed to the tracks max speed while moving.
