@@ -920,7 +920,9 @@ void msgPackedClones::Read(net::Buffer& buffer)
 void TempHackMakePhysicalPlayer(uint16_t clientId, int slotId = -1);
 
 extern std::map<int, int> g_creationTokenToObjectId;
-extern std::map<int, uint32_t> g_objectIdToCreationToken;
+//Used by ClientRPC.cpp
+extern std::map<int, uint32_t> g_RPCObjIdToCreationToken;
+std::unordered_map<int, uint32_t> g_objectIdToCreationToken;
 
 rage::netObject* CloneManagerLocal::GetNetObject(uint16_t objectId)
 {
@@ -1133,6 +1135,7 @@ bool CloneManagerLocal::HandleCloneCreate(const msgClone& msg)
 	if (msg.m_creationToken != 0)
 	{
 		g_creationTokenToObjectId[msg.m_creationToken] = msg.GetObjectId();
+		g_objectIdToCreationToken[msg.GetObjectId()] = msg.m_creationToken;
 	}
 
 	ackPacket();
@@ -1955,6 +1958,8 @@ void CloneManagerLocal::DestroyNetworkObject(rage::netObject* object)
 	m_savedEntitySet.erase(object);
 	m_trackedObjects.erase(object->GetObjectId());
 	m_extendedData.erase(object->GetObjectId());
+
+	g_objectIdToCreationToken.erase(object->GetObjectId());
 
 	m_savedEntityVec.erase(std::remove(m_savedEntityVec.begin(), m_savedEntityVec.end(), object), m_savedEntityVec.end());
 }

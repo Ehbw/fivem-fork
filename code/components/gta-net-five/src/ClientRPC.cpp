@@ -201,7 +201,7 @@ int ObjectToEntity(int objectId);
 namespace sync
 {
 std::map<int, int> g_creationTokenToObjectId;
-std::map<int, uint32_t> g_objectIdToCreationToken;
+std::map<int, uint32_t> g_RPCObjIdToCreationToken;
 
 static hook::cdecl_stub<void*(int handle)> getScriptEntity([]()
 {
@@ -528,7 +528,7 @@ public:
 
 									g_creationTokenToObjectId[creationToken] = (1 << 16) | obj;
 
-									g_objectIdToCreationToken[obj] = creationToken;
+									g_RPCObjIdToCreationToken[obj] = creationToken;
 								}
 							}
 						}
