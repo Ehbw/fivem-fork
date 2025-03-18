@@ -35,7 +35,7 @@ static uint32_t AssignObjectId(void* objectIds)
 	}
 
 	auto it = g_objectIds.begin();
-	auto objectId = *it;
+	auto objectId = 0xFFFF - *it; // TODO: temp hack to ensure object ids are large
 
 	g_objectIds.erase(it);
 	g_stolenObjectIds.erase(objectId);
