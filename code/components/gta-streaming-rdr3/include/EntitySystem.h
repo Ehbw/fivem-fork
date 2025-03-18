@@ -30,6 +30,22 @@ public:
 	char pad3[12];
 };
 
+class STREAMING_EXPORT fwSceneUpdateExtension
+{
+public:
+	virtual ~fwSceneUpdateExtension() = default;
+
+	static uint32_t GetClassId();
+
+	inline uint32_t GetUpdateFlags()
+	{
+		return m_updateFlags;
+	}
+
+private:
+	void* m_entity;
+	uint32_t m_updateFlags;
+};
 namespace rage
 {
 struct fwModelId
@@ -92,15 +108,57 @@ struct PreciseTransform : Matrix3x4
 		int16_t sectorX, sectorY;
 	} position;
 };
+
+class STREAMING_EXPORT fwExtension
+{
+public:
+	virtual ~fwExtension() = default;
+
+	virtual void InitEntityExtensionFromDefinition(const void* extensionDef, fwEntity* entity)
+	{
+	}
+
+	virtual void InitArchetypeExtensionFromDefinition(const void* extensionDef, fwArchetype* entity)
+	{
+	}
+
+	virtual int GetExtensionId() const = 0;
+};
 }
+
+class STREAMING_EXPORT fwExtensionList
+{
+public:
+	void Add(rage::fwExtension* extension);
+
+	void* Get(uint32_t id);
+
+private:
+	uintptr_t dummyVal;
+};
 
 class STREAMING_EXPORT fwEntity : public rage::fwRefAwareBase
 {
 public:
 	virtual ~fwEntity() = default;
 
-	virtual bool IsOfType(uint32_t hash) = 0;
+	bool IsOfType(uint32_t hash);
 
+	inline void* GetExtension(uint32_t id)
+	{
+		return m_extensionList.Get(id);
+	}
+
+	inline void AddExtension(rage::fwExtension* extension)
+	{
+		return m_extensionList.Add(extension);
+	}
+
+	template<typename T>
+	inline T* GetExtension()
+	{
+		return reinterpret_cast<T*>(GetExtension(typename T::GetClassId()));
+	}
 private:
 	template<typename TMember>
 	inline static TMember get_member(void* ptr)
@@ -162,11 +220,13 @@ public:
 	}
 
 private:
-	char m_pad[40]; // +8
+	char m_pad[8]; // +8
+	fwExtensionList m_extensionList;
+	char m_pad2[32 - 8]; // +32
 	uint8_t m_entityType; // +48
-	char m_pad2[15]; // +49
+	char m_pad3[15]; // +49
 	rage::PreciseTransform m_transform; // +64
-	char m_pad3[96]; // +128
+	char m_pad4[96]; // +128
 	void* m_netObject; // +224
 };
 
@@ -231,8 +291,30 @@ class CObject : public fwEntity
 {
 };
 
-class CVehicle : public fwEntity
+class STREAMING_EXPORT VehicleSeatManager	
 {
+public:
+	inline int GetNumSeats()
+	{
+		return unk_0 - unk_2;
+	}
+
+	fwEntity* GetOccupant(int index);
+private:
+	uint8_t unk_0;
+	uint8_t unk_1;
+	uint8_t unk_2;
+	char pad_5[5];
+	void* unk_8[17];
+	fwEntity* m_occupants[17];
+	void* unk_118[17];
+	char pad_1A0[8];
+};
+
+class STREAMING_EXPORT CVehicle : public fwEntity
+{
+public:
+	VehicleSeatManager* GetSeatManager();
 };
 
 class CPed : public fwEntity
