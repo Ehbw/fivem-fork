@@ -690,10 +690,13 @@ static void PassObjectControlStub(CNetGamePlayer* player, rage::netObject* netOb
 	netObject->syncData.nextOwnerId = 31;
 	TheClones->SetTargetOwner(netObject, g_netIdsByPlayer[player]);
 
-	// REDM1S: implement for vehicles and mounts
-#ifdef GTA_FIVE
 	fwEntity* entity = (fwEntity*)netObject->GetGameObject();
-	if (entity && entity->IsOfType(HashString("CVehicle")))
+	if (entity && (entity->IsOfType(HashString("CVehicle"))
+#ifdef IS_RDR3
+	|| netObject->GetObjectType() == (uint16_t)NetObjEntityType::Horse
+#endif
+	)
+	)
 	{
 		CVehicle* vehicle = static_cast<CVehicle*>(entity);
 		VehicleSeatManager* seatManager = vehicle->GetSeatManager();
@@ -708,7 +711,7 @@ static void PassObjectControlStub(CNetGamePlayer* player, rage::netObject* netOb
 
 				if (netOccupant)
 				{
-					if (!netOccupant->syncData.isRemote && netOccupant->GetObjectType() != 11)
+					if (!netOccupant->syncData.isRemote && netOccupant->GetObjectType() != (uint16_t)NetObjEntityType::Player)
 					{
 						console::DPrintf("onesync", "passing occupant %d control as well\n", netOccupant->GetObjectId());
 
@@ -718,7 +721,6 @@ static void PassObjectControlStub(CNetGamePlayer* player, rage::netObject* netOb
 			}
 		}
 	}
-#endif
 
 	//auto lastIndex = player->physicalPlayerIndex();
 	//player->physicalPlayerIndex() = 31;

@@ -219,6 +219,11 @@ public:
 		FORWARD_FUNC(GetTypeString, 0x270);
 	}
 
+	inline void UpdatePendingVisibilityChanges()
+	{
+		FORWARD_FUNC(UpdatePendingVisibilityChanges, 0x3F8);
+	}
+
 #undef FORWARD_FUNC
 
 public:

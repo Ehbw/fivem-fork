@@ -1738,7 +1738,6 @@ static HookFunction hookFunctionOrigin([]()
 #endif
 });
 
-#ifdef GTA_FIVE
 static void (*fwSceneUpdate__AddToSceneUpdate)(void*, uint32_t);
 static void (*fwSceneUpdate__RemoveFromSceneUpdate)(void*, uint32_t, bool);
 
@@ -1767,11 +1766,17 @@ static void fwSceneUpdate__RemoveFromSceneUpdate_Track(fwEntity* entity, uint32_
 static HookFunction hookFunctionSceneUpdateWorkaround([]()
 {
 	MH_Initialize();
+#ifdef GTA_FIVE
 	MH_CreateHook(hook::get_pattern("4F 8D 04 49 41 FF", -0x42), fwSceneUpdate__AddToSceneUpdate_Track, (void**)&fwSceneUpdate__AddToSceneUpdate);
 	MH_CreateHook(hook::get_pattern("F7 D3 21 58 10 0F", -0x3F), fwSceneUpdate__RemoveFromSceneUpdate_Track, (void**)&fwSceneUpdate__RemoveFromSceneUpdate);
+#elif IS_RDR3
+	MH_CreateHook(hook::get_pattern("E8 ? ? ? ? 48 8B D8 48 85 C0 75 ? 4C 63 05", -35), fwSceneUpdate__AddToSceneUpdate_Track, (void**)&fwSceneUpdate__AddToSceneUpdate);
+	MH_CreateHook(hook::get_pattern("41 56 48 83 EC ? 8B DA 48 8B F1 8B 15", -19), fwSceneUpdate__RemoveFromSceneUpdate_Track, (void**)&fwSceneUpdate__RemoveFromSceneUpdate);
+#endif
 	MH_EnableHook(MH_ALL_HOOKS);
 });
 
+#ifdef GTA_FIVE
 static HookFunction hookFunctionModifySyncTrees([]()
 {
 	// Change to "mov r8d, ebx; nop;" (44 8B C3 90). ebx value is 87
@@ -1794,13 +1799,11 @@ void CloneManagerLocal::Update()
 	}
 
 	// REDM1S: implement scene optimizations
-#ifdef GTA_FIVE
 	alignas(16) float centerOfWorld[4];
 	getCoordsFromOrigin(origin, centerOfWorld);
 
 	auto origin = DirectX::XMVectorSet(centerOfWorld[0], centerOfWorld[1], centerOfWorld[2], 1.0f);
 	static uint32_t frameCount = 0;
-#endif
 
 	// run Update() on all clones
 	for (auto& clone : m_savedEntities)
@@ -1809,7 +1812,6 @@ void CloneManagerLocal::Update()
 		{
 			clone.second->Update();
 
-#ifdef GTA_FIVE
 			if (clone.second->GetGameObject())
 			{
 				if (clone.second->syncData.isRemote)
@@ -1860,13 +1862,10 @@ void CloneManagerLocal::Update()
 
 				clone.second->UpdatePendingVisibilityChanges();
 			}
-#endif
 		}
 	}
 
-#ifdef GTA_FIVE
 	frameCount++;
-#endif
 }
 
 bool CloneManagerLocal::RegisterNetworkObject(rage::netObject* object)
@@ -2109,7 +2108,7 @@ void CloneManagerLocal::WriteUpdates()
 		auto& objectData = m_trackedObjects[objectId];
 
 #ifdef IS_RDR3
-		if (objectData.lastSyncTime == 0ms && object->GetObjectType() == (int)NetObjEntityType::DraftVeh)
+		if (objectData.lastSyncTime == 0ms && object->GetObjectType() == (uint16_t)NetObjEntityType::DraftVeh)
 		{
 			uint32_t reason = 0;
 
@@ -2190,31 +2189,35 @@ void CloneManagerLocal::WriteUpdates()
 			syncLatency = 0ms;
 		}
 
-		// REDM1S: implement for vehicles and mounts
-#ifdef GTA_FIVE
-		// player-occupied vehicles do as well
-		else if (object->GetGameObject() && ((fwEntity*)object->GetGameObject())->IsOfType(HashString("CVehicle")))
+		// player-occupied vehicles/mounts do as well
+		else if (object->GetGameObject() && (((fwEntity*)object->GetGameObject())->IsOfType(HashString("CVehicle"))
+#ifdef IS_RDR3
+			|| object->GetObjectType() == (uint16_t)NetObjEntityType::Horse
+#endif
+		))
 		{
 			auto vehicle = (CVehicle*)object->GetGameObject();
 			auto seatManager = vehicle->GetSeatManager();
 
-			for (int i = 0; i < seatManager->GetNumSeats(); i++)
+			if (seatManager)
 			{
-				auto occupant = seatManager->GetOccupant(i);
-
-				if (occupant)
+				for (int i = 0; i < seatManager->GetNumSeats(); i++)
 				{
-					auto netObject = reinterpret_cast<rage::netObject*>(occupant->GetNetObject());
+					auto occupant = seatManager->GetOccupant(i);
 
-					if (netObject && netObject->GetObjectType() == (uint16_t)NetObjEntityType::Player)
+					if (occupant)
 					{
-						syncLatency = 0ms;
-						break;
+						auto netObject = reinterpret_cast<rage::netObject*>(occupant->GetNetObject());
+
+						if (netObject && netObject->GetObjectType() == (uint16_t)NetObjEntityType::Player)
+						{
+							syncLatency = 0ms;
+							break;
+						}
 					}
 				}
 			}
 		}
-#endif
 
 		syncLatency = std::max(syncLatency, 10ms);
 
