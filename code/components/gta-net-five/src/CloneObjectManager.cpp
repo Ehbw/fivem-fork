@@ -180,6 +180,36 @@ static rage::netObject* netObjectMgrBase__GetNetworkObjectForPlayer(rage::netObj
 	return object;
 }
 
+#if 0
+
+using ObjectCB = void(__fastcall*)(void*, void*);
+
+static void (*g_orig_netObjectMgrBase__ForAllObjects)(rage::netObjectMgr*, ObjectCB, void*);
+static void netObjectMgrBase__ForAllObjects(rage::netObjectMgr* manager, ObjectCB cb, void* unk)
+{
+	if (!icgi->OneSyncEnabled)
+	{
+		return g_orig_netObjectMgrBase__ForAllObjects(manager, cb, unk);
+	}
+
+
+
+	manager->ForAllNetObjects()
+
+	for (int i = 0; )
+	
+
+
+				for (auto& entry : m_netObjects[playerId])
+	{
+		callback(entry.second);
+	}
+}
+
+
+#endif
+
+
 static HookFunction hookFunction([]()
 {
 	MH_Initialize();
@@ -217,6 +247,12 @@ static HookFunction hookFunction([]()
 
 	MH_CreateHook(hook::get_pattern("41 83 F9 04 75 ? 8D 4B 20 E8 ? ? ? ? 48", xbr::IsGameBuildOrGreater<1491>() ? -0x39 : -0x31), netObjectMgrBase__ChangeOwner, (void**)&g_orig_netObjectMgrBase__ChangeOwner);
 	MH_CreateHook(hook::get_pattern("45 8A F0 0F B7 F2 E8 ? ? ? ? 33 DB 38", -0x24), netObjectMgrBase__GetNetworkObject, (void**)&g_orig_netObjectMgrBase__GetNetworkObject);
+
+#if 0
+	// Replace ForAllObjects to support >32 players
+	MH_CreateHook(hook::get_pattern("E8 ? ? ? ? 44 8A 0D ? ? ? ? 48 8B 3D", -0x44), netObjectMgrBase__ForAllObjects, (void**)&g_orig_netObjectMgrBase__ForAllObjects);
+#endif
+
 #endif
 
 	MH_EnableHook(MH_ALL_HOOKS);
@@ -229,3 +265,4 @@ static InitFunction initFunctionEv([]()
 		icgi = Instance<ICoreGameInit>::Get();
 	});
 });
+ 
