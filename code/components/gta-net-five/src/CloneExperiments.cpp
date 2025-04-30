@@ -52,11 +52,11 @@ namespace rage
 
 void* g_tempRemotePlayer;
 
-static CNetGamePlayer* g_playerList[256];
-static int g_playerListCount;
+CNetGamePlayer* g_playerList[256];
+int g_playerListCount;
 
-static CNetGamePlayer* g_playerListRemote[256];
-static int g_playerListCountRemote;
+CNetGamePlayer* g_playerListRemote[256];
+int g_playerListCountRemote;
 
 static std::unordered_map<uint16_t, std::shared_ptr<fx::StateBag>> g_playerBags;
 
@@ -120,8 +120,8 @@ static void JoinPhysicalPlayerOnHost(void* bubbleMgr, CNetGamePlayer* player)
 	}
 }
 #elif IS_RDR3
-static void*(*g_origJoinBubble)(void* bubbleMgr, void* scSessionImpl, void* playerDataMsg, void* a4, uint8_t slotIndex);
 
+static void*(*g_origJoinBubble)(void* bubbleMgr, void* scSessionImpl, void* playerDataMsg, void* a4, uint8_t slotIndex);
 static void* JoinPhysicalPlayerOnHost(void* bubbleMgr, void* scSessionImpl, void* playerDataMsg, void* a4, uint8_t slotIndex)
 {
 	if (!icgi->OneSyncEnabled)
@@ -130,7 +130,10 @@ static void* JoinPhysicalPlayerOnHost(void* bubbleMgr, void* scSessionImpl, void
 	}
 
 	auto result = g_origJoinBubble(bubbleMgr, scSessionImpl, playerDataMsg, a4, g_netLibrary->GetServerSlotID());
+
+	trace("slot index %i\n", slotIndex);
 	SetupLocalPlayer(rage::GetLocalPlayer());
+
 	return result;
 }
 #endif
@@ -1126,30 +1129,6 @@ static hook::cdecl_stub<float*(float*, CNetGamePlayer*, void*, bool)> getNetPlay
 	}
 });
 #elif IS_RDR3
-static float*(*g_origGetNetPlayerRelevancePosition)(float* position, CNetGamePlayer* player, void* unk);
-
-static float* getNetPlayerRelevancePosition(float* position, CNetGamePlayer* player, void* unk)
-{
-	if (!icgi->OneSyncEnabled || !player || player->physicalPlayerIndex() != 31)
-	{
-		return g_origGetNetPlayerRelevancePosition(position, player, unk);
-	}
-
-	for (int i = 0; i < 256; i++)
-	{
-		if (g_players[i] == player)
-		{
-			player->physicalPlayerIndex() = i;
-			break;
-		}
-	}
-
-	auto result = g_origGetNetPlayerRelevancePosition(position, player, unk);
-
-	player->physicalPlayerIndex() = 31;
-
-	return result;
-}
 #endif
 
 #ifdef GTA_FIVE
@@ -1198,58 +1177,6 @@ static int GetPlayersNearPoint(const float* point, float range, CNetGamePlayer* 
 	}
 
 	idx = std::min(idx, 32);
-
-	std::copy(tempArray, tempArray + idx, outArray);
-
-	return idx;
-}
-#elif IS_RDR3
-static int(*g_origGetPlayersNearPoint)(const float* point, uint32_t unkIndex, void* outIndex, CNetGamePlayer* outArray[32], bool unkVal, float range, bool sorted);
-
-static int GetPlayersNearPoint(const float* point, uint32_t unkIndex, void* outIndex, CNetGamePlayer* outArray[32], bool unkVal, float range, bool sorted)
-{
-	if (!icgi->OneSyncEnabled)
-	{
-		return g_origGetPlayersNearPoint(point, unkIndex, outIndex, outArray, range, range, sorted);
-	}
-
-	CNetGamePlayer* tempArray[512];
-
-	int idx = 0;
-
-	auto playerList = netInterface_GetRemotePhysicalPlayers();
-	for (int i = 0; i < netInterface_GetNumRemotePhysicalPlayers(); i++)
-	{
-		auto player = playerList[i];
-
-		if (getPlayerPedForNetPlayer(player))
-		{
-			alignas(16) float vectorPos[4];
-
-			if (range >= 100000000.0f || VectorDistance(point, getNetPlayerRelevancePosition(vectorPos, player, nullptr)) < range)
-			{
-				tempArray[idx] = player;
-				idx++;
-			}
-		}
-	}
-
-	if (sorted)
-	{
-		std::sort(tempArray, tempArray + idx, [point](CNetGamePlayer* a1, CNetGamePlayer* a2)
-		{
-			alignas(16) float vectorPos1[4];
-			alignas(16) float vectorPos2[4];
-
-			float d1 = VectorDistance(point, getNetPlayerRelevancePosition(vectorPos1, a1, nullptr));
-			float d2 = VectorDistance(point, getNetPlayerRelevancePosition(vectorPos2, a2, nullptr));
-
-			return (d1 < d2);
-		});
-	}
-
-	idx = std::min(idx, 32);
-	unkIndex = idx;
 
 	std::copy(tempArray, tempArray + idx, outArray);
 
@@ -1698,7 +1625,7 @@ static HookFunction hookFunction([]()
 #ifdef GTA_FIVE
 	hook::put<uint8_t>(hook::get_pattern("48 8D 05 ? ? ? ? BE 1F 00 00 00 48 8B F9", 8), 128);
 #elif IS_RDR3
-	//hook::put<uint8_t>(hook::get_pattern("48 8D 05 ? ? ? ? BF 20 00 00 00 48 89 01", 8), 128);
+	hook::put<uint8_t>(hook::get_pattern("48 8D 05 ? ? ? ? BF 20 00 00 00 48 89 01", 8), 128);
 #endif
 
 	// 1604 unused, netobjmgr alloc size, temp dbg
@@ -1740,8 +1667,6 @@ static HookFunction hookFunction([]()
 
 #ifdef GTA_FIVE
 	MH_CreateHook(hook::get_pattern("0F 29 70 C8 0F 28 F1 33 DB 45", -0x1C), GetPlayersNearPoint, (void**)&g_origGetPlayersNearPoint);
-#elif IS_RDR3
-	MH_CreateHook(hook::get_pattern("33 DB 0F 29 70 D8 49 8B F9 4D 8B F0", -0x1B), GetPlayersNearPoint, (void**)&g_origGetPlayersNearPoint);
 #endif
 
 	// return to disable breaking hooks
@@ -1815,12 +1740,14 @@ static HookFunction hookFunction([]()
 	{
 #ifdef GTA_FIVE
 		auto location = hook::get_pattern("48 8B D0 E8 ? ? ? ? E8 ? ? ? ? 83 BB ? ? ? ? 04", 3);
-#elif IS_RDR3
-		auto location = (xbr::IsGameBuildOrGreater<1436>()) ? hook::get_pattern("40 0F B6 CF 48 89 44 CB 40 48", -5) : hook::get_pattern("48 85 C9 74 ? 4C 8D 44 24 40 40 88 7C", 18);
-#endif
-
 		hook::set_call(&g_origJoinBubble, location);
 		hook::call(location, JoinPhysicalPlayerOnHost);
+#elif IS_RDR3
+		//auto location = (xbr::IsGameBuildOrGreater<1436>()) ? hook::get_pattern("40 0F B6 CF 48 89 44 CB 40 48", -5) : hook::get_pattern("48 85 C9 74 ? 4C 8D 44 24 40 40 88 7C", 18);
+
+		MH_CreateHook(hook::get_pattern("48 89 5C 24 ? 48 89 74 24 ? 57 48 83 EC ? 8A 44 24 ? 48 8B F1"), JoinPhysicalPlayerOnHost, (void**)&g_origJoinBubble);
+#endif
+
 	}
 
 	{
@@ -1844,6 +1771,9 @@ static HookFunction hookFunction([]()
 		auto match = hook::pattern(pattern).count(2);
 		MH_CreateHook(match.get(0).get<void>((xbr::IsGameBuildOrGreater<1436>()) ? -19 : 0), GetPlayerByIndex, (void**)&g_origGetPlayerByIndex);
 		MH_CreateHook(match.get(1).get<void>((xbr::IsGameBuildOrGreater<1436>()) ? -19 : 0), GetPlayerByIndex, nullptr);
+
+		MH_CreateHook(hook::get_pattern("48 89 5C 24 ? 57 48 83 EC ? 48 8B 3D ? ? ? ? 8A DA"), GetPlayerByIndex, nullptr);
+		MH_CreateHook(hook::get_pattern("48 89 5C 24 ? 57 48 83 EC ? 8A DA 48 8B F9 E8 ? ? ? ? 84 C0"), GetPlayerByIndexNet, nullptr);
 #endif
 	}
 
@@ -1946,7 +1876,7 @@ static HookFunction hookFunction([]()
 
 #ifdef IS_RDR3
 	// in RDR3 net player relevance position is cached in array indexed with physical player index, we need to patch it
-	MH_CreateHook((xbr::IsGameBuildOrGreater<1436>()) ? hook::get_pattern("0F A3 D0 0F 92 C0 88 06", -0x76) : hook::get_pattern("44 0F A3 C0 0F 92 C0 41 88 02", -0x32), getNetPlayerRelevancePosition, (void**)&g_origGetNetPlayerRelevancePosition);
+	//MH_CreateHook((xbr::IsGameBuildOrGreater<1436>()) ? hook::get_pattern("0F A3 D0 0F 92 C0 88 06", -0x76) : hook::get_pattern("44 0F A3 C0 0F 92 C0 41 88 02", -0x32), getNetPlayerRelevancePosition, (void**)&g_origGetNetPlayerRelevancePosition);
 #endif
 
 	// always allow to migrate, even if not cloned on bit test

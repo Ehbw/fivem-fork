@@ -23,15 +23,15 @@ static hook::cdecl_stub<grcTexture * (grcTextureFactory*, const char*, grcTextur
 
 namespace sga
 {
-static hook::cdecl_stub < Texture * (const char* name, const ImageParams & params, int bufferType, uint32_t flags1, void* memInfo, uint32_t flags2, int cpuAccessType, void* clearValue, const void* conversionInfo, Texture* other)> _createFactory([]()
-{
-	return hook::get_call(hook::get_pattern("8B 45 50 89 44 24 28 48 8B 45 48 48 89 44 24 20 E8", 16));
-});
+	static hook::cdecl_stub < Texture * (const char* name, const ImageParams & params, int bufferType, uint32_t flags1, void* memInfo, uint32_t flags2, int cpuAccessType, void* clearValue, const void* conversionInfo, Texture* other)> _createFactory([]()
+	{
+		return hook::get_call(hook::get_pattern("8B 45 50 89 44 24 28 48 8B 45 48 48 89 44 24 20 E8", 16));
+	});
 
-Texture* Factory::CreateTexture(const char* name, const ImageParams& params, int bufferType, uint32_t flags1, void* memInfo, uint32_t flags2, int cpuAccessType, void* clearValue, const void* conversionInfo, Texture* other)
-{
-	return _createFactory(name, params, bufferType, flags1, memInfo, flags2, cpuAccessType, clearValue, conversionInfo, other);
-}
+	Texture* Factory::CreateTexture(const char* name, const ImageParams& params, int bufferType, uint32_t flags1, void* memInfo, uint32_t flags2, int cpuAccessType, void* clearValue, const void* conversionInfo, Texture* other)
+	{
+		return _createFactory(name, params, bufferType, flags1, memInfo, flags2, cpuAccessType, clearValue, conversionInfo, other);
+	}
 }
 
 grcTexture* grcTextureFactory::createImage(const char* name, grcTextureReference* reference, void* createParams)
@@ -249,29 +249,29 @@ static hook::cdecl_stub<void(float, float, float, float, float, float, uint32_t,
 
 namespace rage
 {
-	void grcBegin(int type, int count)
-	{
-		beginImVertices(type, count, 0);
-	}
+void grcBegin(int type, int count)
+{
+	beginImVertices(type, count, 0);
+}
 
-	void grcVertex(float x, float y, float z, float nX, float nY, float nZ, uint32_t color, float u, float v)
-	{
-		// colors are the other way around in Payne again, so RGBA-swap we go
-		//color = (color & 0xFF00FF00) | _rotl(color & 0x00FF00FF, 16);
+void grcVertex(float x, float y, float z, float nX, float nY, float nZ, uint32_t color, float u, float v)
+{
+	// colors are the other way around in Payne again, so RGBA-swap we go
+	//color = (color & 0xFF00FF00) | _rotl(color & 0x00FF00FF, 16);
 
-		addImVertex(x, y, z, nX, nY, nZ, color, u, v);
-	}
+	addImVertex(x, y, z, nX, nY, nZ, color, u, v);
+}
 
-	void grcEnd()
-	{
-		drawImVertices();
-	}
+void grcEnd()
+{
+	drawImVertices();
+}
 }
 
 namespace rage
 {
-	int* g_WindowWidth;
-	int* g_WindowHeight;
+int* g_WindowWidth;
+int* g_WindowHeight;
 }
 
 void GetGameResolution(int& x, int& y)
@@ -502,7 +502,7 @@ void SetScissorRect(int x, int y, int z, int w)
 
 static uint64_t** sgaDriver;
 
-static void(*origEndDraw)(void*);
+static void (*origEndDraw)(void*);
 static void WrapEndDraw(void* cxt)
 {
 	// pattern near vtbl call: 4C 8B 46 08 44 0F  B7 4E 1A 48 8B 0C F8 (non-inlined in new)
@@ -559,31 +559,31 @@ void* GetGraphicsDriverHandle()
 {
 	switch (GetCurrentGraphicsAPI())
 	{
-	case GraphicsAPI::D3D12:
-		return *g_d3d12Device;
-	case GraphicsAPI::Vulkan:
-		return *g_vkHandle;
-	default:
-		return nullptr;
+		case GraphicsAPI::D3D12:
+			return *g_d3d12Device;
+		case GraphicsAPI::Vulkan:
+			return *g_vkHandle;
+		default:
+			return nullptr;
 	}
 }
 
 namespace rage::sga
 {
-	void Driver_Create_ShaderResourceView(rage::sga::Texture* texture, const rage::sga::TextureViewDesc& desc)
-	{
-		(*(void(__fastcall**)(__int64, void*, void*, const void*))(**(uint64_t**)sgaDriver + 256i64))(*(uint64_t*)sgaDriver, *(char**)((char*)texture + 48), texture, &desc);
-	}
+void Driver_Create_ShaderResourceView(rage::sga::Texture* texture, const rage::sga::TextureViewDesc& desc)
+{
+	(*(void(__fastcall**)(__int64, void*, void*, const void*))(**(uint64_t**)sgaDriver + 256i64))(*(uint64_t*)sgaDriver, *(char**)((char*)texture + 48), texture, &desc);
+}
 
-	void Driver_Destroy_Texture(rage::sga::Texture* texture)
-	{
-		(*(void(__fastcall**)(__int64, void*))(**(uint64_t**)sgaDriver + 440i64))(*(uint64_t*)sgaDriver, texture);
-	}
+void Driver_Destroy_Texture(rage::sga::Texture* texture)
+{
+	(*(void(__fastcall**)(__int64, void*))(**(uint64_t**)sgaDriver + 440i64))(*(uint64_t*)sgaDriver, texture);
+}
 
-	GraphicsContext* GraphicsContext::GetCurrent()
-	{
-		return reinterpret_cast<GraphicsContext*>(get_sgaGraphicsContext());
-	}
+GraphicsContext* GraphicsContext::GetCurrent()
+{
+	return reinterpret_cast<GraphicsContext*>(get_sgaGraphicsContext());
+}
 }
 
 static hook::thiscall_stub<int(rage::sga::ext::DynamicResource*)> _dynamicResource_GetResourceIdx([]()
@@ -624,7 +624,7 @@ static hook::thiscall_stub<void(rage::sga::ext::DynamicTexture2*, int flags, voi
 static hook::thiscall_stub<void(rage::sga::ext::DynamicTexture2*)> _dynamicTexture2_dtor([]()
 {
 	// this is actually rage::sga::ext::DynamicTextureUav::~dtor
-	//return hook::pattern("48 8D 59 60 BD 04 00 00 00 48 8B 3B 48").count(2).get(0).get<void>(-0x17);
+	// return hook::pattern("48 8D 59 60 BD 04 00 00 00 48 8B 3B 48").count(2).get(0).get<void>(-0x17);
 
 	return hook::get_pattern("BE 04 00 00 00 48 8B F9 8B EE", -0x14);
 });
@@ -711,7 +711,7 @@ static HookFunction hookFunction([]()
 	stockStates[BlendStateDefault] = hook::get_address<uint16_t*>(hook::get_pattern("48 8D 4D BF 88 05 ? ? ? ? C6 45 BF 02", 167));
 
 	// rage::sga::BS_AlphaAdd
-	//stockStates[BlendStatePremultiplied] = hook::get_address<uint16_t*>(hook::get_pattern("48 8D 4D BF 88 05 ? ? ? ? C6 45 BF 02", 347));
+	// stockStates[BlendStatePremultiplied] = hook::get_address<uint16_t*>(hook::get_pattern("48 8D 4D BF 88 05 ? ? ? ? C6 45 BF 02", 347));
 	stockStates[BlendStatePremultiplied] = stockStates[BlendStateDefault];
 
 	diffSS = hook::get_address<decltype(diffSS)>(hook::get_pattern("66 C7 45 60 15 03 C6 45 62 03", 17));
