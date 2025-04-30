@@ -7,6 +7,21 @@
 
 #include <Hooking.h>
 
+#include <vulkan/vulkan.h>
+
+#include <Error.h>
+
+#include <CL2LaunchMode.h>
+
+#include <CoreConsole.h>
+#include <ICoreGameInit.h>
+
+#include <HostSharedData.h>
+#include <optional>
+
+#pragma comment(lib, "vulkan-1.lib")
+
+
 static rage::grcTextureFactory* g_textureFactory;
 
 namespace rage
@@ -689,6 +704,64 @@ static bool ShouldUsePipelineCache(const char* pipelineCachePrefix)
 	return true;
 }
 
+static inline std::string GetGPUType(VkPhysicalDeviceType type)
+{
+	switch (type)
+	{
+		case VK_PHYSICAL_DEVICE_TYPE_OTHER:
+			return "Other";
+		case VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU:
+			return "Integrated GPU";
+		case VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU:
+			return "Discrete GPU";
+		case VK_PHYSICAL_DEVICE_TYPE_VIRTUAL_GPU:
+			return "Virtual GPU";
+		case VK_PHYSICAL_DEVICE_TYPE_CPU:
+			return "CPU";
+		default:
+			return "Unknown";
+	}
+}
+
+const std::vector<const char*> validationLayers = {
+	"VK_LAYER_KHRONOS_validation"
+};
+
+const std::vector<const char*> extensionNames = {
+	VK_EXT_DEBUG_UTILS_EXTENSION_NAME
+};
+
+
+static HRESULT vkCreateDeviceHook(VkPhysicalDevice physicalDevice, VkDeviceCreateInfo* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkDevice* pDevice)
+{
+	trace("vkCreateDevice\n");
+
+	pCreateInfo->enabledLayerCount = static_cast<uint32_t>(validationLayers.size());
+	pCreateInfo->ppEnabledLayerNames = validationLayers.data();
+
+	static auto _ = ([&physicalDevice]
+	{
+		VkPhysicalDeviceProperties props = {};
+
+		vkGetPhysicalDeviceProperties(physicalDevice, &props);
+
+		// version encoding: https://registry.khronos.org/vulkan/specs/latest/html/vkspec.html#extendingvulkan-coreversions-versionnumbers
+		uint32_t major = static_cast<uint32_t>(props.apiVersion) >> 22U;
+		uint32_t minor = (static_cast<uint32_t>(props.apiVersion) >> 12U) & 0x3FFU;
+		uint32_t patch = static_cast<uint32_t>(props.apiVersion) & 0xFFFU;
+
+		AddCrashometry("gpu_name", "%s", props.deviceName);
+		AddCrashometry("gpu_id", "%04x:%04x", props.vendorID, props.deviceID);
+		AddCrashometry("vulkan_api_version", "v%u.%u.%u", major, minor, patch);
+
+		trace("Name: %s\nGPU type: %s\nDriver version: %u\nAPI version: %u.%u.%u\n", props.deviceName, GetGPUType(props.deviceType).c_str(), props.driverVersion, major, minor, patch);
+
+		return true;
+	})();
+
+	return vkCreateDevice(physicalDevice, pCreateInfo, pAllocator, pDevice);
+}
+
 static HookFunction hookFunction([]()
 {
 	hook::jump(hook::get_pattern("48 83 EC 28 48 8D 15 ? ? ? ? 48 2B D1 8A 01"), ShouldUsePipelineCache);
@@ -752,8 +825,14 @@ static HookFunction hookFunction([]()
 		rage::g_WindowHeight = hook::get_address<int*>(location + 0x3E);
 	}
 
+	{
+		auto location = hook::get_pattern<char>("FF 15 ? ? ? ? 8B C8 E8 ? ? ? ? 85 C0 0F 85 ? ? ? ? 48 8B 0D");
+		hook::nop(location, 6);
+		hook::call(location, vkCreateDeviceHook);
+	}
+
 	// #TODORDR: badly force d3d12 sga driver (vulkan crashes on older Windows 10?)
-	hook::iat("kernel32.dll", GetCommandLineWHook, "GetCommandLineW");
+	//hook::iat("kernel32.dll", GetCommandLineWHook, "GetCommandLineW");
 
 	MH_EnableHook(MH_ALL_HOOKS);
 });

@@ -64,11 +64,21 @@ namespace game
 	}
 }
 
+
+static const char*(*g_getInputName)(uint32_t);
+static const char* GetInputName(uint32_t input)
+{
+	const char* inputStr = g_getInputName(input);
+	trace("input str %i %s\n", input, inputStr);
+	return "hahahahahahahahahahhahahahahaha!";
+}
+
 static HookFunction hookFunction([]()
 {
 	g_textMap[0xB3390E91] = "Build ~1~ (RedM)";
 
 	MH_Initialize();
 	MH_CreateHook(hook::get_pattern("48 81 C1 D0 00 00 00 E8 ? ? ? ? 48 8B CE 83 FB FF 74 ? 44 8B 44 24 50", -57), GetText, (void**)&g_origGetText);
+	//MH_CreateHook(hook::get_pattern("48 63 D1 48 8D 0D ? ? ? ? E9"), GetInputName, (void**)&g_getInputName);
 	MH_EnableHook(MH_ALL_HOOKS);
 });

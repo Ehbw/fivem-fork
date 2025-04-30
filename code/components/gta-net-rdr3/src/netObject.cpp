@@ -190,4 +190,8 @@ static HookFunction hookFunction([]()
 	validatePoolHashes[(int)NetObjEntityType::CombatDirector] = HashString("CNetObjCombatDirector");
 	validatePoolHashes[(int)NetObjEntityType::PedSharedTargeting] = HashString("CNetObjPedSharedTargeting");
 	validatePoolHashes[(int)NetObjEntityType::Persistent] = HashString("CNetObjPersistent");
+
+
+	// Handle netObj
+
 });
