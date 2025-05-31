@@ -12,7 +12,13 @@ static hook::cdecl_stub<rage::netObject* (rage::netObjectMgr*, uint16_t, bool)> 
 	return hook::get_pattern("66 89 54 24 ? 56", -0xA);
 });
 
-bool (*_updateNetObjectMultiThreadedCB)(void*);
+struct IpcRef
+{
+	uint32_t* addend;
+	HANDLE* handle;
+};
+
+bool(*_updateNetObjectMultiThreadedCB)(void*);
 struct sysDependencyBatch
 {
 	typedef bool(Callback)(void*);
@@ -33,6 +39,28 @@ static_assert(offsetof(sysDependencyBatch, unk_02) == 20);
 static_assert(offsetof(sysDependencyBatch, unk_03) == 22);
 static_assert(offsetof(sysDependencyBatch, argument) == 32);
 static_assert(offsetof(sysDependencyBatch, ipcEventRef) == 40);
+
+
+static bool updateTest(void* batch)
+{
+	sysDependencyBatch* dependency = (sysDependencyBatch*)batch;
+
+	rage::netObject* object = (rage::netObject*)dependency->argument;
+
+	if (!object)
+	{
+		return true;
+	}
+
+	object->DependencyThreadUpdate();
+
+	if (_InterlockedExchangeAdd(dependency->ipcEventRef, 0xFFFFFFFF) == 0x80000001)
+	{
+		SetEvent(reinterpret_cast<uint8_t*>(dependency->ipcEventRef) + 8);
+	}
+
+	return true;
+}
 
 static hook::cdecl_stub<int(sysDependencyBatch**, unsigned int)> rage__sysDependencyScheduler__InsertBatch([]()
 {
@@ -65,10 +93,10 @@ void netObjectMgr::UpdateAllNetworkObjects(std::unordered_map<uint32_t, rage::ne
 	//Singlethreaded block start
 	objManager->PreMultithreadedUpdate();
 
-	unsigned int mtUpdateIndex = 0;
+	int mtUpdateIndex = 0;
 	sysDependencyBatch* mtUpdateList[392]{};
 
-	unsigned int objectUpdateList = 0;
+	int objectUpdateList = 0;
 	rage::netObject* stUpdateList[392 * 2]{};
 
 	_RTL_CRITICAL_SECTION* lock = &objManager->m_autoLock;
@@ -98,13 +126,15 @@ void netObjectMgr::UpdateAllNetworkObjects(std::unordered_map<uint32_t, rage::ne
 			{
 				*(uint8_t*)(object + 167) &= 0xCA;
 				*(uint8_t*)(object + 167) |= 0xA;
-				cloneSyncCB->m_callerFunc = _updateNetObjectMultiThreadedCB;
+				cloneSyncCB->m_callerFunc = _updateNetObjectMultiThreadedCB; 
 				cloneSyncCB->argument = object;
 				cloneSyncCB->ipcEventRef = ipcEventRef;
 				cloneSyncCB->unk_01 = (1u << 29);
 				cloneSyncCB->unk_02 = 0;
 				cloneSyncCB->unk_03 = 0;
 				cloneSyncCB->unk_04 = (cloneSyncCB->unk_04 & 0xCA) | 0x0A;
+
+				memset(cloneSyncCB->pad3, 0, sizeof(cloneSyncCB->pad3));
 				*(uint32_t*)(object + 160) = 0;
 				*(WORD*)(object + 164) = 0;
 				*(uint8_t*)(object + 166) = 0;
@@ -173,6 +203,28 @@ static void netObjectMgr__updateAllNetworkObjects(void* objMgr)
 	g_updateAllNetworkObjects(objMgr);
 }
 
+extern ICoreGameInit* icgi;
+
+static void (*g_updateAllNetworkObjects)(void*);
+static void netObjectMgr__updateAllNetworkObjects(void* objMgr)
+{
+	if (icgi->OneSyncEnabled)
+	{
+		return;
+	}
+
+	g_updateAllNetworkObjects(objMgr);
+}
+
+static bool (*g_updateNetObjectMultiThreaded)(sysDependencyBatch*);
+static bool UpdateNetObjectMultiThreadedCB(sysDependencyBatch* batch)
+{
+	batch;
+	return g_updateNetObjectMultiThreaded(batch);
+}
+
+static bool* g_mtSyncTree;
+
 static HookFunction hookFunction([]()
 {
 	g_objectMgr = hook::get_address<rage::netObjectMgr**>(hook::get_pattern("45 0F 57 C0 48 8B 35 ? ? ? ? 0F 57 FF", 7));
@@ -180,4 +232,10 @@ static HookFunction hookFunction([]()
 
 	// Don't run function in onesync. (playerObjects is 32-sized and isn't given information in onesync)
 	g_updateAllNetworkObjects = hook::trampoline(hook::get_call(hook::get_pattern("E8 ? ? ? ? 44 8B 35 ? ? ? ? 33 C0")), netObjectMgr__updateAllNetworkObjects);
+	g_mtSyncTree = hook::get_address<bool*>(hook::get_pattern("80 3D ? ? ? ? ? 0F 84 ? ? ? ? 80 7E", 3));
+	//*g_mtSyncTree = false;
+
+	//g_updateNetObjectMultiThreaded = hook::trampoline(hook::get_pattern("48 8B C4 48 89 58 ? 48 89 68 ? 48 89 70 ? 48 89 78 ? 41 56 48 83 EC ? 48 8B 71 ? 48 8B 69"), UpdateNetObjectMultiThreadedCB);
+	// Don't run function in onesync. (playerObjects is 32-sized and isn't given information in onesync)
+	//g_updateAllNetworkObjects = hook::trampoline(hook::get_call(hook::get_pattern("E8 ? ? ? ? 44 8B 35 ? ? ? ? 33 C0")), netObjectMgr__updateAllNetworkObjects);
 });

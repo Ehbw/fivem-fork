@@ -2017,6 +2017,8 @@ void CloneManagerLocal::WriteUpdates()
 		return;
 	}
 
+	Mutex mutex(&objectMgr->m_autoLock);
+
 	int syncCount1 = 0, syncCount2 = 0, syncCount3 = 0, syncCount4 = 0;
 
 	bool hitTimestamp = false;
