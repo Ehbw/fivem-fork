@@ -18,6 +18,7 @@ struct IpcRef
 	HANDLE* handle;
 };
 
+
 bool(*_updateNetObjectMultiThreadedCB)(void*);
 struct sysDependencyBatch
 {
@@ -39,7 +40,6 @@ static_assert(offsetof(sysDependencyBatch, unk_02) == 20);
 static_assert(offsetof(sysDependencyBatch, unk_03) == 22);
 static_assert(offsetof(sysDependencyBatch, argument) == 32);
 static_assert(offsetof(sysDependencyBatch, ipcEventRef) == 40);
-
 
 static bool updateTest(void* batch)
 {

@@ -1004,17 +1004,40 @@ static void DecideNetGameEvent(rage::netGameEvent* ev, CNetGamePlayer* player, C
 	}
 }
 
+struct netEventMgr
+{
+	void* m_unk;
+	_RTL_CRITICAL_SECTION m_autoLock;
+};
+
 static void ExecuteNetGameEvent(void* eventMgr, rage::netGameEvent* ev, rage::datBitBuffer* buffer, CNetGamePlayer* player, CNetGamePlayer* unkConn, uint16_t evH, uint32_t a, uint32_t b)
 {
 	if (!icgi->OneSyncEnabled)
 	{
 		return g_origExecuteNetGameEvent(eventMgr, ev, buffer, player, unkConn, evH, a, b);
 	}
+	
+#ifdef IS_RDR3
+	netEventMgr* mgr = (netEventMgr*)eventMgr;
+	_RTL_CRITICAL_SECTION* autoLock = &mgr->m_autoLock;
+
+	if (autoLock && autoLock->DebugInfo)
+	{
+		EnterCriticalSection(autoLock);
+	}
+#endif
 
 	ev->Handle(buffer, player, unkConn);
 
 	// missing: some checks
 	DecideNetGameEvent(ev, player, unkConn, buffer, evH);
+
+#ifdef IS_RDR3
+	if (autoLock && autoLock->DebugInfo)
+	{
+		LeaveCriticalSection(autoLock);
+	}
+#endif
 }
 
 static void NetEventError()

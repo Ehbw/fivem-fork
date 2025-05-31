@@ -925,6 +925,16 @@ std::unordered_map<int, uint32_t> g_objectIdToCreationToken;
 
 rage::netObject* CloneManagerLocal::GetNetObject(uint16_t objectId)
 {
+#ifdef IS_RDR3
+	auto objMgr = rage::netObjectMgr::GetInstance();
+	if (!objMgr)
+	{
+		return nullptr;
+	}
+
+	Mutex mutex(&objMgr->m_autoLock);
+#endif
+
 	auto it = m_savedEntities.find(objectId);
 
 	return (it != m_savedEntities.end()) ? it->second : nullptr;
@@ -1868,6 +1878,14 @@ void CloneManagerLocal::Update()
 
 bool CloneManagerLocal::RegisterNetworkObject(rage::netObject* object)
 {
+	auto objectMgr = rage::netObjectMgr::GetInstance();
+	if (!objectMgr)
+	{
+		return false;
+	}
+
+	//Mutex mutex()
+
 	if (m_savedEntities.find(object->GetObjectId()) != m_savedEntities.end())
 	{
 		// TODO: delete it somewhen?
