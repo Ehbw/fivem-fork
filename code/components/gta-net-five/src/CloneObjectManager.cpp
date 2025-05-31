@@ -33,6 +33,10 @@ static void netObjectMgrBase__RegisterNetworkObject(rage::netObjectMgr* manager,
 		return g_orig_netObjectMgrBase__RegisterNetworkObject(manager, object);
 	}
 
+#ifdef IS_RDR3
+	Mutex mutex(&manager->m_autoLock);
+#endif
+
 	if (!CloneObjectMgr->RegisterNetworkObject(object))
 	{
 		return;
@@ -71,6 +75,10 @@ static void netObjectMgrBase__DestroyNetworkObject(rage::netObjectMgr* manager, 
 		CD_FreeSyncData(object->GetObjectId());
 		return g_orig_netObjectMgrBase__DestroyNetworkObject(manager, object);
 	}
+
+#ifdef IS_RDR3
+	Mutex mutex(&manager->m_autoLock);
+#endif
 
 	if (!object->syncData.shouldNotBeDeleted)
 	{
@@ -144,6 +152,9 @@ static rage::netObject* netObjectMgrBase__GetNetworkObject(rage::netObjectMgr* m
 		return g_orig_netObjectMgrBase__GetNetworkObject(manager, id, evenIfDeleting);
 	}
 
+#ifdef IS_RDR3
+	Mutex mutex(&manager->m_autoLock);
+#endif
 	auto object = CloneObjectMgr->GetNetworkObject(id);
 
 	if (object && object->syncData.wantsToDelete && !evenIfDeleting)

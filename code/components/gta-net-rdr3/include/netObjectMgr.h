@@ -55,6 +55,26 @@ public:
 		FORWARD_FUNC(RegisterNetworkObject, 0x70, entity);
 	}
 
+	inline void PreSinglethreadedUpdate()
+	{
+		FORWARD_FUNC(PreSinglethreadedUpdate, 0x90);
+	}
+
+	inline void PostSinglethreadedUpdate()
+	{
+		FORWARD_FUNC(PostSinglethreadedUpdate, 0x98);
+	}
+
+	inline void PreMultithreadedUpdate()
+	{
+		FORWARD_FUNC(PreMultithreadedUpdate, 0xA0);
+	}
+	
+	inline void PostMultithreadedUpdate()
+	{
+		FORWARD_FUNC(PostMultithreadedUpdate, 0xA8);
+	}
+
 private:
 	struct atDNetObjectNode
 	{
@@ -72,6 +92,9 @@ private:
 
 private:
 	ObjectHolder m_objects[32];
+	char pad[0xBE88 - (16 * 32) - 8];
+public:
+	_RTL_CRITICAL_SECTION m_autoLock;
 
 public:
 	template<typename T>
@@ -87,6 +110,8 @@ public:
 	}
 
 	netObject* GetNetworkObject(uint16_t id, bool a3);
+
+	static void UpdateAllNetworkObjects(std::unordered_map<uint32_t, rage::netObject*>& entities);
 
 	static netObjectMgr* GetInstance();
 };

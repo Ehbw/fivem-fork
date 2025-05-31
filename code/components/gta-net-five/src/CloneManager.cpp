@@ -1793,15 +1793,16 @@ void CloneManagerLocal::Update()
 		SendUpdates(m_ackBuffer, HashString("netAcks"));
 	}
 
-	// REDM1S: implement scene optimizations
+#ifdef IS_RDR3 && 1
+	rage::netObjectMgr::UpdateAllNetworkObjects(m_savedEntities);
+#endif
+
 #ifdef GTA_FIVE
 	alignas(16) float centerOfWorld[4];
 	getCoordsFromOrigin(origin, centerOfWorld);
 
 	auto origin = DirectX::XMVectorSet(centerOfWorld[0], centerOfWorld[1], centerOfWorld[2], 1.0f);
 	static uint32_t frameCount = 0;
-#endif
-
 	// run Update() on all clones
 	for (auto& clone : m_savedEntities)
 	{
@@ -1809,7 +1810,6 @@ void CloneManagerLocal::Update()
 		{
 			clone.second->Update();
 
-#ifdef GTA_FIVE
 			if (clone.second->GetGameObject())
 			{
 				if (clone.second->syncData.isRemote)
@@ -1860,11 +1860,8 @@ void CloneManagerLocal::Update()
 
 				clone.second->UpdatePendingVisibilityChanges();
 			}
-#endif
 		}
 	}
-
-#ifdef GTA_FIVE
 	frameCount++;
 #endif
 }
