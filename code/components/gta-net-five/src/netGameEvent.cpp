@@ -1122,6 +1122,16 @@ namespace rage
 			return;
 		}
 
+#ifdef IS_RDR3
+		auto mgr = reinterpret_cast<netEventMgr*>(*(char**)g_netEventMgr);
+		_RTL_CRITICAL_SECTION* autoLock = &mgr->m_autoLock;
+
+		if (autoLock && autoLock->DebugInfo)
+		{
+			EnterCriticalSection(autoLock);
+		}
+#endif
+
 		std::set<decltype(g_events)::key_type> toRemove;
 
 		for (auto& eventPair : g_events)
@@ -1219,6 +1229,14 @@ namespace rage
 			evBuf.Seek(0);
 			HandleNetGameEvent(reinterpret_cast<const char*>(evBuf.GetBuffer()), evBuf.GetLength());
 		}
+
+#ifdef IS_RDR3
+		if (autoLock && autoLock->DebugInfo)
+		{
+			LeaveCriticalSection(autoLock);
+		}
+#endif
+
 	}
 
 	bool EnsurePlayer31()

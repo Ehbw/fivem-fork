@@ -111,7 +111,7 @@ public:
 
 	netObject* GetNetworkObject(uint16_t id, bool a3);
 
-	static void UpdateAllNetworkObjects(std::unordered_map<uint32_t, rage::netObject*>& entities);
+	static void UpdateAllNetworkObjects();
 
 	static netObjectMgr* GetInstance();
 };

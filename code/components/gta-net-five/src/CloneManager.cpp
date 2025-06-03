@@ -204,6 +204,8 @@ private:
 
 	void SendPacket(int peer, net::packet::StateBagV2Packet& data) override;
 
+	std::unordered_map<uint32_t, rage::netObject*>& GetSavedEntities();
+
 private:
 	NetLibrary* m_netLibrary;
 
@@ -344,6 +346,11 @@ void CloneManagerLocal::SendPacket(int peer, net::packet::StateBagPacket& packet
 void CloneManagerLocal::SendPacket(int peer, net::packet::StateBagV2Packet& packet)
 {
 	m_netLibrary->SendNetPacket(packet);
+}
+
+std::unordered_map<uint32_t, rage::netObject*>& CloneManagerLocal::GetSavedEntities()
+{
+	return m_savedEntities;
 }
 
 void CloneManagerLocal::BindNetLibrary(NetLibrary* netLibrary)
@@ -1793,7 +1800,7 @@ static HookFunction hookFunctionModifySyncTrees([]()
 void CloneManagerLocal::Update()
 {
 #ifndef ONESYNC_CLONING_NATIVES
-	WriteUpdates();
+	//WriteUpdates();
 #endif
 
 	SendUpdates(m_sendBuffer, HashString("netClones"));
@@ -1802,10 +1809,6 @@ void CloneManagerLocal::Update()
 	{
 		SendUpdates(m_ackBuffer, HashString("netAcks"));
 	}
-
-#ifdef IS_RDR3 && 1
-	rage::netObjectMgr::UpdateAllNetworkObjects(m_savedEntities);
-#endif
 
 #ifdef GTA_FIVE
 	alignas(16) float centerOfWorld[4];

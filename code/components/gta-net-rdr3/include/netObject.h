@@ -149,6 +149,11 @@ public:
 		FORWARD_FUNC(MainThreadUpdate, 0x160);
 	}
 
+	inline uint8_t GetMinimumUpdateLevel()
+	{
+		FORWARD_FUNC(GetMinimumUpdateLevel, 0x58);
+	}
+
 	inline void DependencyThreadUpdate()
 	{
 		FORWARD_FUNC(DependencyThreadUpdate, 0x168);
@@ -224,6 +229,7 @@ public:
 public:
 	inline void Update()
 	{
+		assert(false);
 		MainThreadUpdate();
 		DependencyThreadUpdate();
 		PostDependencyThreadUpdate();

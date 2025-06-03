@@ -22,6 +22,18 @@ static ICoreGameInit* icgi;
 extern void CD_AllocateSyncData(uint16_t objectId);
 extern void CD_FreeSyncData(uint16_t objectId);
 
+#ifdef IS_RDR3
+static hook::cdecl_stub<uint8_t(void*, int)> getBatchForNewObject([]()
+{
+	return hook::get_pattern("48 89 5C 24 ? 48 89 74 24 ? 57 48 83 EC ? 32 DB 8B F2 48 8B F9 83 FA");
+});
+
+static hook::cdecl_stub<uint8_t(rage::netObject*, uint8_t, uint8_t)> setSyncTreeUpdateLevelAndBatch([]()
+{
+	return hook::get_pattern("48 89 5C 24 ? 48 89 74 24 ? 57 48 83 EC ? 48 8B 01 41 8A F0 48 8B F9");
+});
+#endif
+
 static void(*g_orig_netObjectMgrBase__RegisterNetworkObject)(rage::netObjectMgr*, rage::netObject*);
 
 static void netObjectMgrBase__RegisterNetworkObject(rage::netObjectMgr* manager, rage::netObject* object)
@@ -42,6 +54,27 @@ static void netObjectMgrBase__RegisterNetworkObject(rage::netObjectMgr* manager,
 		return;
 	}
 
+#ifdef IS_RDR3
+	if (!object->syncData.isRemote)
+	{
+		uint8_t minUpdateLevel = object->GetMinimumUpdateLevel();
+
+		if (minUpdateLevel < 5)
+		{
+			rage::netSyncTree* syncTree = object->GetSyncTree();
+			uint8_t batch = getBatchForNewObject(object, minUpdateLevel);
+			setSyncTreeUpdateLevelAndBatch(object, minUpdateLevel, batch);
+
+			if (batch < 20)
+			{
+				_InterlockedExchangeAdd8((volatile char*)(syncTree + batch + 20 * minUpdateLevel + 1344), 1);
+			}
+		}
+	}
+
+	mutex.Unlock();
+#endif
+
 	// create a blender, if not existent
 	if (!object->GetBlender())
 	{
@@ -58,6 +91,7 @@ static void netObjectMgrBase__RegisterNetworkObject(rage::netObjectMgr* manager,
 #endif
 		{
 			object->StartSynchronising();
+			*(int32_t*)(object + 0x48) |= 0x80u;
 		}
 	}
 
@@ -175,6 +209,10 @@ static rage::netObject* netObjectMgrBase__GetNetworkObjectForPlayer(rage::netObj
 	{
 		return g_orig_netObjectMgrBase__GetNetworkObjectForPlayer(manager, id, player, evenIfDeleting);
 	}
+
+#ifdef IS_RDR3
+	Mutex mutex(&manager->m_autoLock);
+#endif
 
 	auto object = CloneObjectMgr->GetNetworkObject(id);
 

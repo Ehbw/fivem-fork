@@ -592,7 +592,14 @@ static bool TraverseTreeInternal(rage::netSyncNodeBase* node, T& state, const st
 template<typename T>
 static void TraverseTree(rage::netSyncTree* tree, T& state, const std::function<bool(T&, rage::netSyncNodeBase*, const std::function<bool()>&)>& cb)
 {
+#ifdef IS_RDR3
+	void* unk;
+	beginTreeLock(&unk, tree);
+#endif
 	TraverseTreeInternal(tree->syncNode, state, cb);
+#ifdef IS_RDR3
+	endTreeLock(tree);
+#endif
 }
 
 static void InitTree(rage::netSyncTree* tree)
@@ -670,6 +677,18 @@ static void AddNodeAndExternalDependentNodes(netSyncDataNodeBase* node, rage::ne
 #ifdef GTA_FIVE
 static void LoadPlayerAppearanceDataNode(rage::netSyncNodeBase* node);
 static void StorePlayerAppearanceDataNode(rage::netSyncNodeBase* node);
+#endif
+
+#ifdef IS_RDR3
+static hook::cdecl_stub<rage::netSyncTree**(void**, rage::netSyncTree*)> beginTreeLock([]()
+{
+	return hook::get_pattern("40 53 48 83 EC ? 48 89 11 48 8B D9 48 8B 0D");
+});
+
+static hook::cdecl_stub<void(rage::netSyncTree*)> endTreeLock([]()
+{
+	return hook::get_pattern("40 53 48 83 EC ? 65 48 8B 14 25 ? ? ? ? 48 8B D9 8B 05 ? ? ? ? B9 ? ? ? ? 48 8B 04 C2 48 8B 14 01 48 39 93");
+});
 #endif
 
 bool netSyncTree::WriteTreeCfx(int flags, int objFlags, rage::netObject* object, rage::datBitBuffer* buffer, uint32_t time, void* logger, uint8_t targetPlayer, void* outNull, uint32_t* lastChangeTime)
