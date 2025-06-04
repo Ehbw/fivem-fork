@@ -34,6 +34,11 @@ static hook::cdecl_stub<uint8_t(rage::netObject*, uint8_t, uint8_t)> setSyncTree
 });
 #endif
 
+static hook::cdecl_stub<void*(size_t)> newNetObjPoolEntry([]()
+{
+	return hook::get_call(hook::get_pattern("E8 ? ? ? ? 48 8B F8 48 85 C0 74 ? 48 83 60 ? ? 48 83 60"));
+});
+
 static void(*g_orig_netObjectMgrBase__RegisterNetworkObject)(rage::netObjectMgr*, rage::netObject*);
 
 static void netObjectMgrBase__RegisterNetworkObject(rage::netObjectMgr* manager, rage::netObject* object)

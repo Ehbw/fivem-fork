@@ -295,6 +295,8 @@ private:
 	uint64_t m_serverSendFrame;
 
 	std::multimap<uint64_t, std::tuple<int /* type */, uint16_t /* object */, uint16_t /* identifier */, uint32_t /* timestamp */>> m_serverAcks;
+
+	std::mutex m_objectMutex;
 };
 
 uint16_t CloneManagerLocal::GetClientId(rage::netObject* netObject)
@@ -933,14 +935,9 @@ std::unordered_map<int, uint32_t> g_objectIdToCreationToken;
 rage::netObject* CloneManagerLocal::GetNetObject(uint16_t objectId)
 {
 #ifdef IS_RDR3
-	auto objMgr = rage::netObjectMgr::GetInstance();
-	if (!objMgr)
-	{
-		return nullptr;
-	}
-
-	Mutex mutex(&objMgr->m_autoLock);
+	std::lock_guard mutex(m_objectMutex);
 #endif
+
 
 	auto it = m_savedEntities.find(objectId);
 

@@ -10,7 +10,6 @@ static rage::netObjectMgr** g_objectMgr;
 static DWORD g_mainThreadId;
 bool (*_updateNetObjectMultiThreadedCB)(void*);
 
-
 static hook::cdecl_stub<rage::netObject* (rage::netObjectMgr*, uint16_t, bool)> _getNetworkObject([]()
 {
 	return hook::get_pattern("66 89 54 24 ? 56", -0xA);
@@ -79,8 +78,6 @@ static bool updateTest(void* batch)
 		// BREAKPOINT
 		trace("unk-04 bad??\n");
 	}
-
-
 	object->DependencyThreadUpdate();
 
 	if (_InterlockedExchangeAdd(&dependency->ipcEventRef->refCount, 0xFFFFFFFF) == 0x80000001)
@@ -145,7 +142,7 @@ void netObjectMgr::UpdateAllNetworkObjects()
 
 	auto& entities = TheClones->GetObjectList();
 
-	sysDependencyBatch::IpcRef* ipcEventRef = reinterpret_cast<sysDependencyBatch::IpcRef*>(reinterpret_cast<uint8_t*>(objManager) + 48760);
+	sysDependencyBatch::IpcRef* ipcEventRef = reinterpret_cast<sysDependencyBatch::IpcRef*>(reinterpret_cast<uint8_t*>(objManager) + 0x0BE78 /*48760*/);
 	// Run MainThread updates here while building a list to be sent to dependency workers
 	{
 		for (auto& clone : entities)
@@ -163,24 +160,27 @@ void netObjectMgr::UpdateAllNetworkObjects()
 				sysDependencyBatch* cloneSyncCB = (sysDependencyBatch*)(object + 144);
 				if (cloneSyncCB && object && mtUpdateIndex < 0x188)
 				{
-					*(uint8_t*)(object + 167) &= 0xCA;
-					*(uint8_t*)(object + 167) |= 0xA;
-					cloneSyncCB->m_callerFunc = updateTest; //_updateNetObjectMultiThreadedCB;
-					cloneSyncCB->argument = object;
-					cloneSyncCB->ipcEventRef = ipcEventRef;
-					cloneSyncCB->unk_01 = (1u << 29);
+
+					cloneSyncCB->unk_04 &= 0xCA;
+					cloneSyncCB->unk_04 |= 0x0A;
+					cloneSyncCB->m_callerFunc = updateTest; // updateTest; //_updateNetObjectMultiThreadedCB;
 					cloneSyncCB->unk_02 = 0;
 					cloneSyncCB->unk_03 = 0;
-					cloneSyncCB->unk_04 = (cloneSyncCB->unk_04 & 0xCA) | 0x0A;
+					cloneSyncCB->argument = object;
+					cloneSyncCB->ipcEventRef = ipcEventRef;
+					cloneSyncCB->unk_01 &= 0x1FFFFFFFu;
+					cloneSyncCB->unk_01 |= 0x20000000u;
 
+					//*(uint8_t*)(object + 167) &= 0xCA;
+					//*(uint8_t*)(object + 167) |= 0xA;
 					// memset(cloneSyncCB->pad3, 0, sizeof(cloneSyncCB->pad3));
-					*(uint32_t*)(object + 160) = 0;
-					*(WORD*)(object + 164) = 0;
-					*(uint8_t*)(object + 166) = 0;
-					*(sysDependencyBatch::IpcRef**)(object + 184) = ipcEventRef;
-					*(rage::netObject**)(object + 176) = object;
-					*(uint32_t*)(object + 160) &= 0x1FFFFFFFu;
-					*(uint32_t*)(object + 160) |= 0x20000000u;
+					//*(uint32_t*)(object + 160) = 0;
+					//*(WORD*)(object + 164) = 0;
+					//*(uint8_t*)(object + 166) = 0;
+					//*(sysDependencyBatch::IpcRef**)(object + 184) = ipcEventRef;
+					//*(rage::netObject**)(object + 176) = object;
+					//*(uint32_t*)(object + 160) &= 0x1FFFFFFFu;
+					//*(uint32_t*)(object + 160) |= 0x20000000u;
 
 					int mtIdx = mtUpdateIndex++;
 					mtUpdateList[mtIdx] = cloneSyncCB;
@@ -193,9 +193,9 @@ void netObjectMgr::UpdateAllNetworkObjects()
 
 	}
 
-	if (objManager->m_autoLock.DebugInfo)
+	if (lock && lock->DebugInfo)
 	{
-		LeaveCriticalSection(&objManager->m_autoLock);
+		LeaveCriticalSection(lock);
 	}
 
 	objManager->PostSinglethreadedUpdate();
@@ -203,11 +203,11 @@ void netObjectMgr::UpdateAllNetworkObjects()
 	if (mtUpdateIndex > 0)
 	{
 		*g_useLocks = true;
-		trace("mtUpdateIndex %i\n", mtUpdateIndex);
+		//trace("mtUpdateIndex %i\n", mtUpdateIndex);
 		_InterlockedExchangeAdd((volatile long*)ipcEventRef, mtUpdateIndex);
 		rage__sysDependencyScheduler__InsertBatch(mtUpdateList, mtUpdateIndex);
 
-		if (ipcEventRef)
+		if (ipcEventRef != 0)
 		{
 			if (_InterlockedExchangeAdd((volatile long*)ipcEventRef, 0x80000000))
 			{
@@ -260,6 +260,8 @@ static bool* g_mtSyncTree;
 static HookFunction hookFunction([]()
 {
 	g_mainThreadId = GetCurrentThreadId();
+	//g_hasObjectMgrInitalized = hook::get_address<bool*>(hook::get_pattern("38 15 ? ? ? ? 74 ? 48 8B 05 ? ? ? ? 8B 88", 3));
+
 
 	g_objectMgr = hook::get_address<rage::netObjectMgr**>(hook::get_pattern("45 0F 57 C0 48 8B 35 ? ? ? ? 0F 57 FF", 7));
 	_updateNetObjectMultiThreadedCB = hook::get_pattern<bool(void*)>("48 8B C4 48 89 58 ? 48 89 68 ? 48 89 70 ? 48 89 78 ? 41 56 48 83 EC ? 48 8B 71 ? 48 8B 69");
@@ -269,7 +271,6 @@ static HookFunction hookFunction([]()
 	g_mtSyncTree = hook::get_address<bool*>(hook::get_pattern("80 3D ? ? ? ? ? 0F 84 ? ? ? ? 80 7E", 3));
 	
 	g_useLocks = hook::get_address<bool*>(hook::get_pattern("44 38 3D ? ? ? ? 41 8A DF 74 ? 44 38 3D ? ? ? ? 74 ? 48 8D 0D ? ? ? ? E8 ? ? ? ? B3 ? 48 8B 84 24", 3));
-	*g_mtSyncTree = false;
 
 	g_updateNetObjectMultiThreaded = hook::trampoline(hook::get_pattern("48 8B C4 48 89 58 ? 48 89 68 ? 48 89 70 ? 48 89 78 ? 41 56 48 83 EC ? 48 8B 71 ? 48 8B 69"), UpdateNetObjectMultiThreadedCB);
 	// Don't run function in onesync. (playerObjects is 32-sized and isn't given information in onesync)

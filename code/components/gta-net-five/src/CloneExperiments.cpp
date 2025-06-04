@@ -2456,9 +2456,9 @@ static HookFunction hookFunction2([]()
 #elif IS_RDR3
 		auto location = hook::get_pattern<char>("49 89 43 C8 E8 ? ? ? ? 84 C0 0F 95 C0 48 83 C4 58", -0x3E);
 		hook::set_call(&g_origWriteDataNode, location + 0x42);
+		hook::jump(location, WriteDataNodeStub);
 #endif
 
-		hook::jump(location, WriteDataNodeStub);
 #endif
 	}
 
