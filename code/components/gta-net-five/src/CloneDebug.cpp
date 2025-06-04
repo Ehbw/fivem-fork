@@ -566,6 +566,9 @@ struct NetObjectData
 };
 
 std::array<std::unique_ptr<NetObjectData>, 65536> g_syncData;
+#ifdef IS_RDR3
+std::mutex g_syncMutex;
+#endif
 
 template<typename T>
 static bool TraverseTreeInternal(rage::netSyncNodeBase* node, T& state, const std::function<bool(T&, rage::netSyncNodeBase*, const std::function<bool()>&)>& cb)
@@ -592,14 +595,7 @@ static bool TraverseTreeInternal(rage::netSyncNodeBase* node, T& state, const st
 template<typename T>
 static void TraverseTree(rage::netSyncTree* tree, T& state, const std::function<bool(T&, rage::netSyncNodeBase*, const std::function<bool()>&)>& cb)
 {
-#ifdef IS_RDR3
-	void* unk;
-	beginTreeLock(&unk, tree);
-#endif
 	TraverseTreeInternal(tree->syncNode, state, cb);
-#ifdef IS_RDR3
-	endTreeLock(tree);
-#endif
 }
 
 static void InitTree(rage::netSyncTree* tree)
@@ -614,6 +610,7 @@ static void InitTree(rage::netSyncTree* tree)
 	if (*didStuff != 0xCFCF)
 	{
 		size_t idx = 1;
+
 		TraverseTree<size_t>(tree, idx, [](size_t& idx, rage::netSyncNodeBase* node, const std::function<bool()>& cb) -> bool
 		{
 			if (node->IsParentNode())
@@ -631,7 +628,6 @@ static void InitTree(rage::netSyncTree* tree)
 
 			return true;
 		});
-
 
 		*didStuff = 0xCFCF;
 	}
@@ -680,12 +676,12 @@ static void StorePlayerAppearanceDataNode(rage::netSyncNodeBase* node);
 #endif
 
 #ifdef IS_RDR3
-static hook::cdecl_stub<rage::netSyncTree**(void**, rage::netSyncTree*)> beginTreeLock([]()
+static hook::cdecl_stub<void**(void**, rage::netSyncTree*)> beginTreeLock([]()
 {
 	return hook::get_pattern("40 53 48 83 EC ? 48 89 11 48 8B D9 48 8B 0D");
 });
 
-static hook::cdecl_stub<void(rage::netSyncTree*)> endTreeLock([]()
+static hook::cdecl_stub<void(void*)> endTreeLock([]()
 {
 	return hook::get_pattern("40 53 48 83 EC ? 65 48 8B 14 25 ? ? ? ? 48 8B D9 8B 05 ? ? ? ? B9 ? ? ? ? 48 8B 04 C2 48 8B 14 01 48 39 93");
 });
@@ -693,12 +689,24 @@ static hook::cdecl_stub<void(rage::netSyncTree*)> endTreeLock([]()
 
 bool netSyncTree::WriteTreeCfx(int flags, int objFlags, rage::netObject* object, rage::datBitBuffer* buffer, uint32_t time, void* logger, uint8_t targetPlayer, void* outNull, uint32_t* lastChangeTime)
 {
+#ifdef IS_RDR3
+	std::lock_guard mutex(g_syncMutex);
+#endif
+
 	auto syncData = g_syncData[object->GetObjectId()].get();
 
 	if (!syncData)
 	{
 		return false;
 	}
+
+#ifdef IS_RDR3
+	int index = rage::netInterface_queryFunctions::GetInstance()->GetCurrentThreadSyncTreeDataIndex();
+	trace("data index %i\n", index);
+
+	void* treeLock = nullptr;
+	beginTreeLock(&treeLock, this);
+#endif
 
 	InitTree(this);
 
@@ -1012,6 +1020,12 @@ bool netSyncTree::WriteTreeCfx(int flags, int objFlags, rage::netObject* object,
 	state.wroteAny = false;
 	TraverseTree<WriteTreeState>(this, state, nodeWriter);
 
+#ifdef IS_RDR3
+	if (index == 6)
+	{
+		endTreeLock(treeLock);
+	}
+#endif
 	return state.wroteAny;
 }
 
@@ -1023,12 +1037,22 @@ struct AckState
 
 void netSyncTree::AckCfx(netObject* object, uint32_t timestamp)
 {
+#ifdef IS_RDR3
+	std::lock_guard syncMutex(g_syncMutex);
+#endif
+
 	auto syncData = g_syncData[object->GetObjectId()].get();
 
 	if (!syncData)
 	{
 		return;
 	}
+
+#ifdef IS_RDR3
+	int index = rage::netInterface_queryFunctions::GetInstance()->GetCurrentThreadSyncTreeDataIndex();
+	void* treeCopy = nullptr;
+	beginTreeLock(&treeCopy, this);
+#endif
 
 	InitTree(this);
 
@@ -1054,6 +1078,13 @@ void netSyncTree::AckCfx(netObject* object, uint32_t timestamp)
 
 		return true;
 	});
+
+#ifdef IS_RDR3
+	if (index == 6)
+	{
+		endTreeLock(treeCopy);
+	}
+#endif
 }
 }
 
@@ -1618,6 +1649,9 @@ static HookFunction hookFunction([]()
 
 void CD_AllocateSyncData(uint16_t objectId)
 {
+#ifdef IS_RDR3
+	std::lock_guard mutex(rage::g_syncMutex);
+#endif
 	if (!rage::g_syncData[objectId])
 	{
 		rage::g_syncData[objectId] = std::make_unique<rage::NetObjectData>();
@@ -1626,5 +1660,8 @@ void CD_AllocateSyncData(uint16_t objectId)
 
 void CD_FreeSyncData(uint16_t objectId)
 {
+#ifdef IS_RDR3
+	std::lock_guard mutex(rage::g_syncMutex);
+#endif
 	rage::g_syncData[objectId] = {};
 }

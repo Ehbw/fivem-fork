@@ -984,6 +984,16 @@ void ObjectManager_End(rage::netObjectMgr* objectMgr)
 				objectMgr->UnregisterNetworkObject(object, 0, true, true);
 			};
 
+
+#ifdef IS_RDR3
+			auto manager = rage::netObjectMgr::GetInstance();
+
+			if (manager->m_autoLock.DebugInfo)
+			{
+				EnterCriticalSection(&manager->m_autoLock);
+			}
+#endif
+
 			for (int i = 0; i < 256; i++)
 			{
 				CloneObjectMgr->ForAllNetObjects(i, objectCb, true);
@@ -995,6 +1005,13 @@ void ObjectManager_End(rage::netObjectMgr* objectMgr)
 			{
 				objectCb(netObj);
 			}
+
+#ifdef IS_RDR3
+			if (manager->m_autoLock.DebugInfo)
+			{
+				LeaveCriticalSection(&manager->m_autoLock);
+			}
+#endif
 		}
 	}
 

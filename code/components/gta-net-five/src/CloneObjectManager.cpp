@@ -50,6 +50,8 @@ static void netObjectMgrBase__RegisterNetworkObject(rage::netObjectMgr* manager,
 		return g_orig_netObjectMgrBase__RegisterNetworkObject(manager, object);
 	}
 
+	trace("Register Network Object \n");
+
 #ifdef IS_RDR3
 	Mutex mutex(&manager->m_autoLock);
 #endif

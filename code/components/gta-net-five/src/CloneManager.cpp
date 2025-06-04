@@ -938,7 +938,6 @@ rage::netObject* CloneManagerLocal::GetNetObject(uint16_t objectId)
 	std::lock_guard mutex(m_objectMutex);
 #endif
 
-
 	auto it = m_savedEntities.find(objectId);
 
 	return (it != m_savedEntities.end()) ? it->second : nullptr;
@@ -1181,6 +1180,10 @@ AckResult CloneManagerLocal::HandleCloneUpdate(const msgClone& msg)
 		return AckResult::OK;
 	}
 
+#ifdef IS_RDR3
+	std::lock_guard mutex(m_objectMutex);
+#endif
+
 	// get saved object
 	auto objIt = m_savedEntities.find(msg.GetObjectId());
 
@@ -1397,6 +1400,10 @@ void CloneManagerLocal::HandleCloneSync(const char* data, size_t len)
 	FrameIndex newIndex(msg.GetFrameIndex());
 
 	Log("received frame %d:%d\n", newIndex.frameIndex, newIndex.currentFragment);
+
+#ifdef IS_RDR3
+	std::lock_guard mutex(m_objectMutex);
+#endif
 
 	// blah
 	if (m_lastReceivedFrame.frameIndex != 0)
@@ -1673,8 +1680,24 @@ void CloneManagerLocal::DeleteObjectId(uint16_t objectId, uint16_t uniqifier, bo
 		// unack the create to unburden the game
 		object->syncData.creationAckedPlayers &= ~(1 << 31);
 
+#ifdef IS_RDR3
+		auto manager = rage::netObjectMgr::GetInstance();
+
+		if (manager->m_autoLock.DebugInfo)
+		{
+			EnterCriticalSection(&manager->m_autoLock);
+		}
+#endif
+
 		// call object manager clone removal
 		rage::netObjectMgr::GetInstance()->UnregisterNetworkObject(object, 8, 0, 1);
+
+#ifdef IS_RDR3
+		if (manager->m_autoLock.DebugInfo)
+		{
+			LeaveCriticalSection(&manager->m_autoLock);
+		}
+#endif
 
 		Log("%s: object ID [obj:%d]\n", __func__, objectId);
 	}
@@ -1797,7 +1820,7 @@ static HookFunction hookFunctionModifySyncTrees([]()
 void CloneManagerLocal::Update()
 {
 #ifndef ONESYNC_CLONING_NATIVES
-	//WriteUpdates();
+	WriteUpdates();
 #endif
 
 	SendUpdates(m_sendBuffer, HashString("netClones"));
@@ -1883,8 +1906,6 @@ bool CloneManagerLocal::RegisterNetworkObject(rage::netObject* object)
 	{
 		return false;
 	}
-
-	//Mutex mutex()
 
 	if (m_savedEntities.find(object->GetObjectId()) != m_savedEntities.end())
 	{
@@ -1980,6 +2001,10 @@ void CloneManagerLocal::DestroyNetworkObject(rage::netObject* object)
 
 void CloneManagerLocal::ChangeOwner(rage::netObject* object, int oldOwnerId, CNetGamePlayer* player, int migrationType)
 {
+#ifdef IS_RDR3
+	std::lock_guard mutex(m_objectMutex);
+#endif
+
 	if (oldOwnerId != player->physicalPlayerIndex())
 	{
 		GiveObjectToClient(object, g_netIdsByPlayer[player]);
@@ -2035,7 +2060,12 @@ void CloneManagerLocal::WriteUpdates()
 		return;
 	}
 
+#ifdef IS_RDR3
+	std::lock_guard objMutex(m_objectMutex);
+	// Game lock
 	Mutex mutex(&objectMgr->m_autoLock);
+#endif
+
 
 	int syncCount1 = 0, syncCount2 = 0, syncCount3 = 0, syncCount4 = 0;
 

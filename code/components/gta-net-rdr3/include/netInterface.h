@@ -37,7 +37,7 @@ public:
 
 	virtual void m_78() = 0;
 
-	virtual void m_80() = 0;
+	virtual int GetCurrentThreadSyncTreeDataIndex() = 0;
 
 	virtual void m_88() = 0;
 
