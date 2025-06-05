@@ -36,7 +36,7 @@ private:
 #define FORWARD_FUNC(name, offset, ...)    \
 	using TFn = decltype(&netObjectMgr::name); \
 	void** vtbl = *(void***)(this);        \
-	return (this->*(get_member<TFn>(vtbl[(offset / 8) + ((offset > 0x68) ? (xbr::IsGameBuildOrGreater<1436>() ? 1 : 0) : 0)])))(__VA_ARGS__);
+	return (this->*(get_member<TFn>(vtbl[(offset / 8)])))(__VA_ARGS__);
 
 public:
 	inline void UnregisterNetworkObject(rage::netObject* object, int reason, bool force1, bool force2)
@@ -52,27 +52,17 @@ public:
 	inline void RegisterNetworkObject(rage::netObject* entity)
 	{
 		// in 1436 R* added 1 more method right before RegisterNetworkObject
-		FORWARD_FUNC(RegisterNetworkObject, 0x70, entity);
+		FORWARD_FUNC(RegisterNetworkObject, 0x78, entity);
 	}
 
 	inline void PreSinglethreadedUpdate()
 	{
-		FORWARD_FUNC(PreSinglethreadedUpdate, 0x90);
+		FORWARD_FUNC(PreSinglethreadedUpdate, 0xA0);
 	}
 
 	inline void PostSinglethreadedUpdate()
 	{
-		FORWARD_FUNC(PostSinglethreadedUpdate, 0x98);
-	}
-
-	inline void PreMultithreadedUpdate()
-	{
-		FORWARD_FUNC(PreMultithreadedUpdate, 0xA0);
-	}
-	
-	inline void PostMultithreadedUpdate()
-	{
-		FORWARD_FUNC(PostMultithreadedUpdate, 0xA8);
+		FORWARD_FUNC(PostSinglethreadedUpdate, 0xA8);
 	}
 
 private:

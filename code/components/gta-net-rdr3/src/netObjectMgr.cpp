@@ -255,6 +255,26 @@ static void netObjectMgr__updateAllNetworkObjects(void* objMgr)
 	g_updateAllNetworkObjects(objMgr);
 }
 
+
+static bool(*g_sub_14237C5A8)(void* a1, char* a2);
+static bool sub_14237C5A8(void* a1, char* a2)
+{
+	if (!a1 || a1 == nullptr)
+	{
+		__debugbreak();
+	}
+
+	return g_sub_14237C5A8(a1, a2);
+}
+
+static bool (*_unksynccb)(void*);
+static bool unkSyncCB(void* a1)
+{
+	return _unksynccb(a1);
+}
+
+
+
 static bool* g_mtSyncTree;
 
 static HookFunction hookFunction([]()
@@ -262,6 +282,9 @@ static HookFunction hookFunction([]()
 	g_mainThreadId = GetCurrentThreadId();
 	//g_hasObjectMgrInitalized = hook::get_address<bool*>(hook::get_pattern("38 15 ? ? ? ? 74 ? 48 8B 05 ? ? ? ? 8B 88", 3));
 
+	_unksynccb = hook::trampoline(hook::get_pattern("48 89 5C 24 ? 48 89 6C 24 ? 48 89 74 24 ? 57 41 56 41 57 48 83 EC ? 48 8B 69 ? 48 8B 79"), unkSyncCB);
+	//g_preSTUpdate = hook::trampoline(hook::get_pattern("40 53 48 83 EC ? E8 ? ? ? ? 48 8B 1D ? ? ? ? 48 8B CB"), prestudpdate);
+	g_sub_14237C5A8 = hook::trampoline(hook::get_pattern("48 89 5C 24 ? 48 89 74 24 ? 57 48 83 EC ? 48 8D 99 ? ? ? ? 48 8B F1 48 8B 03 48 8B CB 48 8B FA FF 90"), sub_14237C5A8);
 
 	g_objectMgr = hook::get_address<rage::netObjectMgr**>(hook::get_pattern("45 0F 57 C0 48 8B 35 ? ? ? ? 0F 57 FF", 7));
 	_updateNetObjectMultiThreadedCB = hook::get_pattern<bool(void*)>("48 8B C4 48 89 58 ? 48 89 68 ? 48 89 70 ? 48 89 78 ? 41 56 48 83 EC ? 48 8B 71 ? 48 8B 69");

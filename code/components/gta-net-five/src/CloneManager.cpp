@@ -1180,10 +1180,6 @@ AckResult CloneManagerLocal::HandleCloneUpdate(const msgClone& msg)
 		return AckResult::OK;
 	}
 
-#ifdef IS_RDR3
-	std::lock_guard mutex(m_objectMutex);
-#endif
-
 	// get saved object
 	auto objIt = m_savedEntities.find(msg.GetObjectId());
 
