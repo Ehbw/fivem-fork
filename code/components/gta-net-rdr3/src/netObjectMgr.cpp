@@ -80,6 +80,12 @@ static bool updateTest(void* batch)
 	}
 	object->DependencyThreadUpdate();
 
+	int syncCount1 = 0, syncCount2 = 0, syncCount3 = 0, syncCount4 = 0;
+	bool hitTimestamp = false;
+	auto ts = 1000;
+
+	TheClones->UpdateObject(object, rage::netObjectMgr::GetInstance(), syncCount1, syncCount2, 0000);
+
 	if (_InterlockedExchangeAdd(&dependency->ipcEventRef->refCount, 0xFFFFFFFF) == 0x80000001)
 	{
 		SetEvent(&dependency->ipcEventRef->event);
@@ -163,7 +169,7 @@ void netObjectMgr::UpdateAllNetworkObjects()
 
 					cloneSyncCB->unk_04 &= 0xCA;
 					cloneSyncCB->unk_04 |= 0x0A;
-					cloneSyncCB->m_callerFunc = updateTest; // updateTest; //_updateNetObjectMultiThreadedCB;
+					cloneSyncCB->m_callerFunc = updateTest; //_updateNetObjectMultiThreadedCB;
 					cloneSyncCB->unk_02 = 0;
 					cloneSyncCB->unk_03 = 0;
 					cloneSyncCB->argument = object;
@@ -237,7 +243,6 @@ void netObjectMgr::UpdateAllNetworkObjects()
 			}
 		}
 	}
-
 }
 }
 
@@ -249,6 +254,7 @@ static void netObjectMgr__updateAllNetworkObjects(void* objMgr)
 	if (icgi->OneSyncEnabled)
 	{
 		rage::netObjectMgr::UpdateAllNetworkObjects();
+
 		return;
 	}
 

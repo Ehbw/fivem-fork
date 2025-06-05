@@ -2,6 +2,8 @@
 
 #include <unordered_set>
 
+#include <netObjectMgr.h>
+
 // uncomment this to enable cloning natives, remove this hack later.
 //#define ONESYNC_CLONING_NATIVES
 
@@ -90,6 +92,8 @@ public:
 	virtual void HandleCloneSync(const char* data, size_t len) = 0;
 
 	virtual void HandleCloneAcks(const char* data, size_t len) = 0;
+
+	virtual void UpdateObject(rage::netObject* object, rage::netObjectMgr* mgr, int& syncCount1, int& syncCount2, uint32_t timestamp) = 0;
 public:
 	virtual void Logv(const char* format, fmt::printf_args argumentList) = 0;
 

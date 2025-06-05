@@ -170,6 +170,7 @@ public:
 	void HandleCloneSync(const char* data, size_t len) override;
 	void HandleCloneAcks(const char* data, size_t len) override;
 
+	void UpdateObject(rage::netObject* object, rage::netObjectMgr* mgr, int& syncCount1, int& syncCount2, uint32_t timestamp) override;
 private:
 	void WriteUpdates();
 
@@ -724,6 +725,7 @@ void CloneManagerLocal::HandleCloneAcks(const char* data, size_t len)
 		}
 	}
 }
+
 
 void CloneManagerLocal::AddCreateAck(uint16_t objectId, uint16_t uniqifier)
 {
@@ -2046,6 +2048,310 @@ static hook::thiscall_stub<bool(void*)> fwEntity_IsInScene([]()
 	return hook::get_pattern("33 D2 48 85 C9 74 14");
 #endif
 });
+
+void CloneManagerLocal::UpdateObject(rage::netObject* object, rage::netObjectMgr* objectMgr, int& syncCount1, int& syncCount2, uint32_t timestamp)
+{
+	// skip remote objects
+	if (object->syncData.isRemote)
+	{
+		if (m_extendedData[object->GetObjectId()].clientId == m_netLibrary->GetServerNetID())
+		{
+			console::DPrintf("onesync", "%s: got a remote object (%s) that's meant to be ours. telling the server so again.\n", __func__, object->ToString());
+			Log("%s: got a remote object (%s) that's meant to be ours. telling the server so again.\n", __func__, object->ToString());
+
+			GiveObjectToClient(object, m_netLibrary->GetServerNetID());
+
+			m_extendedData[object->GetObjectId()].clientId = -1;
+		}
+
+		return;
+	}
+
+	if (object->syncData.ownerId == 31)
+	{
+		return;
+	}
+
+	if (object->syncData.nextOwnerId != 0xFF)
+	{
+		GiveObjectToClient(object, m_extendedData[object->GetObjectId()].pendingClientId);
+	}
+
+	// don't sync created entities for the initial part of their life
+	if (*rage__s_NetworkTimeThisFrameStart < m_extendedData[object->GetObjectId()].dontSyncBefore)
+	{
+		return;
+	}
+
+	// don't sync netobjs that aren't in the scene
+	// #TODO1S: remove netobjs from the server if they're removed from the scene?
+	if (object->GetGameObject())
+	{
+		if (!fwEntity_IsInScene(object->GetGameObject()))
+		{
+			return;
+		}
+	}
+
+	// get basic object data
+	auto objectType = object->GetObjectType();
+	auto objectId = object->GetObjectId();
+
+	// store a reference to the object tracking data
+	auto& objectData = m_trackedObjects[objectId];
+
+#ifdef IS_RDR3
+	if (objectData.lastSyncTime == 0ms && object->GetObjectType() == (int)NetObjEntityType::DraftVeh)
+	{
+		uint32_t reason = 0;
+
+		if (!object->CanClone(rage::GetLocalPlayer(), &reason))
+		{
+			return;
+		}
+	}
+#endif
+
+	// allocate a RAGE buffer
+	uint8_t packetStub[kSyncPacketMaxLength] = { 0 };
+	rage::datBitBuffer rlBuffer(packetStub, sizeof(packetStub));
+
+	// if we want to delete this object
+	if (object->syncData.wantsToDelete)
+	{
+		// has this been acked by client 31?
+		if (object->syncData.IsCreationAckedByPlayer(31))
+		{
+			/*auto& netBuffer = m_sendBuffer;
+
+			++syncCount3;
+
+			netBuffer.Write(3, 3);
+			//netBuffer.Write<uint8_t>(0); // player ID (byte)
+			netBuffer.Write(13, object->GetObjectId()); // object ID (short)
+
+			AttemptFlushNetBuffer();
+
+			Log("%s: telling server %d is deleted\n", __func__, object->GetObjectId());*/
+
+			// unack the create to unburden the game
+			object->syncData.creationAckedPlayers &= ~(1 << 31);
+
+			// pretend to ack the remove to process removal
+			_processRemoveAck(objectMgr, object);
+		}
+
+		// don't actually continue sync
+		return;
+	}
+
+	// if this object doesn't have a game object, but it should, ignore it
+	if (object->GetObjectType() != (uint16_t)NetObjEntityType::PickupPlacement && object->GetObjectType() != (uint16_t)NetObjEntityType::Object // CNetObjObject *may* be a dummy object that's not converted to a world object yet
+#ifdef IS_RDR3
+		&& object->GetObjectType() != (uint16_t)NetObjEntityType::PropSet
+#endif
+	)
+	{
+		if (object->GetGameObject() == nullptr)
+		{
+			return;
+		}
+	}
+
+	// get the sync tree
+	auto syncTree = object->GetSyncTree();
+
+	// get latency stuff
+	auto syncLatency = 50ms;
+
+	if (object->GetGameObject())
+	{
+		auto entity = (fwEntity*)object->GetGameObject();
+		auto entityPos = entity->GetPosition();
+
+		if (!_isSphereVisibleForLocalPlayer(&entityPos, entity->GetRadius()) && !_isSphereVisibleForAnyRemotePlayer(&entityPos, entity->GetRadius(), 250.0f, nullptr))
+		{
+			syncLatency = 250ms;
+		}
+	}
+
+	// players get instant sync
+	if (object->GetObjectType() == (uint16_t)NetObjEntityType::Player)
+	{
+		syncLatency = 0ms;
+	}
+
+	// REDM1S: implement for vehicles and mounts
+#ifdef GTA_FIVE
+	// player-occupied vehicles do as well
+	else if (object->GetGameObject() && ((fwEntity*)object->GetGameObject())->IsOfType(HashString("CVehicle")))
+	{
+		auto vehicle = (CVehicle*)object->GetGameObject();
+		auto seatManager = vehicle->GetSeatManager();
+
+		for (int i = 0; i < seatManager->GetNumSeats(); i++)
+		{
+			auto occupant = seatManager->GetOccupant(i);
+
+			if (occupant)
+			{
+				auto netObject = reinterpret_cast<rage::netObject*>(occupant->GetNetObject());
+
+				if (netObject && netObject->GetObjectType() == (uint16_t)NetObjEntityType::Player)
+				{
+					syncLatency = 0ms;
+					break;
+				}
+			}
+		}
+	}
+#endif
+
+	syncLatency = std::max(syncLatency, 10ms);
+
+	// determine sync type from sync data
+	int syncType = 0;
+
+	if (objectData.lastSyncTime == 0ms)
+	{
+		// clone create
+		syncType = 1;
+	}
+	else if ((msec() - objectData.lastSyncTime) >= syncLatency)
+	{
+		if (objectData.lastSyncAck == 0ms)
+		{
+			// create resend
+			syncType = 1;
+		}
+		else
+		{
+			// clone sync
+			syncType = 2;
+		}
+	}
+
+	// if this is clone sync, perform some actions to set up the object
+	if (syncType == 2)
+	{
+		// ack'd create on player 31
+		object->syncData.creationAckedPlayers |= (1 << 31);
+
+		// done by netObject::m108
+		object->syncData.m6C |= (1 << 31);
+
+		// set sync priority
+		object->syncData.SetCloningFrequency(31, object->GetSyncFrequency());
+
+		char* syncData = (char*)object->GetSyncData();
+
+		if (syncData)
+		{
+			*(uint32_t*)(syncData + 8) |= (1 << 31);
+			*(uint32_t*)(syncData + 176 + 8) |= (1 << 31);
+		}
+	}
+
+	// if we should sync
+	if (syncType != 0)
+	{
+		auto& netBuffer = m_sendBuffer;
+
+		if (syncType == 1)
+		{
+			++syncCount1;
+		}
+		else if (syncType == 2)
+		{
+			++syncCount2;
+		}
+
+		// write tree
+		g_curNetObject = object;
+
+		uint32_t lastChangeTime;
+
+		bool shouldTrySend = syncTree->WriteTreeCfx(syncType, (syncType == 2 || syncType == 4) ? 1 : 0, object, &rlBuffer, timestamp, nullptr, 31, nullptr, &lastChangeTime);
+
+		if (!shouldTrySend)
+		{
+			if (timestamp >= objectData.nextKeepaliveSync)
+			{
+				rlBuffer = { packetStub, sizeof(packetStub) };
+				shouldTrySend = true;
+			}
+		}
+
+		if (shouldTrySend)
+		{
+			// #TODO1S: dynamic resend time based on latency
+			bool shouldWrite = true;
+
+			if ((lastChangeTime == objectData.lastChangeTime || syncType == 1) && timestamp < (objectData.lastResendTime + std::min(40, std::max(100, m_netLibrary->GetPing() + (m_netLibrary->GetVariance() * 4)))))
+			{
+				Log("%s: no early resend of object [obj:%d]\n", __func__, objectId);
+				shouldWrite = false;
+			}
+
+			// in case of syncType == 1, we want to write change time too
+			// (as otherwise first syncType = 2 will do spammy resending anyway)
+			objectData.lastChangeTime = lastChangeTime;
+
+			if (shouldWrite)
+			{
+				// if (IsDrilldown())
+				{
+					// drillList.push_back({ syncType == 1 ? "create" : "sync", fmt::sprintf("obj:%d@%d[%s] sz %db", object->GetObjectId(), objectData.uniqifier, object->GetTypeString(), rlBuffer.GetDataLength()) });
+				}
+
+				objectData.nextKeepaliveSync = timestamp + 1000;
+
+				AssociateSyncTree(object->GetObjectId(), syncTree);
+
+				// instantly mark player 31 as acked
+				if (object->GetSyncData())
+				{
+					// 1290
+					//((void(*)(rage::netSyncTree*, rage::netObject*, uint8_t, uint16_t, uint32_t, int))0x1415D94F0)(syncTree, object, 31, 0 /* seq? */, 0x7FFFFFFF, 0xFFFFFFFF);
+				}
+
+				// touch the timestamp
+				// touchTimestamp();
+
+				// add pending ack
+				m_serverAcks.emplace(m_serverSendFrame, std::make_tuple(syncType, objectId, objectData.uniqifier, timestamp));
+
+				// write header to send buffer
+				netBuffer.Write(3, syncType);
+				netBuffer.Write(16, objectData.uniqifier);
+
+				// write data
+				netBuffer.Write(13, objectId); // object ID (short)
+
+				if (syncType == 1)
+				{
+					netBuffer.Write(32, g_objectIdToCreationTokenRPC[objectId]);
+					netBuffer.Write(kNetObjectTypeBitLength, objectType);
+				}
+
+				uint32_t len = rlBuffer.GetDataLength();
+				netBuffer.Write(12, len); // length (short)
+
+				if (len > 0)
+				{
+					netBuffer.WriteBits(rlBuffer.m_data, len * 8); // data
+				}
+
+				Log("uncompressed clone sync for [obj:%d]: %d bytes\n", objectId, len);
+
+				AttemptFlushCloneBuffer();
+
+				objectData.lastResendTime = timestamp;
+				objectData.lastSyncTime = msec();
+			}
+		}
+	}
+}
 
 void CloneManagerLocal::WriteUpdates()
 {
