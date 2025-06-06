@@ -50,6 +50,10 @@
 #include "StateBagV2PacketHandler.h"
 
 extern rage::netObject* g_curNetObjectSelection;
+
+#ifdef IS_RDR3
+std::mutex g_curNetObjectMutex;
+#endif
 rage::netObject* g_curNetObject;
 
 static std::set<uint16_t> g_dontParrotDeletionAcks;
@@ -170,7 +174,7 @@ public:
 	void HandleCloneSync(const char* data, size_t len) override;
 	void HandleCloneAcks(const char* data, size_t len) override;
 
-	void UpdateObject(rage::netObject* object, rage::netObjectMgr* mgr, int& syncCount1, int& syncCount2, uint32_t timestamp) override;
+	void UpdateObject(rage::netObject* object, rage::netObjectMgr* mgr, int& syncCount1, int& syncCount2) override;
 private:
 	void WriteUpdates();
 
@@ -298,6 +302,8 @@ private:
 	std::multimap<uint64_t, std::tuple<int /* type */, uint16_t /* object */, uint16_t /* identifier */, uint32_t /* timestamp */>> m_serverAcks;
 
 	std::mutex m_objectMutex;
+
+	std::mutex m_bufferMutex;
 };
 
 uint16_t CloneManagerLocal::GetClientId(rage::netObject* netObject)
@@ -324,6 +330,10 @@ void CloneManagerLocal::Logv(const char* format, fmt::printf_args argumentList)
 void CloneManagerLocal::OnObjectDeletion(rage::netObject* netObject)
 {
 	Log("%s: %s\n", __func__, netObject->ToString());
+
+#ifdef IS_RDR3
+	std::lock_guard objMutex(m_objectMutex);
+#endif
 
 	if (!netObject->syncData.isRemote)
 	{
@@ -1252,6 +1262,7 @@ AckResult CloneManagerLocal::HandleCloneUpdate(const msgClone& msg)
 		return AckResult::OK;
 	}
 
+	std::lock_guard guard(g_curNetObjectMutex);
 	g_curNetObject = obj;
 
 	if (msg.GetCloneData().size() && GetPlayerByNetId(msg.GetClientId()) != nullptr)
@@ -1817,9 +1828,14 @@ static HookFunction hookFunctionModifySyncTrees([]()
 
 void CloneManagerLocal::Update()
 {
-#ifndef ONESYNC_CLONING_NATIVES
-	WriteUpdates();
+#ifndef ONESYNC_CLONING_NATIVES && IS_RDR3
+	//WriteUpdates();
 #endif
+
+#ifdef IS_RDR3
+	std::lock_guard mutex(m_bufferMutex);
+#endif
+
 
 	SendUpdates(m_sendBuffer, HashString("netClones"));
 
@@ -1905,6 +1921,10 @@ bool CloneManagerLocal::RegisterNetworkObject(rage::netObject* object)
 		return false;
 	}
 
+#ifdef IS_RDR3
+	std::lock_guard objMutex(m_objectMutex);
+#endif
+
 	if (m_savedEntities.find(object->GetObjectId()) != m_savedEntities.end())
 	{
 		// TODO: delete it somewhen?
@@ -1971,6 +1991,10 @@ void CloneManagerLocal::DestroyNetworkObject(rage::netObject* object)
 	{
 		g_curNetObjectSelection = nullptr;
  	}
+
+#ifdef IS_RDR3
+	std::lock_guard objMutex(m_objectMutex);
+#endif
 
 	for (auto& objectList : m_netObjects)
 	{
@@ -2049,19 +2073,22 @@ static hook::thiscall_stub<bool(void*)> fwEntity_IsInScene([]()
 #endif
 });
 
-void CloneManagerLocal::UpdateObject(rage::netObject* object, rage::netObjectMgr* objectMgr, int& syncCount1, int& syncCount2, uint32_t timestamp)
+void CloneManagerLocal::UpdateObject(rage::netObject* object, rage::netObjectMgr* objectMgr, int& syncCount1, int& syncCount2)
 {
+	uint32_t timestamp = *rage__s_NetworkTimeLastFrameStart;
+	ExtendedCloneData& extendedData = m_extendedData[object->GetObjectId()];
+
 	// skip remote objects
 	if (object->syncData.isRemote)
 	{
-		if (m_extendedData[object->GetObjectId()].clientId == m_netLibrary->GetServerNetID())
+		if (extendedData.clientId == m_netLibrary->GetServerNetID())
 		{
 			console::DPrintf("onesync", "%s: got a remote object (%s) that's meant to be ours. telling the server so again.\n", __func__, object->ToString());
 			Log("%s: got a remote object (%s) that's meant to be ours. telling the server so again.\n", __func__, object->ToString());
 
 			GiveObjectToClient(object, m_netLibrary->GetServerNetID());
 
-			m_extendedData[object->GetObjectId()].clientId = -1;
+			extendedData.clientId = -1;
 		}
 
 		return;
@@ -2074,11 +2101,11 @@ void CloneManagerLocal::UpdateObject(rage::netObject* object, rage::netObjectMgr
 
 	if (object->syncData.nextOwnerId != 0xFF)
 	{
-		GiveObjectToClient(object, m_extendedData[object->GetObjectId()].pendingClientId);
+		GiveObjectToClient(object, extendedData.pendingClientId);
 	}
 
 	// don't sync created entities for the initial part of their life
-	if (*rage__s_NetworkTimeThisFrameStart < m_extendedData[object->GetObjectId()].dontSyncBefore)
+	if (*rage__s_NetworkTimeThisFrameStart < extendedData.dontSyncBefore)
 	{
 		return;
 	}
@@ -2169,10 +2196,12 @@ void CloneManagerLocal::UpdateObject(rage::netObject* object, rage::netObjectMgr
 		auto entity = (fwEntity*)object->GetGameObject();
 		auto entityPos = entity->GetPosition();
 
+		/*
 		if (!_isSphereVisibleForLocalPlayer(&entityPos, entity->GetRadius()) && !_isSphereVisibleForAnyRemotePlayer(&entityPos, entity->GetRadius(), 250.0f, nullptr))
 		{
 			syncLatency = 250ms;
 		}
+		*/
 	}
 
 	// players get instant sync
@@ -2266,6 +2295,7 @@ void CloneManagerLocal::UpdateObject(rage::netObject* object, rage::netObjectMgr
 			++syncCount2;
 		}
 
+		std::lock_guard guard(g_curNetObjectMutex);
 		// write tree
 		g_curNetObject = object;
 
@@ -2319,7 +2349,7 @@ void CloneManagerLocal::UpdateObject(rage::netObject* object, rage::netObjectMgr
 				// touchTimestamp();
 
 				// add pending ack
-				m_serverAcks.emplace(m_serverSendFrame, std::make_tuple(syncType, objectId, objectData.uniqifier, timestamp));
+				//m_serverAcks.emplace(m_serverSendFrame, std::make_tuple(syncType, objectId, objectData.uniqifier, timestamp));
 
 				// write header to send buffer
 				netBuffer.Write(3, syncType);
@@ -2624,6 +2654,7 @@ void CloneManagerLocal::WriteUpdates()
 				++syncCount2;
 			}
 
+			std::lock_guard guard(g_curNetObjectMutex);
 			// write tree
 			g_curNetObject = object;
 

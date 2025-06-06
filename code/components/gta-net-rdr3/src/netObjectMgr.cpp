@@ -64,7 +64,7 @@ static bool updateTest(void* batch)
 	if (g_mainThreadId == GetCurrentThreadId())
 	{
 		//BREAKPOINT
-		return false;
+		return true;
 	}
 
 	if (!object)
@@ -78,13 +78,13 @@ static bool updateTest(void* batch)
 		// BREAKPOINT
 		trace("unk-04 bad??\n");
 	}
-	object->DependencyThreadUpdate();
 
 	int syncCount1 = 0, syncCount2 = 0, syncCount3 = 0, syncCount4 = 0;
 	bool hitTimestamp = false;
-	auto ts = 1000;
 
-	TheClones->UpdateObject(object, rage::netObjectMgr::GetInstance(), syncCount1, syncCount2, 0000);
+	TheClones->UpdateObject(object, rage::netObjectMgr::GetInstance(), syncCount1, syncCount2);
+
+	object->DependencyThreadUpdate();
 
 	if (_InterlockedExchangeAdd(&dependency->ipcEventRef->refCount, 0xFFFFFFFF) == 0x80000001)
 	{
@@ -231,16 +231,7 @@ void netObjectMgr::UpdateAllNetworkObjects()
 		auto obj = stUpdateList[i];
 		if (obj)
 		{
-
 			obj->PostDependencyThreadUpdate();
-
-			// TODO: P2P Does extra logic with updating local objects, should copy them overhere (onesync previously didn't do these)
-			if ((obj->GetGameObject() || obj->CanSyncWithNoGameObject()) && !obj->syncData.isRemote)
-			{
-				uint8_t minUpdateLevel = obj->GetMinimumUpdateLevel();
-
-
-			}
 		}
 	}
 }
@@ -270,7 +261,7 @@ static bool sub_14237C5A8(void* a1, char* a2)
 		__debugbreak();
 	}
 
-	return g_sub_14237C5A8(a1, a2);
+		return g_sub_14237C5A8(a1, a2);
 }
 
 static bool (*_unksynccb)(void*);
@@ -279,6 +270,23 @@ static bool unkSyncCB(void* a1)
 	return _unksynccb(a1);
 }
 
+
+static void (*g_netSyncTree_Update)(void*, void*, int, uint32_t, bool);
+static void netSyncTree__Update(void* a1, void* a2, int a3, uint32_t syncTime, bool hasChanged)
+{
+	return g_netSyncTree_Update(a1, a2, a3, syncTime, hasChanged);
+}
+
+static void*(*g_sub_142)(void*);
+static void* sub_142(void* a1)
+{
+	if (!a1)
+	{
+		__debugbreak();
+	}
+
+	return g_sub_142(a1);
+}
 
 
 static bool* g_mtSyncTree;
@@ -291,6 +299,9 @@ static HookFunction hookFunction([]()
 	_unksynccb = hook::trampoline(hook::get_pattern("48 89 5C 24 ? 48 89 6C 24 ? 48 89 74 24 ? 57 41 56 41 57 48 83 EC ? 48 8B 69 ? 48 8B 79"), unkSyncCB);
 	//g_preSTUpdate = hook::trampoline(hook::get_pattern("40 53 48 83 EC ? E8 ? ? ? ? 48 8B 1D ? ? ? ? 48 8B CB"), prestudpdate);
 	g_sub_14237C5A8 = hook::trampoline(hook::get_pattern("48 89 5C 24 ? 48 89 74 24 ? 57 48 83 EC ? 48 8D 99 ? ? ? ? 48 8B F1 48 8B 03 48 8B CB 48 8B FA FF 90"), sub_14237C5A8);
+
+	g_netSyncTree_Update = hook::trampoline(hook::get_pattern("44 89 4C 24 ? 44 89 44 24 ? 48 89 4C 24 ? 55 53 56 57 41 54 41 55 41 56 41 57 48 8D 6C 24"), netSyncTree__Update);
+	g_sub_142 = hook::trampoline(hook::get_pattern("40 53 48 83 EC ? 48 8B 01 48 8B D9 FF 90 ? ? ? ? 48 8B D0 33 C0"), sub_142);
 
 	g_objectMgr = hook::get_address<rage::netObjectMgr**>(hook::get_pattern("45 0F 57 C0 48 8B 35 ? ? ? ? 0F 57 FF", 7));
 	_updateNetObjectMultiThreadedCB = hook::get_pattern<bool(void*)>("48 8B C4 48 89 58 ? 48 89 68 ? 48 89 70 ? 48 89 78 ? 41 56 48 83 EC ? 48 8B 71 ? 48 8B 69");

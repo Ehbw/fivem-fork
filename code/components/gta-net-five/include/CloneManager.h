@@ -93,7 +93,7 @@ public:
 
 	virtual void HandleCloneAcks(const char* data, size_t len) = 0;
 
-	virtual void UpdateObject(rage::netObject* object, rage::netObjectMgr* mgr, int& syncCount1, int& syncCount2, uint32_t timestamp) = 0;
+	virtual void UpdateObject(rage::netObject* object, rage::netObjectMgr* mgr, int& syncCount1, int& syncCount2) = 0;
 public:
 	virtual void Logv(const char* format, fmt::printf_args argumentList) = 0;
 

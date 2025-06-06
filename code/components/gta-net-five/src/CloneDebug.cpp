@@ -702,8 +702,6 @@ bool netSyncTree::WriteTreeCfx(int flags, int objFlags, rage::netObject* object,
 
 #ifdef IS_RDR3
 	int index = rage::netInterface_queryFunctions::GetInstance()->GetCurrentThreadSyncTreeDataIndex();
-	trace("data index %i\n", index);
-
 	void* treeLock = nullptr;
 	beginTreeLock(&treeLock, this);
 #endif

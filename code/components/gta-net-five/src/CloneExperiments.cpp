@@ -2809,7 +2809,7 @@ static InitFunction initFunction([]()
 
 		ArrayManager_Update();
 		rage::EventManager_Update();
-		//TheClones->Update();
+		TheClones->Update();
 	});
 
 	OnKillNetworkDone.Connect([]()
