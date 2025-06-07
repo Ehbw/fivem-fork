@@ -373,6 +373,8 @@ static void unkRemoteBroadcast(void* a1, __int64 a2)
 	}
 }
 
+// Replaced by properly patching id allocation.
+#if 0
 static void* g_scMultiplayerImpl = nullptr;
 static size_t g_scMultiplayerImplCtorSize = 0;
 
@@ -385,6 +387,7 @@ static void* ScMultiplayerImplCtor(void* self, void* a2)
 	memset((void**)data + g_scMultiplayerImplCtorSize, 0, (sizeof(void*) * kMaxPlayers + 1));
 	return data;
 }
+#endif
 
 static HookFunction hookFunction([]()
 {
@@ -590,6 +593,8 @@ static HookFunction hookFunction([]()
 	}
 
 	// Fix StartSynchronising by using our own playerList
+	//NOTE: Breaks allocation and causes allocator fails.
+#if 0
 	{
 
 		auto location = hook::get_pattern("8A 15 ? ? ? ? 44 8A F8", 9);
@@ -643,6 +648,7 @@ static HookFunction hookFunction([]()
 		hook::nop(location, 19);
 		hook::jump_reg<5>(location, patchStub.GetCode());
 	}
+#endif
 
 	// Adjust bit logic to support 127/128
 	{
@@ -673,7 +679,6 @@ static HookFunction hookFunction([]()
 			//rage::netPlayer::IsPhysical
 			{ "80 7B ? ? 73 ? B2", 3, false },
 			
-
 			// CPhysical::_CorrectSyncedPosition
 			{ "40 80 FE ? 72 ? BA ? ? ? ? C7 44 24 ? ? ? ? ? 41 B9 ? ? ? ? 48 8D 0D ? ? ? ? 41 B8 ? ? ? ? E8 ? ? ? ? 84 C0 0F 84", 3, false },
 			// getNetPlayerFromGamerHandleIfInSession
@@ -735,11 +740,14 @@ static HookFunction hookFunction([]()
 			//FindNetworkPlayerPed
 			{ "83 F9 ? 73 ? E8 ? ? ? ? 48 85 C0 74 ? 48 8B C8", 2, false },
 
-			//rage::netObjectIDMgr::TryToAllocateInitialObjectIDs
+			//rage::netObjectIDMgr::TryToAllocateInitialObjectIDs, removes need for ScMultiplayerImpl size patches
+			//Also removes the need to patch session entering logic.
 			{ "80 79 ? ? 0F 83 ? ? ? ? 44 38 7B", 3, false },
 			{ "80 79 ? ? 72 ? B0", 3, false },
+			{ "80 7F ? ? 72 ? 41 B9 ? ? ? ? C7 44 24", 3 , false },
 
 			// session related slot
+			// TODO: Verify if still needed with the following patches
 			{ "40 80 FF ? 72 ? 40 B7 ? 48 8B 41", 3, false },
 			{ "40 80 FF ? 72 ? 40 B7 ? 48 8D 0D", 3, false },
 			{ "80 79 ? ? 72 ? B2", 3, false },
@@ -778,7 +786,6 @@ static HookFunction hookFunction([]()
 			hook::put<uint8_t>(location, (entry.clamp ? kMaxPlayers : kMaxPlayers + 1));
 		}
 	}
-
 	// Replace 32 array iterations
 	{
 		std::initializer_list<PatternClampPair> list = {
@@ -801,6 +808,7 @@ static HookFunction hookFunction([]()
 
 	// Lord forgive me for the sins I've committed here
 	// Forcefully map the struct so scPlayers to be at the old struct end, force the allocator to append another 1024 bits to support 128 players.
+#if 0
 	{
 		auto val = hook::get_pattern<uint32_t>("B9 ? ? ? ? E8 ? ? ? ? 48 85 C0 74 ? 48 8B D3 48 8B C8 E8 ? ? ? ? 48 8B 4B", 1);
 		g_scMultiplayerImplCtorSize = *val;
@@ -1050,14 +1058,16 @@ static HookFunction hookFunction([]()
 			hook::jump_reg<5>(location, patchStub8.GetCode());
 		}
 	}
+#endif
 
 	// Skip unused host kick related >32-unsafe arrays in onesync
-	hook::call(hook::get_pattern("E8 ? ? ? ? 84 C0 75 ? 8B 05 ? ? ? ? 33 C9 89 44 24"), Return<true, false>);
+	//hook::call(hook::get_pattern("E8 ? ? ? ? 84 C0 75 ? 8B 05 ? ? ? ? 33 C9 89 44 24"), Return<true, false>);
 
 	// Rewrite functions to account for extended players
 	MH_Initialize();
+
+	// Remove 32 check for netObject targetting check
 #if 1
-	//TMP: Always allow an netObject to be targetted 
 	hook::call(hook::get_pattern("E8 ? ? ? ? 45 33 C9 84 C0 41 0F 94 C5"), Return<true, true>);
 	hook::call(hook::get_pattern("E8 ? ? ? ? 84 C0 0F 84 ? ? ? ? 48 8B 0D ? ? ? ? E8 ? ? ? ? 41 F6 46"), Return<true, true>);
 	hook::call(hook::get_pattern("E8 ? ? ? ? 84 C0 0F 84 ? ? ? ? 8A 5C 24"), Return<true, true>);
