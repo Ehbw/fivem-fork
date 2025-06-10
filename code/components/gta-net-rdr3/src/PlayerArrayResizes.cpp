@@ -95,9 +95,16 @@ struct PatternClampPair
 	bool clamp;
 };
 
-static void RelocateRelative(void* base, std::initializer_list<PatternPair> list)
+static void RelocateRelative(void* base, std::initializer_list<PatternPair> list, int intendedEntries = -1)
 {
 	void* oldAddress = nullptr;
+
+	if (intendedEntries >= 0 && list.size() != intendedEntries)
+	{
+		__debugbreak();
+		return;
+	}
+
 
 	for (auto& entry : list)
 	{
@@ -367,11 +374,49 @@ static hook::cdecl_stub<bool(CNetGamePlayer*)> isNetPlayerLocal([]()
 static void (*g_unkRemoteBroadcast)(void*, __int64);
 static void unkRemoteBroadcast(void* a1, __int64 a2)
 {
+	trace("unkrEMOTEBROADCAST\n");
 	if (!icgi->OneSyncEnabled)
 	{
 		return g_unkRemoteBroadcast(a1, a2);
 	}
 }
+
+static void* (*g_sub_142FB17F8)(void*);
+static void* sub_142FB17F8(void* a1)
+{
+	if (!a1 || a1 == (void*)-1)
+	{
+		__debugbreak();
+		return nullptr;
+	}
+
+	if ((uintptr_t)a1 > (uintptr_t)0x00007FFFFFFFFFFF)
+	{
+		__debugbreak();
+		return nullptr;
+	}
+
+	return g_sub_142FB17F8(a1);
+}
+
+static void* (*g_sub_142FB5F0C)(void*);
+static void* sub_142FB5F0C(void* a1)
+{
+	if (!a1 || a1 == (void*)-1)
+	{
+		__debugbreak();
+		return nullptr;
+	}
+
+	if ((uintptr_t)a1 > (uintptr_t)0x00007FFFFFFFFFFF)
+	{
+		__debugbreak();
+		return nullptr;
+	}
+
+	return g_sub_142FB5F0C(a1);
+}
+
 
 // Replaced by properly patching id allocation.
 #if 0
@@ -389,6 +434,7 @@ static void* ScMultiplayerImplCtor(void* self, void* a2)
 }
 #endif
 
+#if 1
 static HookFunction hookFunction([]()
 {
 	if (!xbr::IsGameBuildOrGreater<1491>())
@@ -396,6 +442,7 @@ static HookFunction hookFunction([]()
 		return;
 	}
 
+#if 0
 	// Expand Player Damage Array to support more players
 	{
 		constexpr size_t kDamageArraySize = sizeof(uint32_t) * (kMaxPlayers + 1);
@@ -405,7 +452,7 @@ static HookFunction hookFunction([]()
 		RelocateRelative((void*)damageArrayReplacement, { 
 			{ "48 8D 0D ? ? ? ? 44 21 35", 3 },
 			{ "4C 8D 25 ? ? ? ? 41 83 3C B4", 3 },
-			{ xbr::IsGameBuildOrGreater<1491>() ? "48 8D 0D ? ? ? ? 85 DB 74" : "48 8D 15 ? ? ? ? 85 FF", 3 },
+			{ "48 8D 0D ? ? ? ? 85 DB 74", 3 }, // "48 8D 15 ? ? ? ? 85 FF"
 			{ "48 8D 15 ? ? ? ? 8B 0C 82", 3 }
 		});
 
@@ -413,18 +460,21 @@ static HookFunction hookFunction([]()
 		PatchValue<uint8_t>({ 
 			{"3C ? 73 ? 44 21 35", 1, 0x20, kMaxPlayers + 1},
 		    {"80 F9 ? 73 ? 0F B6 D1 48 8D 0D", 2, 0x20, kMaxPlayers + 1 },
-		    {"80 3D ? ? ? ? ? 40 8A 68", 6, 0x20, kMaxPlayers + 1 },
 		    {"80 BB ? ? ? ? ? 73 ? 40 0F B6 C7", 6, 0x20, kMaxPlayers + 1 },
-			{"40 80 FF ? 73 ? 40 38 3D", 3, 0x20, kMaxPlayers + 1}
+			//CWeaponDamageEvent::HandleReply
+			{"40 80 FF ? 73 ? 40 38 3D", 3, 0x20, kMaxPlayers + 1},
+			//CWeaponDamageEvent::_CheckIfAlreadyKilled
+			{ "80 3D ? ? ? ? ? 40 8A 68", 6, 0x20, kMaxPlayers + 1 },
+
 		});
 	}
+#endif
 
 	// Expand Player Cache data
 	{
 		static size_t kCachedPlayerSize = 0x10 * (kMaxPlayers + 1);
 		void** cachedPlayerArray = (void**)hook::AllocateStubMemory(kCachedPlayerSize);
 		memset(cachedPlayerArray, 0, kCachedPlayerSize);
-
 		RelocateRelative((void*)cachedPlayerArray, {
 			{ "48 8D 0D ? ? ? ? 48 8B 0C C1 48 85 C9 74 ? 66 83 79", 3 },
 			{ "48 8D 0D ? ? ? ? 48 8B F2 BD", 3 },
@@ -436,16 +486,34 @@ static HookFunction hookFunction([]()
 			{ "48 8D 0D ? ? ? ? 88 15 ? ? ? ? 88 15 ? ? ? ? 88 15", 3 },
 			{ "48 8D 0D ? ? ? ? 48 8B 0C C1 48 85 C9 74 ? 83 79", 3 },
 			{ "48 8D 15 ? ? ? ? 48 8B 14 CA 48 85 D2 74 ? 39 72", 3 },
-			{ xbr::IsGameBuildOrGreater<1491>() ? "48 8D 0D ? ? ? ? 48 8B C3 48 8B 0C D9" : "48 8B 0C C1 48 85 C9 74 ? 8A 41 ? C3", 3 },
+			{ "48 8D 0D ? ? ? ? 48 8B C3 48 8B 0C D9", 3 }, // 48 8B 0C C1 48 85 C9 74 ? 8A 41 ? C3
 			{ "48 8D 0D ? ? ? ? 48 8B 0C C1 48 85 C9 74 ? 8A 41 ? EB", 3 },
 			{ "48 8D 0D ? ? ? ? 48 8B 0C C1 48 85 C9 74 ? 40 88 79", 3 },
-			{ xbr::IsGameBuildOrGreater<1491>() ? "48 8D 15 ? ? ? ? 88 19" : "48 8D 0D ? ? ? ? 88 ?", 3 },
+			{ "48 8D 15 ? ? ? ? 88 19", 3 }, // "48 8D 0D ? ? ? ? 88 ?"
 			{ "48 8D 3D ? ? ? ? 48 8B 0C DF", 3 },
 			{ "48 8D 0D ? ? ? ? 48 8B 0C C1 48 85 C9 74 ? 66 89 ?", 3 },
 			{ "48 8D 1D ? ? ? ? 48 8B 1C C3 48 85 DB 74 ? 66 39 73", 3 },
-			{ xbr::IsGameBuildOrGreater<1491>() ? "48 8D 0D ? ? ? ? 48 8B 04 C1 40 88 78" : "48 8D 0D ? ? ? ? 48 8B 04 C1 88 58", 3 },
+			{ "48 8D 0D ? ? ? ? 48 8B 04 C1 40 88 78", 3 }, // "48 8D 0D ? ? ? ? 48 8B 04 C1 88 58"
 			{ "48 8D 0D ? ? ? ? 48 8B 0C C1 48 85 C9 74 ? 66 3B 59", 3 },
 			{ "48 8D 15 ? ? ? ? 84 C9 75", 3 }
+		}, 20);
+
+		PatchValue<uint8_t>({
+			// player cached getters
+			{ "E8 ? ? ? ? 84 C0 74 ? 40 88 3D ? ? ? ? EB", 23, 0x20, kMaxPlayers + 1 },
+			//{ "48 8D 0D ? ? ? ? 41 B8 ? ? ? ? E8 ? ? ? ? 84 C0 74 ? E8 ? ? ? ? 3A D8", -24, 0x20, kMaxPlayers + 1 },
+			{ "80 F9 ? 72 ? BA ? ? ? ? C7 44 24 ? ? ? ? ? 41 B9 ? ? ? ? 48 8D 0D ? ? ? ? 41 B8 ? ? ? ? E8 ? ? ? ? 84 C0 74 ? E8", 2, 0x20, kMaxPlayers + 1},
+			{ "83 F9 ? 7C ? BA ? ? ? ? C7 44 24 ? ? ? ? ? 41 B9 ? ? ? ? 48 8D 0D ? ? ? ? 41 B8 ? ? ? ? E8 ? ? ? ? 84 C0 74 ? 48 8D 0D ? ? ? ? 48 8B 0C D9", 2, 0x20, kMaxPlayers + 1},
+			{ "80 FA ? 72 ? BA ? ? ? ? C7 44 24 ? ? ? ? ? 41 B9 ? ? ? ? 48 8D 0D ? ? ? ? 41 B8 ? ? ? ? E8 ? ? ? ? 84 C0 0F 84 ? ? ? ? 8A CB", 2, 0x20, kMaxPlayers + 1},
+			{ "80 7B ? ? 72 ? BA ? ? ? ? C7 44 24 ? ? ? ? ? 41 B9 ? ? ? ? 48 8D 0D ? ? ? ? 41 B8 ? ? ? ? E8 ? ? ? ? 84 C0 74 ? 0F B6 43 ? 48 8D 0D", 3, 0x20, kMaxPlayers + 1},
+			//{ "80 F9 ? 72 ? BA ? ? ? ? C7 44 24 ? ? ? ? ? 41 B9 ? ? ? ? 48 8D 0D ? ? ? ? 41 B8 ? ? ? ? E8 ? ? ? ? 84 C0 74 ? B9", 2, 0x20, kMaxPlayers + 1},
+			{ "80 F9 ? 72 ? BA ? ? ? ? C7 44 24 ? ? ? ? ? 41 B9 ? ? ? ? 48 8D 0D ? ? ? ? 41 B8 ? ? ? ? E8 ? ? ? ? 84 C0 74 ? 0F B6 DB", 2, 0x20, kMaxPlayers + 1},
+			{ "80 F9 ? 72 ? BA ? ? ? ? C7 44 24 ? ? ? ? ? 41 B9 ? ? ? ? 48 8D 0D ? ? ? ? 41 B8 ? ? ? ? E8 ? ? ? ? 84 C0 74 ? 0F B6 C3", 2, 0x20, kMaxPlayers + 1},
+			{ "80 FB ? 72 ? BA ? ? ? ? C7 44 24 ? ? ? ? ? 41 B9 ? ? ? ? 48 8D 0D ? ? ? ? 41 B8 ? ? ? ? E8 ? ? ? ? 84 C0 0F 84 ? ? ? ? 8A CB", 2, 0x20, kMaxPlayers + 1},
+			//{ "80 FB ? 72 ? BA ? ? ? ? C7 44 24 ? ? ? ? ? 41 B9 ? ? ? ? 48 8D 0D ? ? ? ? 41 B8 ? ? ? ? E8 ? ? ? ? 84 C0 74 ? 0F B6 C3 48 8D 0D", 2, 0x20, kMaxPlayers + 1},
+			{ "83 F9 ? 7C ? BA ? ? ? ? C7 44 24 ? ? ? ? ? 41 B9 ? ? ? ? 48 8D 0D ? ? ? ? 41 B8 ? ? ? ? E8 ? ? ? ? 84 C0 74 ? 48 8D 0D ? ? ? ? 48 8B C3", 2, 0x20, kMaxPlayers + 1 },
+			{ "83 F8 ? 72 ? C3 CC 0F 48 8B", 2, 0x20, kMaxPlayers + 1 },
+			{ "80 FB ? 72 ? BA ? ? ? ? C7 44 24 ? ? ? ? ? 41 B9 ? ? ? ? 48 8D 0D ? ? ? ? 41 B8 ? ? ? ? E8 ? ? ? ? 84 C0 75 ? B0", 2, 0x20, kMaxPlayers + 1},
 		});
 	}
 
@@ -470,7 +538,8 @@ static HookFunction hookFunction([]()
 			{ "80 FB ? 0F 82 ? ? ? ? 48 8B 5C 24 ? 48 8B 6C 24 ? 48 8B 74 24 ? 48 8B 7C 24 ? 48 83 C4 ? 41 5F 41 5E 41 5D", 2, 0x20, kMaxPlayers + 1 }
 		});
 	}
-	
+
+#if 0
 	// Replace 32-sized player animation scene array.
 	{
 		static size_t kSceneArraySize = 3200;
@@ -511,8 +580,9 @@ static HookFunction hookFunction([]()
 		    { "80 FB ? 0F 82 ? ? ? ? B0", 2, 0x20, kMaxPlayers + 1 }
 		});
 	}
-
+#endif
 	// Replace 32-sized player arrayhandler array.
+#if 0
 	{
 		void** playerArrayHandler = (void**)hook::AllocateStubMemory(sizeof(void*) * 256);
 
@@ -527,7 +597,9 @@ static HookFunction hookFunction([]()
 			//{ "80 FB ? 72 ? BA ? ? ? ? C7 40", 2, 0x20, kMaxPlayers + 1},
 		});
 	}
+#endif
 
+#if 0
 	// Patch CNetworkDamageTracker
 	{
 		// 32/31 comparsions
@@ -536,7 +608,9 @@ static HookFunction hookFunction([]()
 			{"80 7A ? ? 48 8B F9 72", 3, 0x20, kMaxPlayers + 1}
 		});
 	}
+#endif
 
+#if 1
 	// Patch out references to remotePhysicalPlayers/numRemotePhysicalPlayers
 	{
 		auto location = hook::get_call(hook::get_pattern("E8 ? ? ? ? 3A C3 74 ? B3 ? 8A C3 48 83 C4 ? 5B C3 40 53 48 83 EC ? 48 8B 01"));
@@ -589,22 +663,31 @@ static HookFunction hookFunction([]()
 		patchStub.Init(retnSuccess, retnFail);
 
 		hook::nop(patch, 19);
+		hook::nop(hook::get_pattern("48 81 C7 ? ? ? ? EB ? 33 FF 33 F6 85 ED 74 ? 48 8B 1F 49 8B CE 48 8B D3 E8 ? ? ? ? 84 C0 74 ? 49 8B 06 49 8B CE 0F B6 5B ? FF 50 ? 48 8B C8 8B D3 E8 ? ? ? ? 84 C0 74 ? FF C6 48 83 C7 ? 3B F5 72 ? B0 ? 48 8B 5C 24 ? 48 8B 6C 24 ? 48 8B 74 24 ? 48 8B 7C 24 ? 48 83 C4 ? 41 5E C3 32 C0 EB ? 90"), 6);
 		hook::jump_reg<5>(patch, patchStub.GetCode());
 	}
+#endif
 
 	// Fix StartSynchronising by using our own playerList
-	//NOTE: Breaks allocation and causes allocator fails.
-#if 0
+#if 1
 	{
-
 		auto location = hook::get_pattern("8A 15 ? ? ? ? 44 8A F8", 9);
-
 		/*
-		.text:0000000142C1D48D 48 8B 1D BC 13 EF 02 mov     rbx, cs:rage__netInterface__m_PlayerMgr
-		.text:0000000142C1D494 84 D2                test    dl, dl
-		.text:0000000142C1D496 74 08                jz      short loc_142C1D4A0
-		.text:0000000142C1D498 8B 8B 9C 02 00 00    mov     ecx, [rbx+29Ch]
-		.text:0000000142C1D49E EB 02                jmp     short loc_142C1D4A2
+		.text:0000000142C1D48D 48 8B 1D BC 13 EF 02                                            mov     rbx, cs:rage__netInterface__m_PlayerMgr
+		.text:0000000142C1D494 84 D2                                                           test    dl, dl
+		.text:0000000142C1D496 74 08                                                           jz      short loc_142C1D4A0
+		.text:0000000142C1D498 8B 8B 9C 02 00 00                                               mov     ecx, [rbx+29Ch]
+		.text:0000000142C1D49E EB 02                                                           jmp     short loc_142C1D4A2
+		.text:0000000142C1D4A0                                                 ; ---------------------------------------------------------------------------
+		.text:0000000142C1D4A0
+		.text:0000000142C1D4A0                                                 loc_142C1D4A0:                          ; CODE XREF: rage__netObject__StartSynchronising+14A↑j
+		.text:0000000142C1D4A0 33 C9                                                           xor     ecx, ecx
+		.text:0000000142C1D4A2
+		.text:0000000142C1D4A2                                                 loc_142C1D4A2:                          ; CODE XREF: rage__netObject__StartSynchronising+152↑j
+		.text:0000000142C1D4A2 84 D2                                                           test    dl, dl
+		.text:0000000142C1D4A4 74 09                                                           jz      short loc_142C1D4AF
+		.text:0000000142C1D4A6 48 81 C3 98 07 00 00                                            add     rbx, 798h
+
 		*/
 		static struct : jitasm::Frontend
 		{
@@ -647,6 +730,10 @@ static HookFunction hookFunction([]()
 
 		hook::nop(location, 19);
 		hook::jump_reg<5>(location, patchStub.GetCode());
+
+		//Remove +add
+		hook::nop(hook::get_pattern("48 81 C3 ? ? ? ? EB ? 33 DB 85 C9"), 7);
+
 	}
 #endif
 
@@ -699,25 +786,11 @@ static HookFunction hookFunction([]()
 			{ "40 80 FF ? 73 ? 48 8B 4E", 3, false},
 			{ "80 FB ? 72 ? 48 8B 5C 24 ? 48 8B 6C 24 ? 48 8B 74 24 ? 48 8B 7C 24", 2, false},
 
+#if 0
 			//rage::rlSession::Host, TODO: This may not be needed.
 			{ "83 F8 ? 7E ? BB ? ? ? ? B8", 2, false },
 			{ "80 78 ? ? 72 ? 8D 56", 3, false },
-
-			// player cached getters
-			{ "E8 ? ? ? ? 84 C0 74 ? 40 88 3D ? ? ? ? EB", 23, false },
-			//{ "48 8D 0D ? ? ? ? 41 B8 ? ? ? ? E8 ? ? ? ? 84 C0 74 ? E8 ? ? ? ? 3A D8", -24, false },
-			{ "80 F9 ? 72 ? BA ? ? ? ? C7 44 24 ? ? ? ? ? 41 B9 ? ? ? ? 48 8D 0D ? ? ? ? 41 B8 ? ? ? ? E8 ? ? ? ? 84 C0 74 ? E8", 2, false },
-			{ "83 F9 ? 7C ? BA ? ? ? ? C7 44 24 ? ? ? ? ? 41 B9 ? ? ? ? 48 8D 0D ? ? ? ? 41 B8 ? ? ? ? E8 ? ? ? ? 84 C0 74 ? 48 8D 0D ? ? ? ? 48 8B 0C D9", 2, false },
-			{ "80 FA ? 72 ? BA ? ? ? ? C7 44 24 ? ? ? ? ? 41 B9 ? ? ? ? 48 8D 0D ? ? ? ? 41 B8 ? ? ? ? E8 ? ? ? ? 84 C0 0F 84 ? ? ? ? 8A CB", 2, false },
-			{ "80 7B ? ? 72 ? BA ? ? ? ? C7 44 24 ? ? ? ? ? 41 B9 ? ? ? ? 48 8D 0D ? ? ? ? 41 B8 ? ? ? ? E8 ? ? ? ? 84 C0 74 ? 0F B6 43 ? 48 8D 0D", 3, false },
-			//{ "80 F9 ? 72 ? BA ? ? ? ? C7 44 24 ? ? ? ? ? 41 B9 ? ? ? ? 48 8D 0D ? ? ? ? 41 B8 ? ? ? ? E8 ? ? ? ? 84 C0 74 ? B9", 2, false },
-			{ "80 F9 ? 72 ? BA ? ? ? ? C7 44 24 ? ? ? ? ? 41 B9 ? ? ? ? 48 8D 0D ? ? ? ? 41 B8 ? ? ? ? E8 ? ? ? ? 84 C0 74 ? 0F B6 DB", 2, false },
-			{ "80 F9 ? 72 ? BA ? ? ? ? C7 44 24 ? ? ? ? ? 41 B9 ? ? ? ? 48 8D 0D ? ? ? ? 41 B8 ? ? ? ? E8 ? ? ? ? 84 C0 74 ? 0F B6 C3", 2, false },
-			{ "80 FB ? 72 ? BA ? ? ? ? C7 44 24 ? ? ? ? ? 41 B9 ? ? ? ? 48 8D 0D ? ? ? ? 41 B8 ? ? ? ? E8 ? ? ? ? 84 C0 0F 84 ? ? ? ? 8A CB", 2, false },
-			//{ "80 FB ? 72 ? BA ? ? ? ? C7 44 24 ? ? ? ? ? 41 B9 ? ? ? ? 48 8D 0D ? ? ? ? 41 B8 ? ? ? ? E8 ? ? ? ? 84 C0 74 ? 0F B6 C3 48 8D 0D", 2, false },
-			{ "83 F9 ? 7C ? BA ? ? ? ? C7 44 24 ? ? ? ? ? 41 B9 ? ? ? ? 48 8D 0D ? ? ? ? 41 B8 ? ? ? ? E8 ? ? ? ? 84 C0 74 ? 48 8D 0D ? ? ? ? 48 8B C3", 2, false },
-			{ "83 F8 ? 72 ? C3 CC 0F 48 8B", 2, false },
-			{ "80 FB ? 72 ? BA ? ? ? ? C7 44 24 ? ? ? ? ? 41 B9 ? ? ? ? 48 8D 0D ? ? ? ? 41 B8 ? ? ? ? E8 ? ? ? ? 84 C0 75 ? B0", 2, false },
+#endif
 
 			//{ "8A DA 8B F1 80 FA", 18, false },
 
@@ -748,6 +821,7 @@ static HookFunction hookFunction([]()
 
 			// session related slot
 			// TODO: Verify if still needed with the following patches
+#if 0
 			{ "40 80 FF ? 72 ? 40 B7 ? 48 8B 41", 3, false },
 			{ "40 80 FF ? 72 ? 40 B7 ? 48 8D 0D", 3, false },
 			{ "80 79 ? ? 72 ? B2", 3, false },
@@ -757,7 +831,7 @@ static HookFunction hookFunction([]()
 			{ "40 80 FF ? 72 ? 48 8B 5C 24", 3, false },
 			//{ "80 FB ? 72 ? 33 C0 48 8B 5C 24 ? 48 8B 6C 24 ? 48 8B 74 24 ? 48 83 C4", 2, false },
 			//{ "80 FB ? 72 ? 48 8B 5C 24 ? 48 8B 6C 24 ? 48 8B 74 24 ? 48 8B 7C 24", 2, false },
-
+#endif
 			// Native Fixes
 			{ "83 FB ? 73 ? 45 33 C0", 2, false }, // 0x862C5040F4888741
 			{ "83 F9 ? 0F 83 ? ? ? ? B2", 2, false }, // 0x236321F1178A5446
@@ -765,15 +839,15 @@ static HookFunction hookFunction([]()
 
 			// TMP Patterns. TODO: Improve and support older game builds
 
-			{ " 3C ? 72 ? BA ? ? ? ? C7 44 24 ? ? ? ? ? 41 B9 ? ? ? ? 48 8D 0D ? ? ? ? 41 B8 ? ? ? ? E8 ? ? ? ? 84 C0 0F 84", 1, false },
+			{ "3C ? 72 ? BA ? ? ? ? C7 44 24 ? ? ? ? ? 41 B9 ? ? ? ? 48 8D 0D ? ? ? ? 41 B8 ? ? ? ? E8 ? ? ? ? 84 C0 0F 84", 1, false },
 
 			{ "80 7F ? ? 72 ? BA ? ? ? ? C7 44 24 ? ? ? ? ? 41 B9 ? ? ? ? 48 8D 0D ? ? ? ? 41 B8 ? ? ? ? E8 ? ? ? ? 84 C0 74 ? 45 84 FF 74 ? 48 8B 05 ? ? ? ? 4C 8D 4C 24 ? 44 8B C6 49 8B D6 48 8B 88 ? ? ? ? 48 89 4C 24 ? 48 8B CF E8 ? ? ? ? EB ? 8A 57 ? 44 8B CE 4D 8B C6 48 8B CD E8 ? ? ? ? 84 C0 75 ? BA ? ? ? ? C7 44 24 ? ? ? ? ? 41 B9 ? ? ? ? 48 8D 0D ? ? ? ? 41 B8 ? ? ? ? E8 ? ? ? ? FE C3 80 FB ? 0F 82 ? ? ? ? 48 8B 5C 24 ? 48 8B 6C 24 ? 48 83 C4 ? 41 5F 41 5E 41 5C 5F 5E C3 CC 7C", 3, false },
 			{ "40 80 FF ? 73 ? 48 8B 43 ? 40 0F B6 CF 48 8B 7C C8 ? 48 85 FF 74 ? 48 8B CF E8 ? ? ? ? 84 C0 74 ? 48 8B 1B 48 8B CF E8 ? ? ? ? 8B D0 44 8B CE 4C 8B C5 48 8B CB E8 ? ? ? ? EB ? 32 C0 48 8B 5C 24 ? 48 8B 6C 24 ? 48 8B 74 24 ? 48 83 C4 ? 5F C3 90 40 33 48", 3, false },
-
+#if 0
 			//rage::rlSession::Join
 			{ "83 FB ? 76 ? BB ? ? ? ? C7 44 24 ? ? ? ? ? 44 8B CB 48 8D 0D ? ? ? ? BA ? ? ? ? 41 B8 ? ? ? ? E8 ? ? ? ? B8 ? ? ? ? E9 ? ? ? ? 44 8A E7", 2, false },
 			{ "83 FB ? 76 ? BB ? ? ? ? C7 44 24 ? ? ? ? ? 44 8B CB 48 8D 0D ? ? ? ? BA ? ? ? ? 41 B8 ? ? ? ? E8 ? ? ? ? B8 ? ? ? ? E9 ? ? ? ? 8B C3", 2, true },
-
+#endif
 			{ "80 FB ? 72 ? BA ? ? ? ? C7 44 24 ? ? ? ? ? 41 B9 ? ? ? ? 48 8D 0D ? ? ? ? 41 B8 ? ? ? ? E8 ? ? ? ? 84 C0 74 ? 8A CB", 2, false }
 		};
 
@@ -786,14 +860,15 @@ static HookFunction hookFunction([]()
 			hook::put<uint8_t>(location, (entry.clamp ? kMaxPlayers : kMaxPlayers + 1));
 		}
 	}
+
 	// Replace 32 array iterations
 	{
 		std::initializer_list<PatternClampPair> list = {
 			// SC Session related iteration
-			{ "80 FB ? 0F 82 ? ? ? ? 48 8B 5C 24 ? 48 8B 6C 24 ? 48 83 C4 ? 41 5F 41 5E 41 5C 5F 5E C3 CC 7C", 2, false },
+			//{ "80 FB ? 0F 82 ? ? ? ? 48 8B 5C 24 ? 48 8B 6C 24 ? 48 83 C4 ? 41 5F 41 5E 41 5C 5F 5E C3 CC 7C", 2, false },
 
 			// Player Cache Data Initalization
-			{ "44 8D 41 ? 33 D2 4C 8D 0D", 3, true },
+			//{ "44 8D 41 ? 33 D2 4C 8D 0D", 3, true },
 		};
 
 		for (auto& entry : list)
@@ -806,259 +881,43 @@ static HookFunction hookFunction([]()
 		}
 	}
 
-	// Lord forgive me for the sins I've committed here
-	// Forcefully map the struct so scPlayers to be at the old struct end, force the allocator to append another 1024 bits to support 128 players.
-#if 0
+	// hardcoded 32/128 array sizes in CNetObjProximityMigrateable::_passOutOfScope
 	{
-		auto val = hook::get_pattern<uint32_t>("B9 ? ? ? ? E8 ? ? ? ? 48 85 C0 74 ? 48 8B D3 48 8B C8 E8 ? ? ? ? 48 8B 4B", 1);
-		g_scMultiplayerImplCtorSize = *val;
-		static uint32_t displacement = g_scMultiplayerImplCtorSize;
-		hook::put<uint32_t>(val, *val + (sizeof(void*) * kMaxPlayers + 1));
-		g_origScMultiplayerImplCtor = hook::trampoline(hook::get_pattern("48 89 6B ? 89 6B ? 66 89 6B ? 48 89 6B ? E8", -71), ScMultiplayerImplCtor);		
-		// patch scPlayers arrays
-		static struct : jitasm::Frontend
- 		{
-			uintptr_t retnAddress;
-			uintptr_t failAddress;
+		auto location = hook::get_pattern<char>("41 B0 ? 41 8A D0 41 FF 51 ? 4C 8D 05 ? ? ? ? 48 8B CF", -70);
 
-			void Init(uintptr_t retn, uintptr_t fail)
-			{
-				this->retnAddress = retn;
-				this->failAddress = fail;
-			}
+		// 0x20: scratch space
+		// kMaxPlayers + 1 * 8: kMaxPlayers players, ptr size
+		// kMaxPlayers + 1 * 4: kMaxPlayers players, int size
+		auto stackSize = (0x20 + (kMaxPlayers + 1 * 8) + (kMaxPlayers + 1 * 4));
+		auto ptrsBase = 0x20;
+		auto intsBase = ptrsBase + (kMaxPlayers + 1 * 8);
 
-			virtual void InternalMain() override
-			{
-				cmp(qword_ptr[rcx + rax * 8 + displacement], 0);
-				jz("fail");
-				mov(r11, retnAddress);
-				jmp(r11);
-				L("fail");
-				mov(r11, failAddress);
-				jmp(r11);
-			}
-
-		} patchStub;
-
-		{
-			auto location = hook::get_pattern("48 83 7C C1 ? ? 74 ? 40 FE C7");
-			uintptr_t returnTo = (uintptr_t)location + 8;
-			patchStub.Init(returnTo, (uintptr_t)hook::get_pattern("40 B7 ? 48 8B 41", 3));
-			hook::nop(location, 8);
-			hook::jump_reg<6>(location, patchStub.GetCode());
-		}
-
-#if 0
-		static struct : jitasm::Frontend
-		{
-			uintptr_t retnAddress;
-
-			void Init(uintptr_t retn)
-			{
-				this->retnAddress = retn;
-			}
-
-			void InternalMain() override
-			{
-				lea(r14, qword_ptr[rbx + displacement]);
-				//mov(r14, reinterpret_cast<uintptr_t>(scplayerArray));
-				mov(ebp, 31);
-
-				mov(r11, retnAddress);
-				jmp(r11);
-			}
-		} patchstub2;
-
-		{
-			auto location = hook::get_pattern("4C 8D 73 ? BD");
-			uintptr_t returnTo = (uintptr_t)location + 9;
-			patchstub2.Init(returnTo);
-			hook::nop(location, 9);
-			hook::jump_reg<5>(location, patchstub2.GetCode());
-		}
-#endif
-
-		static struct : jitasm::Frontend
-		{
-			uintptr_t retnAddress = 0;
-			uintptr_t retnFail = 0;
-
-			void Init(uintptr_t retnSuccess, uintptr_t retnFail)
-			{
-				this->retnAddress = retnSuccess;
-				this->retnFail = retnFail;
-			}
-
-			void InternalMain() override
-			{
-				cmp(qword_ptr[rcx + rax * 8 + displacement], rbx);
-				jz("fail");
-				mov(r8, retnAddress);
-				jmp(r8);
-
-				L("fail");
-				mov(r8, retnFail);
-				jmp(r8);
-			}
-		} patchStub3;
-
-		{
-			auto location = hook::get_pattern("48 39 5C C1");
-			patchStub3.Init((uintptr_t)location + 7, (uintptr_t)hook::get_pattern("48 8D 0D ? ? ? ? E8 ? ? ? ? 48 85 C0 75 ? 48 8B C3"));
-			hook::nop(location, 7);
-			hook::jump(location, patchStub3.GetCode());
-		}
-
-		static struct : jitasm::Frontend
-		{
-			uintptr_t retnAddress;
-
-			void Init(uintptr_t retn)
-			{
-				this->retnAddress = retn;
-			}
-
-			void InternalMain() override
-			{
-				mov(qword_ptr[rsi + rcx * 8 + displacement], rax);
-				mov(rax, retnAddress);
-				jmp(rax);
-			}
-		} patchStub4;
-
-		{
-			auto location = hook::get_pattern("48 89 44 CE ? 8B 86");
-			patchStub4.Init((uintptr_t)location + 5);
-			hook::nop(location, 5);
-			hook::jump(location, patchStub4.GetCode());
-		}
-
-		static struct : jitasm::Frontend
-		{
-			uintptr_t retnAddress;
-
-			void Init(uintptr_t retn)
-			{
-				this->retnAddress = retn;
-			}
-
-			void InternalMain() override
-			{
-				cmp(qword_ptr[rcx + rax * 8 + displacement], 0);
-				mov(r11, retnAddress);
-				jmp(r11);
-			}
-		} patchStub5;
-
-		{
-			auto location = hook::get_pattern("48 8B C4 48 89 58 ? 48 89 68 ? 48 89 70 ? 48 89 78 ? 41 56 48 81 EC ? ? ? ? 48 8B EA 48 8B D9", 41);
-			patchStub5.Init((uintptr_t)location + 6);
-			hook::nop(location, 6);
-			hook::jump_reg<6>(location, patchStub5.GetCode());
-		}
-
-#if 0
-		static struct : jitasm::Frontend
-		{
-			uintptr_t retnAddress;
-
-			void Init(uintptr_t retn)
-			{
-				this->retnAddress = retn;
-			}
-
-			void InternalMain() override
-			{
-				lea(rbx, qword_ptr[rcx + displacement]);
-
-				mov(r11, retnAddress);
-				jmp(r11);
-			}
-		} patchStub9;
-
-		{
-			auto location = hook::get_pattern("48 8D 59 ? 89 44 24");
-			patchStub9.Init((uintptr_t)location + 4);
-			hook::nop(location, 4);
-			hook::jump_reg<5>(location, patchStub9.GetCode());
-
-		}
-
-		static struct : jitasm::Frontend
-		{
-			uintptr_t retnAddress;
-
-			void Init(uintptr_t retn)
-			{
-				this->retnAddress = retn;
-			}
-
-			void InternalMain() override
-			{
-				lea(rdi, qword_ptr[rcx + displacement]);
-
-				mov(r11, retnAddress);
-				jmp(r11);
-			}
-		} patchStub10;
-		
-		{
-			auto location = hook::get_pattern("48 8D 79 ? 45 33 FF 48 8B D9");
-			patchStub10.Init((uintptr_t)location + 4);
-			hook::nop(location, 4);
-			hook::jump_reg<5>(location, patchStub10.GetCode());
-		}
-#endif
-
-		static struct : jitasm::Frontend
-		{
-			uintptr_t retnAddress;
-
-			void Init(uintptr_t retn)
-			{
-				this->retnAddress = retn;
-			}
-
-			void InternalMain() override
-			{
-				mov(qword_ptr[rbx + rcx * 8 + displacement], rax);
-				mov(r11, retnAddress);
-				jmp(r11);
-			}
-		} patchStub6;
-
-		{
-			auto location = hook::get_pattern("48 89 44 CB ? 48 89 83");
-			patchStub6.Init((uintptr_t)location + 5);
-			hook::nop(location, 5);
-			hook::jump_reg<5>(location, patchStub6.GetCode());
-		}
- 
-		static struct : jitasm::Frontend
-		{
-			uintptr_t retn;
-
-			void Init(uintptr_t retn)
-			{
-				this->retn = retn;
-			}
-
-			void InternalMain() override
-			{
-				mov(rax, qword_ptr[rsi + rdi * 8 + displacement]);
-				mov(r11, retn);
-				jmp(r11);
-			}
-		} patchStub8;
-
-		{
-			auto location = hook::get_pattern("48 8B 44 FE ? EB ? 90");
-			patchStub8.Init((uintptr_t)hook::get_pattern("48 8B 5C 24 ? 48 8B 6C 24 ? 48 8B 74 24 ? 48 83 C4 ? 5F C3 48 8B 44 FE"));
-			hook::nop(location, 7);
-			hook::jump_reg<5>(location, patchStub8.GetCode());
-		}
+		// stack frame ENTER
+		hook::put<uint32_t>(location + 0x18, stackSize);
+		// stack frame LEAVE
+		hook::put<uint32_t>(location + 0x12B, stackSize);
+		// var: rsp + 1A8
+		hook::put<uint32_t>(location + 0xDE, intsBase);
 	}
-#endif
+
+	// Same for CNetObjPedBase::_passOutOfScope
+	{
+		auto location = hook::get_pattern<char>("41 B0 ? 41 8A D0 41 FF 51 ? 4C 8D 05 ? ? ? ? 49 8B CE", -83);
+
+		// 0x20: scratch space
+		// kMaxPlayers + 1 * 8: kMaxPlayers players, ptr size
+		// kMaxPlayers + 1 * 4: kMaxPlayers players, int size
+		auto stackSize = (0x20 + (kMaxPlayers + 1 * 8) + (kMaxPlayers + 1 * 4));
+		auto ptrsBase = 0x20;
+		auto intsBase = ptrsBase + (kMaxPlayers + 1 * 8);
+
+		// stack frame ENTER
+		hook::put<uint32_t>(location + 0x18, stackSize);
+		// stack frame LEAVE
+		hook::put<uint32_t>(location + 0x26B, stackSize);
+		// var: rsp + 1A8
+		hook::put<uint32_t>(location + 0x211, intsBase);
+	}
 
 	// Skip unused host kick related >32-unsafe arrays in onesync
 	//hook::call(hook::get_pattern("E8 ? ? ? ? 84 C0 75 ? 8B 05 ? ? ? ? 33 C9 89 44 24"), Return<true, false>);
@@ -1067,11 +926,9 @@ static HookFunction hookFunction([]()
 	MH_Initialize();
 
 	// Remove 32 check for netObject targetting check
-#if 1
 	hook::call(hook::get_pattern("E8 ? ? ? ? 45 33 C9 84 C0 41 0F 94 C5"), Return<true, true>);
 	hook::call(hook::get_pattern("E8 ? ? ? ? 84 C0 0F 84 ? ? ? ? 48 8B 0D ? ? ? ? E8 ? ? ? ? 41 F6 46"), Return<true, true>);
 	hook::call(hook::get_pattern("E8 ? ? ? ? 84 C0 0F 84 ? ? ? ? 8A 5C 24"), Return<true, true>);
-#endif
 	
 	// Don't broadcast script info in OneSync
 	MH_CreateHook(hook::get_pattern("48 89 5C 24 ? 48 89 74 24 ? 48 89 7C 24 ? 55 48 8B EC 48 81 EC ? ? ? ? 48 83 79"), unkRemoteBroadcast, (void**)&g_unkRemoteBroadcast);
@@ -1082,9 +939,12 @@ static HookFunction hookFunction([]()
 
 	// netObj player acknowledge bitset. Capped to 32 bits. Need 128
 	// Breaks badly. Not sure if we need to patch this either since 31 is almost always passed to it
-	MH_CreateHook(hook::get_call(hook::get_pattern("E8 ? ? ? ? 40 8A FB 84 C0 74")), netObject__IsPlayerAcknowledged, (void**)&g_origNetobjIsPlayerAcknowledged);
-	MH_CreateHook(hook::get_call(hook::get_pattern("E8 ? ? ? ? EB ? 47 85 0C 86")), netObject__setPlayerCreationAcked, (void**)&g_origNetObjectSetPlayerCreationAcked);
+	//MH_CreateHook(hook::get_call(hook::get_pattern("E8 ? ? ? ? 40 8A FB 84 C0 74")), netObject__IsPlayerAcknowledged, (void**)&g_origNetobjIsPlayerAcknowledged);
+	//MH_CreateHook(hook::get_call(hook::get_pattern("E8 ? ? ? ? EB ? 47 85 0C 86")), netObject__setPlayerCreationAcked, (void**)&g_origNetObjectSetPlayerCreationAcked);
+	MH_CreateHook(hook::get_pattern("40 53 48 83 EC ? 48 8B D9 48 81 C1 ? ? ? ? E8 ? ? ? ? 84 C0 75 ? 48 8B CB"), sub_142FB5F0C, (void**)&g_sub_142FB5F0C);
+	MH_CreateHook(hook::get_pattern("40 53 48 83 EC ? 44 8A 81 ? ? ? ? 48 8B D9 41 8A D0"), sub_142FB17F8, (void**)&g_sub_142FB17F8);
 
 	MH_CreateHook(hook::get_pattern("33 DB 0F 29 70 D8 49 8B F9 4D 8B F0", -0x1B), GetPlayersNearPoint, (void**)&g_origGetPlayersNearPoint);
 	MH_EnableHook(MH_ALL_HOOKS);
 });
+#endif
