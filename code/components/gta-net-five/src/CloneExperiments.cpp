@@ -1225,7 +1225,6 @@ static void ManageHostMigrationStub(void* a1)
 	}
 }
 
-#ifdef GTA_FIVE
 static void(*g_origUnkBubbleWrap)();
 
 static void UnkBubbleWrap()
@@ -1235,7 +1234,6 @@ static void UnkBubbleWrap()
 		g_origUnkBubbleWrap();
 	}
 }
-#endif
 
 #ifdef GTA_FIVE
 static void* (*g_origNetworkObjectMgrCtor)(void*, void*);
@@ -1710,7 +1708,9 @@ static HookFunction hookFunction([]()
 	// 1604 unused, some bubble stuff
 	//hook::return_function(0x14104D148);
 #ifdef GTA_FIVE
-	MH_CreateHook(hook::get_pattern("48 89 5C 24 ? 48 89 6C 24 ? 56 57 41 54 41 56 41 57 48 81 EC ? ? ? ? 48 8D 0D"), UnkBubbleWrap, (void**)&g_origUnkBubbleWrap);;
+	MH_CreateHook(hook::get_pattern("48 89 5C 24 ? 48 89 6C 24 ? 56 57 41 54 41 56 41 57 48 81 EC ? ? ? ? 48 8D 0D"), UnkBubbleWrap, (void**)&g_origUnkBubbleWrap);
+#elif IS_RDR3
+	MH_CreateHook(hook::get_pattern("33 FF 4C 8B F8 45 85 F6", -0x7E), UnkBubbleWrap, (void**)&g_origUnkBubbleWrap);
 #endif
 
 #ifdef GTA_FIVE

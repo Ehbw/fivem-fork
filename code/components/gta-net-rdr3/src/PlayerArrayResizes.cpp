@@ -417,6 +417,12 @@ static void* sub_142FB5F0C(void* a1)
 	return g_sub_142FB5F0C(a1);
 }
 
+/*
+NET/LOG [2165351663:764] 3099323466
+NET/LOG [2165351663:751] 647910438
+NET/LOG [2165351663:764] 3099323466
+NET/LOG [2165351663:751] 647910438
+*/
 
 // Replaced by properly patching id allocation.
 #if 0
@@ -442,7 +448,6 @@ static HookFunction hookFunction([]()
 		return;
 	}
 
-#if 0
 	// Expand Player Damage Array to support more players
 	{
 		constexpr size_t kDamageArraySize = sizeof(uint32_t) * (kMaxPlayers + 1);
@@ -468,7 +473,6 @@ static HookFunction hookFunction([]()
 
 		});
 	}
-#endif
 
 	// Expand Player Cache data
 	{
@@ -510,6 +514,7 @@ static HookFunction hookFunction([]()
 			{ "80 F9 ? 72 ? BA ? ? ? ? C7 44 24 ? ? ? ? ? 41 B9 ? ? ? ? 48 8D 0D ? ? ? ? 41 B8 ? ? ? ? E8 ? ? ? ? 84 C0 74 ? 0F B6 DB", 2, 0x20, kMaxPlayers + 1},
 			{ "80 F9 ? 72 ? BA ? ? ? ? C7 44 24 ? ? ? ? ? 41 B9 ? ? ? ? 48 8D 0D ? ? ? ? 41 B8 ? ? ? ? E8 ? ? ? ? 84 C0 74 ? 0F B6 C3", 2, 0x20, kMaxPlayers + 1},
 			{ "80 FB ? 72 ? BA ? ? ? ? C7 44 24 ? ? ? ? ? 41 B9 ? ? ? ? 48 8D 0D ? ? ? ? 41 B8 ? ? ? ? E8 ? ? ? ? 84 C0 0F 84 ? ? ? ? 8A CB", 2, 0x20, kMaxPlayers + 1},
+			{ "48 85 C0 74 ? 83 61 ? ? B8 ? ? ? ? 66 83 61", -57, 0x20, kMaxPlayers + 1 },
 			//{ "80 FB ? 72 ? BA ? ? ? ? C7 44 24 ? ? ? ? ? 41 B9 ? ? ? ? 48 8D 0D ? ? ? ? 41 B8 ? ? ? ? E8 ? ? ? ? 84 C0 74 ? 0F B6 C3 48 8D 0D", 2, 0x20, kMaxPlayers + 1},
 			{ "83 F9 ? 7C ? BA ? ? ? ? C7 44 24 ? ? ? ? ? 41 B9 ? ? ? ? 48 8D 0D ? ? ? ? 41 B8 ? ? ? ? E8 ? ? ? ? 84 C0 74 ? 48 8D 0D ? ? ? ? 48 8B C3", 2, 0x20, kMaxPlayers + 1 },
 			{ "83 F8 ? 72 ? C3 CC 0F 48 8B", 2, 0x20, kMaxPlayers + 1 },
@@ -599,7 +604,6 @@ static HookFunction hookFunction([]()
 	}
 #endif
 
-#if 0
 	// Patch CNetworkDamageTracker
 	{
 		// 32/31 comparsions
@@ -608,10 +612,27 @@ static HookFunction hookFunction([]()
 			{"80 7A ? ? 48 8B F9 72", 3, 0x20, kMaxPlayers + 1}
 		});
 	}
-#endif
 
-#if 1
-	// Patch out references to remotePhysicalPlayers/numRemotePhysicalPlayers
+	// Patch netObject to account for >32 players
+	{
+		// 32/31 32bit comparsions
+		PatchValue<uint32_t>({ 
+			// rage::netObject::DependencyThreadUpdate
+			//{ "41 BF ? ? ? ? 8A 8C 10", 2, 0x20, kMaxPlayers + 1}
+		});
+
+		PatchValue<uint8_t>({
+			// rage::netObject::CanCreateWithNoGameObject
+			{ "80 79 ? ? 73 ? 32 C0", 3, 0x20, kMaxPlayers + 1 },
+			// rage::netObject::CanPassControl
+			{ "3C ? 73 ? 3A 46", 1, 0x20, kMaxPlayers + 1},
+			// rage::netObject::SetOwner
+			{ "80 F9 ? 73 ? E8 ? ? ? ? 48 8B D8 EB", 2, 0x20,  kMaxPlayers + 1},
+		});
+	}
+
+#if 0
+	// Fix netObject::_isObjectSyncedWithPlayers
 	{
 		auto location = hook::get_call(hook::get_pattern("E8 ? ? ? ? 3A C3 74 ? B3 ? 8A C3 48 83 C4 ? 5B C3 40 53 48 83 EC ? 48 8B 01"));
 		
@@ -777,12 +798,6 @@ static HookFunction hookFunction([]()
 			// CPedCreateGroupNode related
 			//{ "E8 ? ? ? ? 48 8B C8 E8 ? ? ? ? 8B F8 83 F8", 17, true },
 
-			// rage::netObject::CanCreateWithNoGameObject
-			{ "80 79 ? ? 73 ? 32 C0", 3, false },
-			// rage::netObject::CanPassControl
-			{ "3C ? 73 ? 3A 46", 1, false },
-
-			{ "48 85 C0 74 ? 83 61 ? ? B8 ? ? ? ? 66 83 61", -57, false},
 			{ "40 80 FF ? 73 ? 48 8B 4E", 3, false},
 			{ "80 FB ? 72 ? 48 8B 5C 24 ? 48 8B 6C 24 ? 48 8B 74 24 ? 48 8B 7C 24", 2, false},
 
@@ -798,8 +813,6 @@ static HookFunction hookFunction([]()
 			{ "80 FA ? 72 ? BA ? ? ? ? C7 44 24 ? ? ? ? ? 41 B9 ? ? ? ? 48 8D 0D ? ? ? ? 41 B8 ? ? ? ? E8 ? ? ? ? 84 C0 74 ? 0F B6 C3 BA", 2, false },
 			{ "80 FA ? 0F 83 ? ? ? ? 48 8B 05", 2, false },
 
-			// netObject SetOwner
-			{ "80 F9 ? 73 ? E8 ? ? ? ? 48 8B D8 EB", 2, false},
 
 			// CNetObjProximityMigrateable::_getRelevancePlayers
 			{ "40 80 FF ? 0F 82 ? ? ? ? 0F 28 74 24 ? 4C 8D 5C 24 ? 49 8B 5B ? 48 8B C6", 3, false },
@@ -818,6 +831,7 @@ static HookFunction hookFunction([]()
 			{ "80 79 ? ? 0F 83 ? ? ? ? 44 38 7B", 3, false },
 			{ "80 79 ? ? 72 ? B0", 3, false },
 			{ "80 7F ? ? 72 ? 41 B9 ? ? ? ? C7 44 24", 3 , false },
+			{ "80 FB ? 72 ? BA ? ? ? ? C7 44 24 ? ? ? ? ? 41 B9 ? ? ? ? 48 8D 0D ? ? ? ? 41 B8 ? ? ? ? E8 ? ? ? ? 84 C0 74 ? 8A CB", 2, false },
 
 			// session related slot
 			// TODO: Verify if still needed with the following patches
@@ -848,7 +862,6 @@ static HookFunction hookFunction([]()
 			{ "83 FB ? 76 ? BB ? ? ? ? C7 44 24 ? ? ? ? ? 44 8B CB 48 8D 0D ? ? ? ? BA ? ? ? ? 41 B8 ? ? ? ? E8 ? ? ? ? B8 ? ? ? ? E9 ? ? ? ? 44 8A E7", 2, false },
 			{ "83 FB ? 76 ? BB ? ? ? ? C7 44 24 ? ? ? ? ? 44 8B CB 48 8D 0D ? ? ? ? BA ? ? ? ? 41 B8 ? ? ? ? E8 ? ? ? ? B8 ? ? ? ? E9 ? ? ? ? 8B C3", 2, true },
 #endif
-			{ "80 FB ? 72 ? BA ? ? ? ? C7 44 24 ? ? ? ? ? 41 B9 ? ? ? ? 48 8D 0D ? ? ? ? 41 B8 ? ? ? ? E8 ? ? ? ? 84 C0 74 ? 8A CB", 2, false }
 		};
 
 		for (auto& entry : list)
@@ -864,11 +877,8 @@ static HookFunction hookFunction([]()
 	// Replace 32 array iterations
 	{
 		std::initializer_list<PatternClampPair> list = {
-			// SC Session related iteration
-			//{ "80 FB ? 0F 82 ? ? ? ? 48 8B 5C 24 ? 48 8B 6C 24 ? 48 83 C4 ? 41 5F 41 5E 41 5C 5F 5E C3 CC 7C", 2, false },
-
 			// Player Cache Data Initalization
-			//{ "44 8D 41 ? 33 D2 4C 8D 0D", 3, true },
+			{ "44 8D 41 ? 33 D2 4C 8D 0D", 3, true },
 		};
 
 		for (auto& entry : list)
