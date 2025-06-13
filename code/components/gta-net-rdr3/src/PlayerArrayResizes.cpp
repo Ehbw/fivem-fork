@@ -618,7 +618,7 @@ static HookFunction hookFunction([]()
 		// 32/31 32bit comparsions
 		PatchValue<uint32_t>({ 
 			// rage::netObject::DependencyThreadUpdate
-			//{ "41 BF ? ? ? ? 8A 8C 10", 2, 0x20, kMaxPlayers + 1}
+			{ "41 BF ? ? ? ? 8A 8C 10", 2, 0x20, kMaxPlayers + 1}
 		});
 
 		PatchValue<uint8_t>({
@@ -627,136 +627,15 @@ static HookFunction hookFunction([]()
 			// rage::netObject::CanPassControl
 			{ "3C ? 73 ? 3A 46", 1, 0x20, kMaxPlayers + 1},
 			// rage::netObject::SetOwner
-			{ "80 F9 ? 73 ? E8 ? ? ? ? 48 8B D8 EB", 2, 0x20,  kMaxPlayers + 1},
+			{ "80 F9 ? 73 ? E8 ? ? ? ? 48 8B D8 EB", 2, 0x20, kMaxPlayers + 1},
+			// rage::netObject::IsPendingOwnerChange
+			{ "80 79 ? ? 0F 92 C0 C3 48 8B 91", 3, 0x20,  kMaxPlayers + 1 },
+			// rage::netObject::IsPlayerAcknowledged
+			//{ "48 83 C4 ? 5F C3 CC 33 C0 8B D0", 87 - 4, 0x20, kMaxPlayers + 1 },
+
+			{ "40 80 FE ? 72 ? BA ? ? ? ? C7 44 24 ? ? ? ? ? 41 B9 ? ? ? ? 48 8D 0D ? ? ? ? 41 B8 ? ? ? ? E8 ? ? ? ? 84 C0 75 ? 49 8B F7", 3, 0x20, kMaxPlayers + 1 }
 		});
 	}
-
-#if 0
-	// Fix netObject::_isObjectSyncedWithPlayers
-	{
-		auto location = hook::get_call(hook::get_pattern("E8 ? ? ? ? 3A C3 74 ? B3 ? 8A C3 48 83 C4 ? 5B C3 40 53 48 83 EC ? 48 8B 01"));
-		
-		/*
-		.text:0000000142C0C1F5 48 8B 3D 54 26 F0 02                                         mov     rdi, cs:rage__netInterface__m_PlayerMgr
-		.text:0000000142C0C1FC 84 C0                                                        test    al, al
-		.text:0000000142C0C1FE 74 08                                                        jz      short loc_142C0C208
-		.text:0000000142C0C200 8B AF 9C 02 00 00                                            mov     ebp, [rdi+29Ch]
-		.text:0000000142C0C206 EB 02                                                        jmp     short loc_142C0C20A
-		*/
-		static struct : jitasm::Frontend
-		{
-			intptr_t retnFail = 0;
-			intptr_t retnSuccess = 0;
-
-			void Init(const intptr_t success, const intptr_t fail)
-			{
-				this->retnSuccess = success;
-				this->retnFail = fail;
-			}
-
-			virtual void InternalMain() override
-			{
-				mov(rdi, reinterpret_cast<uintptr_t>(g_playerListRemote));
-
-				test(al, al);
-				jz("Fail");
-
-				mov(rax, reinterpret_cast<uintptr_t>(&g_playerListCountRemote));
-				mov(ebp, dword_ptr[rax]);
-
-				mov(r11, retnSuccess);
-				jmp(r11);
-
-				L("Fail");
-				mov(r11, retnFail);
-				jmp(r11);
-			};
-		} patchStub;
-
-		const uintptr_t patch = (uintptr_t)location + 45;
-
-		const uintptr_t retnFail = patch + 19; //142C0C208
-		const uintptr_t retnSuccess = retnFail + 2; // 0x142C0C20A
-
-		assert((uintptr_t)0x142C0C208 == retnFail);
-		assert((uintptr_t)0x142C0C20A == retnSuccess);
-
-		patchStub.Init(retnSuccess, retnFail);
-
-		hook::nop(patch, 19);
-		hook::nop(hook::get_pattern("48 81 C7 ? ? ? ? EB ? 33 FF 33 F6 85 ED 74 ? 48 8B 1F 49 8B CE 48 8B D3 E8 ? ? ? ? 84 C0 74 ? 49 8B 06 49 8B CE 0F B6 5B ? FF 50 ? 48 8B C8 8B D3 E8 ? ? ? ? 84 C0 74 ? FF C6 48 83 C7 ? 3B F5 72 ? B0 ? 48 8B 5C 24 ? 48 8B 6C 24 ? 48 8B 74 24 ? 48 8B 7C 24 ? 48 83 C4 ? 41 5E C3 32 C0 EB ? 90"), 6);
-		hook::jump_reg<5>(patch, patchStub.GetCode());
-	}
-#endif
-
-	// Fix StartSynchronising by using our own playerList
-#if 1
-	{
-		auto location = hook::get_pattern("8A 15 ? ? ? ? 44 8A F8", 9);
-		/*
-		.text:0000000142C1D48D 48 8B 1D BC 13 EF 02                                            mov     rbx, cs:rage__netInterface__m_PlayerMgr
-		.text:0000000142C1D494 84 D2                                                           test    dl, dl
-		.text:0000000142C1D496 74 08                                                           jz      short loc_142C1D4A0
-		.text:0000000142C1D498 8B 8B 9C 02 00 00                                               mov     ecx, [rbx+29Ch]
-		.text:0000000142C1D49E EB 02                                                           jmp     short loc_142C1D4A2
-		.text:0000000142C1D4A0                                                 ; ---------------------------------------------------------------------------
-		.text:0000000142C1D4A0
-		.text:0000000142C1D4A0                                                 loc_142C1D4A0:                          ; CODE XREF: rage__netObject__StartSynchronising+14A↑j
-		.text:0000000142C1D4A0 33 C9                                                           xor     ecx, ecx
-		.text:0000000142C1D4A2
-		.text:0000000142C1D4A2                                                 loc_142C1D4A2:                          ; CODE XREF: rage__netObject__StartSynchronising+152↑j
-		.text:0000000142C1D4A2 84 D2                                                           test    dl, dl
-		.text:0000000142C1D4A4 74 09                                                           jz      short loc_142C1D4AF
-		.text:0000000142C1D4A6 48 81 C3 98 07 00 00                                            add     rbx, 798h
-
-		*/
-		static struct : jitasm::Frontend
-		{
-			intptr_t retnFail = 0;
-			intptr_t retnSuccess = 0;
-
-			void Init(const intptr_t success, const intptr_t fail)
-			{
-				this->retnSuccess = success;
-				this->retnFail = fail;
-			}
-
-			virtual void InternalMain() override
-			{
-				mov(rbx, reinterpret_cast<uintptr_t>(g_playerListRemote));
-
-				test(dl, dl);
-				jz("Fail");
-
-				mov(r14, reinterpret_cast<uintptr_t>(&g_playerListCountRemote));
-				mov(ecx, dword_ptr[r14]);
-
-				mov(r11, retnSuccess);
-				jmp(r11);
-
-				L("Fail");
-				mov(r11, retnFail);
-				jmp(r11);
-			};
-		} patchStub;
-
-		const uintptr_t retnFail = (uintptr_t)location + 19;
-		const uintptr_t retnSuccess = retnFail + 2;
-
-		//TMP ASSERTS
-		assert(0x142C1D4A2 == retnSuccess);
-		assert(0x142C1D4A0 == retnFail);
-
-		patchStub.Init(retnSuccess, retnFail);
-
-		hook::nop(location, 19);
-		hook::jump_reg<5>(location, patchStub.GetCode());
-
-		//Remove +add
-		hook::nop(hook::get_pattern("48 81 C3 ? ? ? ? EB ? 33 DB 85 C9"), 7);
-
-	}
-#endif
 
 	// Adjust bit logic to support 127/128
 	{
@@ -778,14 +657,15 @@ static HookFunction hookFunction([]()
 	// Replace 32/31 comparisions
 	{
 		std::initializer_list<PatternClampPair> list = {
-			// rage::netObject::IsPendingOwnerChange
-			{ "80 79 ? ? 0F 92 C0 C3 48 8B 91", 3, false },
 			// 
 			{ "80 7A ? ? 41 8A F8 48 8B DA", 3, false },
 			//CNetGamePlayer::IsPhysical
 			{ "80 79 ? ? 0F 92 C0 C3 48 89 5C 24", 3, false },
 			//rage::netPlayer::IsPhysical
 			{ "80 7B ? ? 73 ? B2", 3, false },
+
+			// unk local player related
+			{ "80 7D ? ? 48 8B F8 72 ? 32 C0", 3, false },
 			
 			// CPhysical::_CorrectSyncedPosition
 			{ "40 80 FE ? 72 ? BA ? ? ? ? C7 44 24 ? ? ? ? ? 41 B9 ? ? ? ? 48 8D 0D ? ? ? ? 41 B8 ? ? ? ? E8 ? ? ? ? 84 C0 0F 84", 3, false },
@@ -801,18 +681,11 @@ static HookFunction hookFunction([]()
 			{ "40 80 FF ? 73 ? 48 8B 4E", 3, false},
 			{ "80 FB ? 72 ? 48 8B 5C 24 ? 48 8B 6C 24 ? 48 8B 74 24 ? 48 8B 7C 24", 2, false},
 
-#if 0
-			//rage::rlSession::Host, TODO: This may not be needed.
-			{ "83 F8 ? 7E ? BB ? ? ? ? B8", 2, false },
-			{ "80 78 ? ? 72 ? 8D 56", 3, false },
-#endif
-
 			//{ "8A DA 8B F1 80 FA", 18, false },
 
 			// Ped Combat related
 			{ "80 FA ? 72 ? BA ? ? ? ? C7 44 24 ? ? ? ? ? 41 B9 ? ? ? ? 48 8D 0D ? ? ? ? 41 B8 ? ? ? ? E8 ? ? ? ? 84 C0 74 ? 0F B6 C3 BA", 2, false },
 			{ "80 FA ? 0F 83 ? ? ? ? 48 8B 05", 2, false },
-
 
 			// CNetObjProximityMigrateable::_getRelevancePlayers
 			{ "40 80 FF ? 0F 82 ? ? ? ? 0F 28 74 24 ? 4C 8D 5C 24 ? 49 8B 5B ? 48 8B C6", 3, false },
@@ -820,8 +693,10 @@ static HookFunction hookFunction([]()
 			//CNetObjGame::CanClone
 			{ "80 7A ? ? 49 8B F8 48 8B DA 48 8B F1 72", 3, false},
 
-			// rlSession::OnUpdate
-			//{ "BD ? ? ? ? 49 8B 3E 48 85 FF 74", 1, false},
+			// getNetworkEntityOwner
+			{ "80 F9 ? 72 ? 33 C0 C3 E9 ? ? ? ? 48 89 5C 24", 2, false },
+
+			//{ "80 F9 ? 72 ? 33 C0 C3 E9 ? ? ? ? 8A 4A", 1, false },
 
 			//FindNetworkPlayerPed
 			{ "83 F9 ? 73 ? E8 ? ? ? ? 48 85 C0 74 ? 48 8B C8", 2, false },
@@ -833,35 +708,15 @@ static HookFunction hookFunction([]()
 			{ "80 7F ? ? 72 ? 41 B9 ? ? ? ? C7 44 24", 3 , false },
 			{ "80 FB ? 72 ? BA ? ? ? ? C7 44 24 ? ? ? ? ? 41 B9 ? ? ? ? 48 8D 0D ? ? ? ? 41 B8 ? ? ? ? E8 ? ? ? ? 84 C0 74 ? 8A CB", 2, false },
 
-			// session related slot
-			// TODO: Verify if still needed with the following patches
-#if 0
-			{ "40 80 FF ? 72 ? 40 B7 ? 48 8B 41", 3, false },
-			{ "40 80 FF ? 72 ? 40 B7 ? 48 8D 0D", 3, false },
-			{ "80 79 ? ? 72 ? B2", 3, false },
-			{ "40 80 FF ? 72 ? BA ? ? ? ? 48 8B CB", 3, false },
-			{ "41 80 FF ? 72 ? 40 84 FF", 3, false },
-			{ "40 80 FE ? 72 ? 40 84 FF", 3, false },
-			{ "40 80 FF ? 72 ? 48 8B 5C 24", 3, false },
-			//{ "80 FB ? 72 ? 33 C0 48 8B 5C 24 ? 48 8B 6C 24 ? 48 8B 74 24 ? 48 83 C4", 2, false },
-			//{ "80 FB ? 72 ? 48 8B 5C 24 ? 48 8B 6C 24 ? 48 8B 74 24 ? 48 8B 7C 24", 2, false },
-#endif
 			// Native Fixes
 			{ "83 FB ? 73 ? 45 33 C0", 2, false }, // 0x862C5040F4888741
 			{ "83 F9 ? 0F 83 ? ? ? ? B2", 2, false }, // 0x236321F1178A5446
-
+			{ "83 F9 ? 73 ? 80 3D", 2, false }, // 0x93DC1BE4E1ABE9D1
 
 			// TMP Patterns. TODO: Improve and support older game builds
-
 			{ "3C ? 72 ? BA ? ? ? ? C7 44 24 ? ? ? ? ? 41 B9 ? ? ? ? 48 8D 0D ? ? ? ? 41 B8 ? ? ? ? E8 ? ? ? ? 84 C0 0F 84", 1, false },
-
 			{ "80 7F ? ? 72 ? BA ? ? ? ? C7 44 24 ? ? ? ? ? 41 B9 ? ? ? ? 48 8D 0D ? ? ? ? 41 B8 ? ? ? ? E8 ? ? ? ? 84 C0 74 ? 45 84 FF 74 ? 48 8B 05 ? ? ? ? 4C 8D 4C 24 ? 44 8B C6 49 8B D6 48 8B 88 ? ? ? ? 48 89 4C 24 ? 48 8B CF E8 ? ? ? ? EB ? 8A 57 ? 44 8B CE 4D 8B C6 48 8B CD E8 ? ? ? ? 84 C0 75 ? BA ? ? ? ? C7 44 24 ? ? ? ? ? 41 B9 ? ? ? ? 48 8D 0D ? ? ? ? 41 B8 ? ? ? ? E8 ? ? ? ? FE C3 80 FB ? 0F 82 ? ? ? ? 48 8B 5C 24 ? 48 8B 6C 24 ? 48 83 C4 ? 41 5F 41 5E 41 5C 5F 5E C3 CC 7C", 3, false },
 			{ "40 80 FF ? 73 ? 48 8B 43 ? 40 0F B6 CF 48 8B 7C C8 ? 48 85 FF 74 ? 48 8B CF E8 ? ? ? ? 84 C0 74 ? 48 8B 1B 48 8B CF E8 ? ? ? ? 8B D0 44 8B CE 4C 8B C5 48 8B CB E8 ? ? ? ? EB ? 32 C0 48 8B 5C 24 ? 48 8B 6C 24 ? 48 8B 74 24 ? 48 83 C4 ? 5F C3 90 40 33 48", 3, false },
-#if 0
-			//rage::rlSession::Join
-			{ "83 FB ? 76 ? BB ? ? ? ? C7 44 24 ? ? ? ? ? 44 8B CB 48 8D 0D ? ? ? ? BA ? ? ? ? 41 B8 ? ? ? ? E8 ? ? ? ? B8 ? ? ? ? E9 ? ? ? ? 44 8A E7", 2, false },
-			{ "83 FB ? 76 ? BB ? ? ? ? C7 44 24 ? ? ? ? ? 44 8B CB 48 8D 0D ? ? ? ? BA ? ? ? ? 41 B8 ? ? ? ? E8 ? ? ? ? B8 ? ? ? ? E9 ? ? ? ? 8B C3", 2, true },
-#endif
 		};
 
 		for (auto& entry : list)
