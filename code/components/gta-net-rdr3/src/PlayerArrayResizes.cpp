@@ -374,47 +374,10 @@ static hook::cdecl_stub<bool(CNetGamePlayer*)> isNetPlayerLocal([]()
 static void (*g_unkRemoteBroadcast)(void*, __int64);
 static void unkRemoteBroadcast(void* a1, __int64 a2)
 {
-	trace("unkrEMOTEBROADCAST\n");
 	if (!icgi->OneSyncEnabled)
 	{
 		return g_unkRemoteBroadcast(a1, a2);
 	}
-}
-
-static void* (*g_sub_142FB17F8)(void*);
-static void* sub_142FB17F8(void* a1)
-{
-	if (!a1 || a1 == (void*)-1)
-	{
-		__debugbreak();
-		return nullptr;
-	}
-
-	if ((uintptr_t)a1 > (uintptr_t)0x00007FFFFFFFFFFF)
-	{
-		__debugbreak();
-		return nullptr;
-	}
-
-	return g_sub_142FB17F8(a1);
-}
-
-static void* (*g_sub_142FB5F0C)(void*);
-static void* sub_142FB5F0C(void* a1)
-{
-	if (!a1 || a1 == (void*)-1)
-	{
-		__debugbreak();
-		return nullptr;
-	}
-
-	if ((uintptr_t)a1 > (uintptr_t)0x00007FFFFFFFFFFF)
-	{
-		__debugbreak();
-		return nullptr;
-	}
-
-	return g_sub_142FB5F0C(a1);
 }
 
 /*
@@ -424,33 +387,22 @@ NET/LOG [2165351663:764] 3099323466
 NET/LOG [2165351663:751] 647910438
 */
 
-// Replaced by properly patching id allocation.
-#if 0
-static void* g_scMultiplayerImpl = nullptr;
-static size_t g_scMultiplayerImplCtorSize = 0;
-
-static bool (*scMultiplayerComparsion)(void*, void*);
-static void* (*g_origScMultiplayerImplCtor)(void*, void*);
-static void* ScMultiplayerImplCtor(void* self, void* a2)
+static void*(*g_sub_142FA454C)(void*, uint32_t*);
+static void* sub_142FA454C(void* self, uint32_t* oldBitset)
 {
-	void* data = g_origScMultiplayerImplCtor(self, a2);
-	g_scMultiplayerImpl = data;
-	memset((void**)data + g_scMultiplayerImplCtorSize, 0, (sizeof(void*) * kMaxPlayers + 1));
-	return data;
+	// a single uint32_t bitset is passed to this function and is used to set player indexes as flags.
+	// This causes issues if we want to go above a playerIndex of 32.
+	// In all cases the bitset above is only used for this function. So we can allocate our own bitset here
+	// and pass that into the original function restoring behaviour
+	uint32_t bitset[(kMaxPlayers / 32) + 1] = {};
+	return g_sub_142FA454C(self, bitset);
 }
-#endif
 
-#if 1
 static HookFunction hookFunction([]()
 {
-	if (!xbr::IsGameBuildOrGreater<1491>())
-	{
-		return;
-	}
-
 	// Expand Player Damage Array to support more players
 	{
-		constexpr size_t kDamageArraySize = sizeof(uint32_t) * (kMaxPlayers + 1);
+		constexpr size_t kDamageArraySize = sizeof(uint32_t) * 256;
 		uint32_t* damageArrayReplacement = (uint32_t*)hook::AllocateStubMemory(kDamageArraySize);
 		memset(damageArrayReplacement, 0, kDamageArraySize);
 
@@ -476,7 +428,8 @@ static HookFunction hookFunction([]()
 
 	// Expand Player Cache data
 	{
-		static size_t kCachedPlayerSize = 0x10 * (kMaxPlayers + 1);
+		//0x10
+		static size_t kCachedPlayerSize = sizeof(void*) * (kMaxPlayers + 1);
 		void** cachedPlayerArray = (void**)hook::AllocateStubMemory(kCachedPlayerSize);
 		memset(cachedPlayerArray, 0, kCachedPlayerSize);
 		RelocateRelative((void*)cachedPlayerArray, {
@@ -604,6 +557,7 @@ static HookFunction hookFunction([]()
 	}
 #endif
 
+#if 0
 	// Patch CNetworkDamageTracker
 	{
 		// 32/31 comparsions
@@ -612,6 +566,7 @@ static HookFunction hookFunction([]()
 			{"80 7A ? ? 48 8B F9 72", 3, 0x20, kMaxPlayers + 1}
 		});
 	}
+#endif
 
 	// Patch netObject to account for >32 players
 	{
@@ -627,11 +582,14 @@ static HookFunction hookFunction([]()
 			// rage::netObject::CanPassControl
 			{ "3C ? 73 ? 3A 46", 1, 0x20, kMaxPlayers + 1},
 			// rage::netObject::SetOwner
-			{ "80 F9 ? 73 ? E8 ? ? ? ? 48 8B D8 EB", 2, 0x20, kMaxPlayers + 1},
+			{ "80 F9 ? 73 ? E8 ? ? ? ? 48 8B D8 EB", 2, 0x20, kMaxPlayers },
 			// rage::netObject::IsPendingOwnerChange
 			{ "80 79 ? ? 0F 92 C0 C3 48 8B 91", 3, 0x20,  kMaxPlayers + 1 },
 			// rage::netObject::IsPlayerAcknowledged
 			//{ "48 83 C4 ? 5F C3 CC 33 C0 8B D0", 87 - 4, 0x20, kMaxPlayers + 1 },
+
+			// rage::netObject::CanTargetPlayer
+			{ "83 FA ? 77 ? 8B C2 44 8B C2", 2 , 0x20, kMaxPlayers + 1},
 
 			{ "40 80 FE ? 72 ? BA ? ? ? ? C7 44 24 ? ? ? ? ? 41 B9 ? ? ? ? 48 8D 0D ? ? ? ? 41 B8 ? ? ? ? E8 ? ? ? ? 84 C0 75 ? 49 8B F7", 3, 0x20, kMaxPlayers + 1 }
 		});
@@ -657,7 +615,7 @@ static HookFunction hookFunction([]()
 	// Replace 32/31 comparisions
 	{
 		std::initializer_list<PatternClampPair> list = {
-			// 
+			// unkAreThereTooManyAcksForThisPlayer
 			{ "80 7A ? ? 41 8A F8 48 8B DA", 3, false },
 			//CNetGamePlayer::IsPhysical
 			{ "80 79 ? ? 0F 92 C0 C3 48 89 5C 24", 3, false },
@@ -678,8 +636,13 @@ static HookFunction hookFunction([]()
 			// CPedCreateGroupNode related
 			//{ "E8 ? ? ? ? 48 8B C8 E8 ? ? ? ? 8B F8 83 F8", 17, true },
 
+
+			// Related to CNetworkPopulationResetMgr
+
 			{ "40 80 FF ? 73 ? 48 8B 4E", 3, false},
 			{ "80 FB ? 72 ? 48 8B 5C 24 ? 48 8B 6C 24 ? 48 8B 74 24 ? 48 8B 7C 24", 2, false},
+			{ "80 FB ? 72 ? 48 8B 5C 24 ? 48 8B 6C 24 ? 48 8B 74 24 ? 48 83 C4 ? 41 5F 41 5E 41 5D 41 5C 5F C3 83 FA", 2, false },
+
 
 			//{ "8A DA 8B F1 80 FA", 18, false },
 
@@ -688,7 +651,7 @@ static HookFunction hookFunction([]()
 			{ "80 FA ? 0F 83 ? ? ? ? 48 8B 05", 2, false },
 
 			// CNetObjProximityMigrateable::_getRelevancePlayers
-			{ "40 80 FF ? 0F 82 ? ? ? ? 0F 28 74 24 ? 4C 8D 5C 24 ? 49 8B 5B ? 48 8B C6", 3, false },
+			//{ "40 80 FF ? 0F 82 ? ? ? ? 0F 28 74 24 ? 4C 8D 5C 24 ? 49 8B 5B ? 48 8B C6", 3, false },
 
 			//CNetObjGame::CanClone
 			{ "80 7A ? ? 49 8B F8 48 8B DA 48 8B F1 72", 3, false},
@@ -713,10 +676,23 @@ static HookFunction hookFunction([]()
 			{ "83 F9 ? 0F 83 ? ? ? ? B2", 2, false }, // 0x236321F1178A5446
 			{ "83 F9 ? 73 ? 80 3D", 2, false }, // 0x93DC1BE4E1ABE9D1
 
+
+			// Experimental. May need additional patches
+			{ "80 FB ? 72 ? 41 B9 ? ? ? ? C7 40 ? ? ? ? ? 41 B8 ? ? ? ? 48 8D 0D ? ? ? ? 8B D6", 2, false },
+			{ "83 E0 ? 8A C8 48 C1 EA ? D3 E3 40 0F B6 C5 F7 D8 33 44 96 ? 23 D8 31 5C 96 ? 48 8B 5C 24 ? 48 8B 6C 24 ? 48 8B 74 24 ? 48 83 C4 ? 5F C3 CC 48 8B C4", -60, false},
+			{ "80 7A ? ? 48 8B DA 48 8B F9 72 ? BA ? ? ? ? C7 44 24 ? ? ? ? ? 41 B9 ? ? ? ? 48 8D 0D ? ? ? ? 41 B8 ? ? ? ? E8 ? ? ? ? 84 C0 74 ? 0F B6 4B ? 8B C1 8B D1 48 C1 E8 ? 83 E2 ? 8B 44 87 ? 0F A3 D0 0F 92 C0 48 8B 5C 24 ? 48 83 C4 ? 5F C3 90 33 C0 8B D0 48 83 C1 ? 39 01 75 ? 48 FF C2 48 83 C1 ? 48 83 FA ? 7C ? C3 B0 ? C3 90", 3, false },
+			{ "80 7A ? ? 48 8B DA 48 8B F9 72 ? BA ? ? ? ? C7 44 24 ? ? ? ? ? 41 B9 ? ? ? ? 48 8D 0D ? ? ? ? 41 B8 ? ? ? ? E8 ? ? ? ? 84 C0 74 ? 0F B6 4B ? 8B C1 8B D1 48 C1 E8 ? 83 E2 ? 8B 44 87 ? 0F A3 D0 0F 92 C0 48 8B 5C 24 ? 48 83 C4 ? 5F C3 CC", 3, false },
+			{ "80 7A ? ? 48 8B DA 48 8B F9 72 ? BA ? ? ? ? C7 44 24 ? ? ? ? ? 41 B9 ? ? ? ? 48 8D 0D ? ? ? ? 41 B8 ? ? ? ? E8 ? ? ? ? 84 C0 74 ? 0F B6 4B ? 8B C1 8B D1 48 C1 E8 ? 83 E2 ? 8B 44 87 ? 0F A3 D0 0F 92 C0 48 8B 5C 24 ? 48 83 C4 ? 5F C3 90 33 C0 8B D0 48 83 C1 ? 39 01 75 ? 48 FF C2 48 83 C1 ? 48 83 FA ? 7C ? C3 B0 ? C3 CC", 3, false },
+			{ "80 7A ? ? 41 8A E8 48 8B FA 48 8B F1 BB ? ? ? ? 72 ? 41 B9 ? ? ? ? C7 40 ? ? ? ? ? 41 B8 ? ? ? ? 48 8D 0D ? ? ? ? 8B D3 E8 ? ? ? ? 84 C0 74 ? 0F B6 47 ? 8B D0 83 E0 ? 8A C8 48 C1 EA ? D3 E3 40 0F B6 C5 F7 D8 33 44 96 ? 23 D8 31 5C 96 ? 48 8B 5C 24 ? 48 8B 6C 24 ? 48 8B 74 24 ? 48 83 C4 ? 5F C3 CC 39 91", 3, false },
+			{ "80 7A ? ? 41 8A E8 48 8B FA 48 8B F1 BB ? ? ? ? 72 ? 41 B9 ? ? ? ? C7 40 ? ? ? ? ? 41 B8 ? ? ? ? 48 8D 0D ? ? ? ? 8B D3 E8 ? ? ? ? 84 C0 74 ? 0F B6 47 ? 8B D0 83 E0 ? 8A C8 48 C1 EA ? D3 E3 40 0F B6 C5 F7 D8 33 44 96 ? 23 D8 31 5C 96 ? 48 8B 5C 24 ? 48 8B 6C 24 ? 48 8B 74 24 ? 48 83 C4 ? 5F C3 CC 88 51", 3, false },
+			//{ "80 7A ? ? 41 8A E8 48 8B FA 48 8B F1 BB ? ? ? ? 72 ? 41 B9 ? ? ? ? C7 40 ? ? ? ? ? 41 B8 ? ? ? ? 48 8D 0D ? ? ? ? 8B D3 E8 ? ? ? ? 84 C0 74 ? 0F B6 47 ? 8B D0 83 E0 ? 8A C8 48 C1 EA ? D3 E3 40 0F B6 C5 F7 D8 33 44 96 ? 23 D8 31 5C 96 ? 48 8B 5C 24 ? 48 8B 6C 24 ? 48 8B 74 24 ? 48 83 C4 ? 5F C3 CC 48 8B C4", 3, false },
+
+
+
 			// TMP Patterns. TODO: Improve and support older game builds
-			{ "3C ? 72 ? BA ? ? ? ? C7 44 24 ? ? ? ? ? 41 B9 ? ? ? ? 48 8D 0D ? ? ? ? 41 B8 ? ? ? ? E8 ? ? ? ? 84 C0 0F 84", 1, false },
-			{ "80 7F ? ? 72 ? BA ? ? ? ? C7 44 24 ? ? ? ? ? 41 B9 ? ? ? ? 48 8D 0D ? ? ? ? 41 B8 ? ? ? ? E8 ? ? ? ? 84 C0 74 ? 45 84 FF 74 ? 48 8B 05 ? ? ? ? 4C 8D 4C 24 ? 44 8B C6 49 8B D6 48 8B 88 ? ? ? ? 48 89 4C 24 ? 48 8B CF E8 ? ? ? ? EB ? 8A 57 ? 44 8B CE 4D 8B C6 48 8B CD E8 ? ? ? ? 84 C0 75 ? BA ? ? ? ? C7 44 24 ? ? ? ? ? 41 B9 ? ? ? ? 48 8D 0D ? ? ? ? 41 B8 ? ? ? ? E8 ? ? ? ? FE C3 80 FB ? 0F 82 ? ? ? ? 48 8B 5C 24 ? 48 8B 6C 24 ? 48 83 C4 ? 41 5F 41 5E 41 5C 5F 5E C3 CC 7C", 3, false },
-			{ "40 80 FF ? 73 ? 48 8B 43 ? 40 0F B6 CF 48 8B 7C C8 ? 48 85 FF 74 ? 48 8B CF E8 ? ? ? ? 84 C0 74 ? 48 8B 1B 48 8B CF E8 ? ? ? ? 8B D0 44 8B CE 4C 8B C5 48 8B CB E8 ? ? ? ? EB ? 32 C0 48 8B 5C 24 ? 48 8B 6C 24 ? 48 8B 74 24 ? 48 83 C4 ? 5F C3 90 40 33 48", 3, false },
+			//{ "3C ? 72 ? BA ? ? ? ? C7 44 24 ? ? ? ? ? 41 B9 ? ? ? ? 48 8D 0D ? ? ? ? 41 B8 ? ? ? ? E8 ? ? ? ? 84 C0 0F 84", 1, false },
+			//{ "80 7F ? ? 72 ? BA ? ? ? ? C7 44 24 ? ? ? ? ? 41 B9 ? ? ? ? 48 8D 0D ? ? ? ? 41 B8 ? ? ? ? E8 ? ? ? ? 84 C0 74 ? 45 84 FF 74 ? 48 8B 05 ? ? ? ? 4C 8D 4C 24 ? 44 8B C6 49 8B D6 48 8B 88 ? ? ? ? 48 89 4C 24 ? 48 8B CF E8 ? ? ? ? EB ? 8A 57 ? 44 8B CE 4D 8B C6 48 8B CD E8 ? ? ? ? 84 C0 75 ? BA ? ? ? ? C7 44 24 ? ? ? ? ? 41 B9 ? ? ? ? 48 8D 0D ? ? ? ? 41 B8 ? ? ? ? E8 ? ? ? ? FE C3 80 FB ? 0F 82 ? ? ? ? 48 8B 5C 24 ? 48 8B 6C 24 ? 48 83 C4 ? 41 5F 41 5E 41 5C 5F 5E C3 CC 7C", 3, false },
+			//{ "40 80 FF ? 73 ? 48 8B 43 ? 40 0F B6 CF 48 8B 7C C8 ? 48 85 FF 74 ? 48 8B CF E8 ? ? ? ? 84 C0 74 ? 48 8B 1B 48 8B CF E8 ? ? ? ? 8B D0 44 8B CE 4C 8B C5 48 8B CB E8 ? ? ? ? EB ? 32 C0 48 8B 5C 24 ? 48 8B 6C 24 ? 48 8B 74 24 ? 48 83 C4 ? 5F C3 90 40 33 48", 3, false },
 		};
 
 		for (auto& entry : list)
@@ -730,6 +706,7 @@ static HookFunction hookFunction([]()
 	}
 
 	// Replace 32 array iterations
+#if 0
 	{
 		std::initializer_list<PatternClampPair> list = {
 			// Player Cache Data Initalization
@@ -745,6 +722,7 @@ static HookFunction hookFunction([]()
 			hook::put<uint8_t>(location, origVal == 31 ? kMaxPlayers - 1 : kMaxPlayers);
 		}
 	}
+#endif
 
 	// hardcoded 32/128 array sizes in CNetObjProximityMigrateable::_passOutOfScope
 	{
@@ -790,11 +768,6 @@ static HookFunction hookFunction([]()
 	// Rewrite functions to account for extended players
 	MH_Initialize();
 
-	// Remove 32 check for netObject targetting check
-	hook::call(hook::get_pattern("E8 ? ? ? ? 45 33 C9 84 C0 41 0F 94 C5"), Return<true, true>);
-	hook::call(hook::get_pattern("E8 ? ? ? ? 84 C0 0F 84 ? ? ? ? 48 8B 0D ? ? ? ? E8 ? ? ? ? 41 F6 46"), Return<true, true>);
-	hook::call(hook::get_pattern("E8 ? ? ? ? 84 C0 0F 84 ? ? ? ? 8A 5C 24"), Return<true, true>);
-	
 	// Don't broadcast script info in OneSync
 	MH_CreateHook(hook::get_pattern("48 89 5C 24 ? 48 89 74 24 ? 48 89 7C 24 ? 55 48 8B EC 48 81 EC ? ? ? ? 48 83 79"), unkRemoteBroadcast, (void**)&g_unkRemoteBroadcast);
 
@@ -806,10 +779,8 @@ static HookFunction hookFunction([]()
 	// Breaks badly. Not sure if we need to patch this either since 31 is almost always passed to it
 	//MH_CreateHook(hook::get_call(hook::get_pattern("E8 ? ? ? ? 40 8A FB 84 C0 74")), netObject__IsPlayerAcknowledged, (void**)&g_origNetobjIsPlayerAcknowledged);
 	//MH_CreateHook(hook::get_call(hook::get_pattern("E8 ? ? ? ? EB ? 47 85 0C 86")), netObject__setPlayerCreationAcked, (void**)&g_origNetObjectSetPlayerCreationAcked);
-	MH_CreateHook(hook::get_pattern("40 53 48 83 EC ? 48 8B D9 48 81 C1 ? ? ? ? E8 ? ? ? ? 84 C0 75 ? 48 8B CB"), sub_142FB5F0C, (void**)&g_sub_142FB5F0C);
-	MH_CreateHook(hook::get_pattern("40 53 48 83 EC ? 44 8A 81 ? ? ? ? 48 8B D9 41 8A D0"), sub_142FB17F8, (void**)&g_sub_142FB17F8);
 
+	MH_CreateHook(hook::get_pattern("4D 8B 04 C0 4E 39 3C 01 75 ? 33 C0 89 02", -0x39), sub_142FA454C, (void**)&g_sub_142FA454C);
 	MH_CreateHook(hook::get_pattern("33 DB 0F 29 70 D8 49 8B F9 4D 8B F0", -0x1B), GetPlayersNearPoint, (void**)&g_origGetPlayersNearPoint);
 	MH_EnableHook(MH_ALL_HOOKS);
 });
-#endif
