@@ -73,11 +73,6 @@ extern int g_playerListCountRemote;
 template<bool Onesync, bool Legacy>
 static bool Return()
 {
-	if (!Onesync && Legacy)
-	{
-		trace("called fuckass function\n ");
-		return 0;
-	}
 	return icgi->OneSyncEnabled ? Onesync : Legacy;
 }
 
@@ -380,13 +375,6 @@ static void unkRemoteBroadcast(void* a1, __int64 a2)
 	}
 }
 
-/*
-NET/LOG [2165351663:764] 3099323466
-NET/LOG [2165351663:751] 647910438
-NET/LOG [2165351663:764] 3099323466
-NET/LOG [2165351663:751] 647910438
-*/
-
 static void*(*g_sub_142FA454C)(void*, uint32_t*);
 static void* sub_142FA454C(void* self, uint32_t* oldBitset)
 {
@@ -589,7 +577,7 @@ static HookFunction hookFunction([]()
 			//{ "48 83 C4 ? 5F C3 CC 33 C0 8B D0", 87 - 4, 0x20, kMaxPlayers + 1 },
 
 			// rage::netObject::CanTargetPlayer
-			{ "83 FA ? 77 ? 8B C2 44 8B C2", 2 , 0x20, kMaxPlayers + 1},
+			///{ "83 FA ? 77 ? 8B C2 44 8B C2", 2 , 0x20, kMaxPlayers + 1},
 
 			{ "40 80 FE ? 72 ? BA ? ? ? ? C7 44 24 ? ? ? ? ? 41 B9 ? ? ? ? 48 8D 0D ? ? ? ? 41 B8 ? ? ? ? E8 ? ? ? ? 84 C0 75 ? 49 8B F7", 3, 0x20, kMaxPlayers + 1 }
 		});
@@ -651,7 +639,7 @@ static HookFunction hookFunction([]()
 			{ "80 FA ? 0F 83 ? ? ? ? 48 8B 05", 2, false },
 
 			// CNetObjProximityMigrateable::_getRelevancePlayers
-			//{ "40 80 FF ? 0F 82 ? ? ? ? 0F 28 74 24 ? 4C 8D 5C 24 ? 49 8B 5B ? 48 8B C6", 3, false },
+			{ "40 80 FF ? 0F 82 ? ? ? ? 0F 28 74 24 ? 4C 8D 5C 24 ? 49 8B 5B ? 48 8B C6", 3, false },
 
 			//CNetObjGame::CanClone
 			{ "80 7A ? ? 49 8B F8 48 8B DA 48 8B F1 72", 3, false},
@@ -678,6 +666,7 @@ static HookFunction hookFunction([]()
 
 
 			// Experimental. May need additional patches
+			/* 
 			{ "80 FB ? 72 ? 41 B9 ? ? ? ? C7 40 ? ? ? ? ? 41 B8 ? ? ? ? 48 8D 0D ? ? ? ? 8B D6", 2, false },
 			{ "83 E0 ? 8A C8 48 C1 EA ? D3 E3 40 0F B6 C5 F7 D8 33 44 96 ? 23 D8 31 5C 96 ? 48 8B 5C 24 ? 48 8B 6C 24 ? 48 8B 74 24 ? 48 83 C4 ? 5F C3 CC 48 8B C4", -60, false},
 			{ "80 7A ? ? 48 8B DA 48 8B F9 72 ? BA ? ? ? ? C7 44 24 ? ? ? ? ? 41 B9 ? ? ? ? 48 8D 0D ? ? ? ? 41 B8 ? ? ? ? E8 ? ? ? ? 84 C0 74 ? 0F B6 4B ? 8B C1 8B D1 48 C1 E8 ? 83 E2 ? 8B 44 87 ? 0F A3 D0 0F 92 C0 48 8B 5C 24 ? 48 83 C4 ? 5F C3 90 33 C0 8B D0 48 83 C1 ? 39 01 75 ? 48 FF C2 48 83 C1 ? 48 83 FA ? 7C ? C3 B0 ? C3 90", 3, false },
@@ -685,14 +674,15 @@ static HookFunction hookFunction([]()
 			{ "80 7A ? ? 48 8B DA 48 8B F9 72 ? BA ? ? ? ? C7 44 24 ? ? ? ? ? 41 B9 ? ? ? ? 48 8D 0D ? ? ? ? 41 B8 ? ? ? ? E8 ? ? ? ? 84 C0 74 ? 0F B6 4B ? 8B C1 8B D1 48 C1 E8 ? 83 E2 ? 8B 44 87 ? 0F A3 D0 0F 92 C0 48 8B 5C 24 ? 48 83 C4 ? 5F C3 90 33 C0 8B D0 48 83 C1 ? 39 01 75 ? 48 FF C2 48 83 C1 ? 48 83 FA ? 7C ? C3 B0 ? C3 CC", 3, false },
 			{ "80 7A ? ? 41 8A E8 48 8B FA 48 8B F1 BB ? ? ? ? 72 ? 41 B9 ? ? ? ? C7 40 ? ? ? ? ? 41 B8 ? ? ? ? 48 8D 0D ? ? ? ? 8B D3 E8 ? ? ? ? 84 C0 74 ? 0F B6 47 ? 8B D0 83 E0 ? 8A C8 48 C1 EA ? D3 E3 40 0F B6 C5 F7 D8 33 44 96 ? 23 D8 31 5C 96 ? 48 8B 5C 24 ? 48 8B 6C 24 ? 48 8B 74 24 ? 48 83 C4 ? 5F C3 CC 39 91", 3, false },
 			{ "80 7A ? ? 41 8A E8 48 8B FA 48 8B F1 BB ? ? ? ? 72 ? 41 B9 ? ? ? ? C7 40 ? ? ? ? ? 41 B8 ? ? ? ? 48 8D 0D ? ? ? ? 8B D3 E8 ? ? ? ? 84 C0 74 ? 0F B6 47 ? 8B D0 83 E0 ? 8A C8 48 C1 EA ? D3 E3 40 0F B6 C5 F7 D8 33 44 96 ? 23 D8 31 5C 96 ? 48 8B 5C 24 ? 48 8B 6C 24 ? 48 8B 74 24 ? 48 83 C4 ? 5F C3 CC 88 51", 3, false },
+			*/
 			//{ "80 7A ? ? 41 8A E8 48 8B FA 48 8B F1 BB ? ? ? ? 72 ? 41 B9 ? ? ? ? C7 40 ? ? ? ? ? 41 B8 ? ? ? ? 48 8D 0D ? ? ? ? 8B D3 E8 ? ? ? ? 84 C0 74 ? 0F B6 47 ? 8B D0 83 E0 ? 8A C8 48 C1 EA ? D3 E3 40 0F B6 C5 F7 D8 33 44 96 ? 23 D8 31 5C 96 ? 48 8B 5C 24 ? 48 8B 6C 24 ? 48 8B 74 24 ? 48 83 C4 ? 5F C3 CC 48 8B C4", 3, false },
 
 
 
 			// TMP Patterns. TODO: Improve and support older game builds
-			//{ "3C ? 72 ? BA ? ? ? ? C7 44 24 ? ? ? ? ? 41 B9 ? ? ? ? 48 8D 0D ? ? ? ? 41 B8 ? ? ? ? E8 ? ? ? ? 84 C0 0F 84", 1, false },
-			//{ "80 7F ? ? 72 ? BA ? ? ? ? C7 44 24 ? ? ? ? ? 41 B9 ? ? ? ? 48 8D 0D ? ? ? ? 41 B8 ? ? ? ? E8 ? ? ? ? 84 C0 74 ? 45 84 FF 74 ? 48 8B 05 ? ? ? ? 4C 8D 4C 24 ? 44 8B C6 49 8B D6 48 8B 88 ? ? ? ? 48 89 4C 24 ? 48 8B CF E8 ? ? ? ? EB ? 8A 57 ? 44 8B CE 4D 8B C6 48 8B CD E8 ? ? ? ? 84 C0 75 ? BA ? ? ? ? C7 44 24 ? ? ? ? ? 41 B9 ? ? ? ? 48 8D 0D ? ? ? ? 41 B8 ? ? ? ? E8 ? ? ? ? FE C3 80 FB ? 0F 82 ? ? ? ? 48 8B 5C 24 ? 48 8B 6C 24 ? 48 83 C4 ? 41 5F 41 5E 41 5C 5F 5E C3 CC 7C", 3, false },
-			//{ "40 80 FF ? 73 ? 48 8B 43 ? 40 0F B6 CF 48 8B 7C C8 ? 48 85 FF 74 ? 48 8B CF E8 ? ? ? ? 84 C0 74 ? 48 8B 1B 48 8B CF E8 ? ? ? ? 8B D0 44 8B CE 4C 8B C5 48 8B CB E8 ? ? ? ? EB ? 32 C0 48 8B 5C 24 ? 48 8B 6C 24 ? 48 8B 74 24 ? 48 83 C4 ? 5F C3 90 40 33 48", 3, false },
+			{ "3C ? 72 ? BA ? ? ? ? C7 44 24 ? ? ? ? ? 41 B9 ? ? ? ? 48 8D 0D ? ? ? ? 41 B8 ? ? ? ? E8 ? ? ? ? 84 C0 0F 84", 1, false },
+			{ "80 7F ? ? 72 ? BA ? ? ? ? C7 44 24 ? ? ? ? ? 41 B9 ? ? ? ? 48 8D 0D ? ? ? ? 41 B8 ? ? ? ? E8 ? ? ? ? 84 C0 74 ? 45 84 FF 74 ? 48 8B 05 ? ? ? ? 4C 8D 4C 24 ? 44 8B C6 49 8B D6 48 8B 88 ? ? ? ? 48 89 4C 24 ? 48 8B CF E8 ? ? ? ? EB ? 8A 57 ? 44 8B CE 4D 8B C6 48 8B CD E8 ? ? ? ? 84 C0 75 ? BA ? ? ? ? C7 44 24 ? ? ? ? ? 41 B9 ? ? ? ? 48 8D 0D ? ? ? ? 41 B8 ? ? ? ? E8 ? ? ? ? FE C3 80 FB ? 0F 82 ? ? ? ? 48 8B 5C 24 ? 48 8B 6C 24 ? 48 83 C4 ? 41 5F 41 5E 41 5C 5F 5E C3 CC 7C", 3, false },
+			{ "40 80 FF ? 73 ? 48 8B 43 ? 40 0F B6 CF 48 8B 7C C8 ? 48 85 FF 74 ? 48 8B CF E8 ? ? ? ? 84 C0 74 ? 48 8B 1B 48 8B CF E8 ? ? ? ? 8B D0 44 8B CE 4C 8B C5 48 8B CB E8 ? ? ? ? EB ? 32 C0 48 8B 5C 24 ? 48 8B 6C 24 ? 48 8B 74 24 ? 48 83 C4 ? 5F C3 90 40 33 48", 3, false },
 		};
 
 		for (auto& entry : list)
@@ -731,9 +721,11 @@ static HookFunction hookFunction([]()
 		// 0x20: scratch space
 		// kMaxPlayers + 1 * 8: kMaxPlayers players, ptr size
 		// kMaxPlayers + 1 * 4: kMaxPlayers players, int size
-		auto stackSize = (0x20 + (kMaxPlayers + 1 * 8) + (kMaxPlayers + 1 * 4));
 		auto ptrsBase = 0x20;
-		auto intsBase = ptrsBase + (kMaxPlayers + 1 * 8);
+		auto rawStackSize = (ptrsBase + ((kMaxPlayers + 1) * 8) + ((kMaxPlayers + 1) * 4));
+		auto intsBase = ptrsBase + ((kMaxPlayers + 1) * 8);
+		// Ensure that we are aligned to 16
+		auto stackSize = (rawStackSize + 15) & ~0xF;
 
 		// stack frame ENTER
 		hook::put<uint32_t>(location + 0x18, stackSize);
@@ -750,9 +742,11 @@ static HookFunction hookFunction([]()
 		// 0x20: scratch space
 		// kMaxPlayers + 1 * 8: kMaxPlayers players, ptr size
 		// kMaxPlayers + 1 * 4: kMaxPlayers players, int size
-		auto stackSize = (0x20 + (kMaxPlayers + 1 * 8) + (kMaxPlayers + 1 * 4));
 		auto ptrsBase = 0x20;
+		auto rawStackSize = (ptrsBase + ((kMaxPlayers + 1) * 8) + ((kMaxPlayers + 1) * 4));
 		auto intsBase = ptrsBase + (kMaxPlayers + 1 * 8);
+		// Ensure that we are aligned to 16
+		auto stackSize = (rawStackSize + 15) & ~0xF;
 
 		// stack frame ENTER
 		hook::put<uint32_t>(location + 0x18, stackSize);
@@ -761,6 +755,10 @@ static HookFunction hookFunction([]()
 		// var: rsp + 1A8
 		hook::put<uint32_t>(location + 0x211, intsBase);
 	}
+
+	hook::call(hook::get_pattern("E8 ? ? ? ? 45 33 C9 84 C0 41 0F 94 C5"), Return<true, true>);
+	hook::call(hook::get_pattern("E8 ? ? ? ? 84 C0 0F 84 ? ? ? ? 48 8B 0D ? ? ? ? E8 ? ? ? ? 41 F6 46"), Return<true, true>);
+	hook::call(hook::get_pattern("E8 ? ? ? ? 84 C0 0F 84 ? ? ? ? 8A 5C 24"), Return<true, true>);
 
 	// Skip unused host kick related >32-unsafe arrays in onesync
 	//hook::call(hook::get_pattern("E8 ? ? ? ? 84 C0 75 ? 8B 05 ? ? ? ? 33 C9 89 44 24"), Return<true, false>);
