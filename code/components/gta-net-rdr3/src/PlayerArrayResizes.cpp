@@ -19,7 +19,7 @@
 #include <CoreConsole.h>
 
 static const uint8_t kMaxPlayers = 128; // 32;
-static const uint16_t kObjectId = std::numeric_limits<uint16_t>::max();
+static const uint16_t kMaxObjects = std::numeric_limits<uint16_t>::max();
 
 #define MAKE_HOOK(name, ret_type, args, call_args)         \
 	static ret_type(*g_orig_##name) args;                  \
@@ -46,25 +46,35 @@ namespace rage
 	using Vec3V = DirectX::XMVECTOR;
 }
 
-// Expanded bitsets to handle increased players
-std::unordered_map<uint8_t, std::array<uint32_t, 4>> g_player96CBitset;
-std::unordered_map<uint8_t, std::array<uint32_t, 4>> g_player968Bitset;
-
 //std::array<std::bitset<128>, 128> g_netPlayerVisiblePlayers;
 uint32_t g_playerFocusPositionUpdateBitset[4];
-uint32_t g_netPlayerVisiblePlayers[kMaxPlayers][4];
 uint32_t g_netPlayerCreationAcked[4];
 
 // Object player related bitsets that aren't >32 safe
 std::unordered_map<uint16_t, std::array<uint32_t, 4>> g_objCreationAckedPlayers;
 std::unordered_map<uint8_t, rage::Vec3V> g_playerFocusPositions;
 
-MAKE_HOOK(seamlessnetcheck, void*, (void* a1), (a1));
-MAKE_HOOK(UpdateObjectOnAllPlayers, int, (void* a1, void* a2, void* a3, void* a4, char a5), (a1, a2, a3, a4, a5));
-MAKE_HOOK(sub_140EB7EFC, __int64, (void* a1), (a1));
-MAKE_HOOK(sub_140867C30, __int64, (void* a1, char a2), (a1, a2));
-MAKE_HOOK_LOG(getPhysicalIndex, uint8_t, (void* a1), (a1));
-MAKE_HOOK(sub_14259BA94, void, (void* a1, void* a2), (a1, a2));
+
+// Extend bitsets to handle more then 32 players at a time
+constexpr size_t kBitsPerWord = 32;
+constexpr size_t kBitsetArraySize = (kMaxPlayers / 2^4) / kBitsPerWord;
+using PlayerBitset = uint32_t[kMaxPlayers][kBitsetArraySize];
+using ObjectBitset = uint32_t[kMaxObjects][kBitsetArraySize];
+
+PlayerBitset g_player96CBitset;
+PlayerBitset g_player968Bitset;
+PlayerBitset g_netPlayerVisiblePlayers;
+
+
+
+
+
+
+
+
+
+
+
 extern ICoreGameInit* icgi;
 extern CNetGamePlayer* g_players[256];
 extern CNetGamePlayer* g_playerListRemote[256];
@@ -317,48 +327,81 @@ static int GetPlayersNearPoint(rage::Vec3V* point, uint32_t unkIndex, void* outI
 static bool (*g_origNetobjIsPlayerAcknowledged)(rage::netObject*, CNetGamePlayer*);
 static bool netObject__IsPlayerAcknowledged(rage::netObject* object, CNetGamePlayer* player)
 {
-	trace("netObject__IsPlayerAcknowledged %i %i\n", object->GetObjectId(), player->physicalPlayerIndex());
+	console::DPrintf("scope", "netObject__IsPlayerAcknowledged %i %i\n", object->GetObjectId(), player->physicalPlayerIndex());
 
+	uint8_t physicalIndex = player->physicalPlayerIndex();
+	if (!icgi->OneSyncEnabled || physicalIndex < 32)
 	{
 		return g_origNetobjIsPlayerAcknowledged(object, player);
 	}
 
-	uint8_t physicalIndex = player->physicalPlayerIndex();
-	if (physicalIndex >= kMaxPlayers + 1)
+	if (physicalIndex == rage::GetLocalPlayer()->physicalPlayerIndex())
 	{
-		return false;
+		return true;
 	}
-
-	int index = physicalIndex >> 5;
-	uint32_t objectId = object->GetObjectId();
-	uint32_t creationAckedPlayer = g_objCreationAckedPlayers[objectId][index];
-	bool result = (creationAckedPlayer >> (physicalIndex & 0x1F)) & 1;
-
-	return result;	
+	return false;
 }
 
 static uint32_t (*g_origNetObjectSetPlayerCreationAcked)(rage::netObject*, CNetGamePlayer*, uint8_t);
 static uint32_t netObject__setPlayerCreationAcked(rage::netObject* object, CNetGamePlayer* player, uint8_t playerIndex)
 {
-	trace("setPlayerCreationAcked %i %i %i\n", object->GetObjectId(), player->physicalPlayerIndex(), playerIndex);
-
-	if (playerIndex < 0x20)
+	console::DPrintf("scope", "setPlayerCreationAcked %i %i %i\n", object->GetObjectId(), player->physicalPlayerIndex(), playerIndex);
+	// Allow non-onesync and index 31 to behave as intended
+	if (!icgi->OneSyncEnabled || playerIndex < 0x20)
 	{
 		return g_origNetObjectSetPlayerCreationAcked(object, player, playerIndex);
 	}
 
-	if (playerIndex >= kMaxPlayers + 1)
+	// If we are the local player we already acknowledge the creation
+	if (playerIndex == rage::GetLocalPlayer()->physicalPlayerIndex())
+	{
+		// return value isn't used anywhere in onesync logic
+		return 1;
+	}
+	return 0;
+}
+
+static uint32_t (*g_origSetPendingRemovalByPlayer)(rage::netObject*, CNetGamePlayer*, uint8_t);
+static uint32_t netObject__setPendingRemovalByPlayer(rage::netObject* object, CNetGamePlayer* player, uint8_t newState)
+{
+	uint8_t physicalIndex = player->physicalPlayerIndex();
+	if (!icgi->OneSyncEnabled || physicalIndex < 0x20)
+	{
+		return g_origSetPendingRemovalByPlayer(object, player, newState);
+	}
+
+	return 0;
+}
+
+static bool (*g_origIsPendingRemovalByPlayer)(rage::netObject*, CNetGamePlayer*);
+static bool netObject__isPendingRemovalByPlayer(rage::netObject* object, CNetGamePlayer* player)
+{
+	uint8_t physicalIndex = player->physicalPlayerIndex();
+	// Allow non-onesync and index 31 to behave as intended
+	if (!icgi->OneSyncEnabled || physicalIndex < 0x20)
+	{
+		return g_origIsPendingRemovalByPlayer(object, player);
+	}
+
+	// If we are the local player we don't care about this result ever
+	if (physicalIndex == rage::GetLocalPlayer()->physicalPlayerIndex())
 	{
 		return false;
 	}
 
-	int index = player->physicalPlayerIndex() >> 5;
-	int bit = player->physicalPlayerIndex() & 0x1F;
-	uint32_t objectId = object->GetObjectId();
+	return false;
+}
 
-	uint32_t result = g_objCreationAckedPlayers[objectId][index] ^ static_cast<uint32_t>(-playerIndex);
-	g_objCreationAckedPlayers[objectId][index] ^= result & (1u << bit);
-	return result;
+static uint32_t (*g_netObject__setScopeState)(rage::netObject*, CNetGamePlayer*);
+static uint32_t netObject__setScopeState(rage::netObject* object, CNetGamePlayer* player)
+{
+	if (!icgi->OneSyncEnabled || player->physicalPlayerIndex() < 0x20)
+	{
+		return g_netObject__setScopeState(object, player);
+	}
+
+	//TODO: Proper handling, the getter is inlined
+	return 0;
 }
 
 static hook::cdecl_stub<bool(CNetGamePlayer*)> isNetPlayerLocal([]()
@@ -545,7 +588,6 @@ static HookFunction hookFunction([]()
 	}
 #endif
 
-#if 0
 	// Patch CNetworkDamageTracker
 	{
 		// 32/31 comparsions
@@ -554,7 +596,6 @@ static HookFunction hookFunction([]()
 			{"80 7A ? ? 48 8B F9 72", 3, 0x20, kMaxPlayers + 1}
 		});
 	}
-#endif
 
 	// Patch netObject to account for >32 players
 	{
@@ -624,9 +665,7 @@ static HookFunction hookFunction([]()
 			// CPedCreateGroupNode related
 			//{ "E8 ? ? ? ? 48 8B C8 E8 ? ? ? ? 8B F8 83 F8", 17, true },
 
-
 			// Related to CNetworkPopulationResetMgr
-
 			{ "40 80 FF ? 73 ? 48 8B 4E", 3, false},
 			{ "80 FB ? 72 ? 48 8B 5C 24 ? 48 8B 6C 24 ? 48 8B 74 24 ? 48 8B 7C 24", 2, false},
 			{ "80 FB ? 72 ? 48 8B 5C 24 ? 48 8B 6C 24 ? 48 8B 74 24 ? 48 83 C4 ? 41 5F 41 5E 41 5D 41 5C 5F C3 83 FA", 2, false },
@@ -637,6 +676,8 @@ static HookFunction hookFunction([]()
 			// Ped Combat related
 			{ "80 FA ? 72 ? BA ? ? ? ? C7 44 24 ? ? ? ? ? 41 B9 ? ? ? ? 48 8D 0D ? ? ? ? 41 B8 ? ? ? ? E8 ? ? ? ? 84 C0 74 ? 0F B6 C3 BA", 2, false },
 			{ "80 FA ? 0F 83 ? ? ? ? 48 8B 05", 2, false },
+			//{ "41 80 FE ? 73 ? 45 33 C0", 1, false },
+			{ "80 3B ? 73 ? 48 8B CE", 2, false },
 
 			// CNetObjProximityMigrateable::_getRelevancePlayers
 			{ "40 80 FF ? 0F 82 ? ? ? ? 0F 28 74 24 ? 4C 8D 5C 24 ? 49 8B 5B ? 48 8B C6", 3, false },
@@ -696,7 +737,7 @@ static HookFunction hookFunction([]()
 	}
 
 	// Replace 32 array iterations
-#if 0
+#if 1
 	{
 		std::initializer_list<PatternClampPair> list = {
 			// Player Cache Data Initalization
@@ -773,10 +814,15 @@ static HookFunction hookFunction([]()
 	MH_CreateHook(hook::get_pattern("0F A3 D0 0F 92 C0 88 06", -0x76), GetPlayerFocusPosition, (void**)&g_origGetNetPlayerRelevancePosition);
 	MH_CreateHook(hook::get_call(hook::get_pattern("8B 84 93 ? ? ? ? 0F AB C8 89 84 93 ? ? ? ? 48 8B D7", 28)), UpdatePlayerFocusPosition, (void**)&g_origUpdatePlayerFocusPosition);
 
-	// netObj player acknowledge bitset. Capped to 32 bits. Need 128
-	// Breaks badly. Not sure if we need to patch this either since 31 is almost always passed to it
-	//MH_CreateHook(hook::get_call(hook::get_pattern("E8 ? ? ? ? 40 8A FB 84 C0 74")), netObject__IsPlayerAcknowledged, (void**)&g_origNetobjIsPlayerAcknowledged);
-	//MH_CreateHook(hook::get_call(hook::get_pattern("E8 ? ? ? ? EB ? 47 85 0C 86")), netObject__setPlayerCreationAcked, (void**)&g_origNetObjectSetPlayerCreationAcked);
+	// Adapt network entity bitset logic to ensure unexpected behaviour does not occur
+	// creation
+	MH_CreateHook(hook::get_call(hook::get_pattern("E8 ? ? ? ? 40 8A FB 84 C0 74")), netObject__IsPlayerAcknowledged, (void**)&g_origNetobjIsPlayerAcknowledged);
+	MH_CreateHook(hook::get_call(hook::get_pattern("E8 ? ? ? ? EB ? 47 85 0C 86")), netObject__setPlayerCreationAcked, (void**)&g_origNetObjectSetPlayerCreationAcked);
+	// removal?
+	MH_CreateHook(hook::get_call(hook::get_pattern("E8 ? ? ? ? 33 FF 84 C0 75 ? 8A 4B")), netObject__isPendingRemovalByPlayer, (void**)&g_origIsPendingRemovalByPlayer);
+	MH_CreateHook(hook::get_call(hook::get_pattern("E8 ? ? ? ? EB ? 45 84 FF 74 ? 48 8D 4C 24")), netObject__setPendingRemovalByPlayer, (void**)&g_origSetPendingRemovalByPlayer);
+	// scope
+	MH_CreateHook(hook::get_pattern("48 8B C4 48 89 58 ? 48 89 68 ? 48 89 70 ? 48 89 78 ? 41 56 48 83 EC ? 8A 5A"), netObject__setScopeState, (void**)&g_netObject__setScopeState);
 
 	MH_CreateHook(hook::get_pattern("4D 8B 04 C0 4E 39 3C 01 75 ? 33 C0 89 02", -0x39), sub_142FA454C, (void**)&g_sub_142FA454C);
 	MH_CreateHook(hook::get_pattern("33 DB 0F 29 70 D8 49 8B F9 4D 8B F0", -0x1B), GetPlayersNearPoint, (void**)&g_origGetPlayersNearPoint);
