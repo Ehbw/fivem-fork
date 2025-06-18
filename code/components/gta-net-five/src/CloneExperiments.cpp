@@ -1128,7 +1128,6 @@ static hook::cdecl_stub<float*(float*, CNetGamePlayer*, void*, bool)> getNetPlay
 		return hook::get_pattern("45 33 FF 48 85 C0 0F 84 5B 01 00 00", -0x34);
 	}
 });
-#elif IS_RDR3
 #endif
 
 #ifdef GTA_FIVE
@@ -1920,11 +1919,6 @@ static HookFunction hookFunction([]()
 #ifdef GTA_FIVE
 	// getnetplayerped 32 cap
 	hook::nop(hook::get_pattern("83 F9 1F 77 26 E8", 3), 2);
-#endif
-
-#ifdef IS_RDR3
-	// in RDR3 net player relevance position is cached in array indexed with physical player index, we need to patch it
-	//MH_CreateHook((xbr::IsGameBuildOrGreater<1436>()) ? hook::get_pattern("0F A3 D0 0F 92 C0 88 06", -0x76) : hook::get_pattern("44 0F A3 C0 0F 92 C0 41 88 02", -0x32), getNetPlayerRelevancePosition, (void**)&g_origGetNetPlayerRelevancePosition);
 #endif
 
 	// always allow to migrate, even if not cloned on bit test

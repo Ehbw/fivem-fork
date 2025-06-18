@@ -318,7 +318,27 @@ static HookFunction hookFunction([]
 		hook::jump_reg<5>(location, patchStub2.GetCode());
 	}
 
+	// Patch netObjectMgrBase::_UpdateAllInScopeStateImmediately
+	{
+		auto location = hook::get_pattern("74 ? 8B 83 ? ? ? ? EB ? 33 C0 84 C9 74 ? 48 81 C3 ? ? ? ? EB ? 33 DB 85 C0 74 ? 8B F0");
+
+		static struct : jitasm::Frontend
+		{
+			uintptr_t retnFail;
+			uintptr_t retnSuccess;
+
+			void Init(uintptr_t success, uintptr_t fail)
+			{
+
+			}
+
+			virtual void InternalMain() override
+			{
+
+			}
+		} patchStub3;
+	}
+
 	//TODO: PATCH 0x142C0B750/sub_142C0B718 rage::netInterface::m_PlayerMgr->m_numRemotePhysicalPlayers
 	//TODO: VERIFY IF sub_142C131A0 IS NEEDED TO BE PATCHED
-
 });
