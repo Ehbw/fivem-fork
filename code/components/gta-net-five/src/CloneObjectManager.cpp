@@ -19,6 +19,12 @@
 
 static ICoreGameInit* icgi;
 
+#ifdef IS_RDR3
+// Used to properly support extended physical Indexes in RDR3
+extern void ClearNetObject(rage::netObject* object);
+extern void SetupNetObject(rage::netObject* object);
+#endif
+
 extern void CD_AllocateSyncData(uint16_t objectId);
 extern void CD_FreeSyncData(uint16_t objectId);
 
@@ -57,6 +63,10 @@ static void netObjectMgrBase__RegisterNetworkObject(rage::netObjectMgr* manager,
 		}
 	}
 
+#ifdef IS_RDR3
+	SetupNetObject(object);
+#endif
+
 	object->OnRegistered();
 }
 
@@ -81,6 +91,10 @@ static void netObjectMgrBase__DestroyNetworkObject(rage::netObjectMgr* manager, 
 		{
 			ObjectIds_ReturnObjectId(object->GetObjectId());
 		}
+
+#ifdef IS_RDR3
+		ClearNetObject(object);
+#endif
 
 		delete object;
 	}

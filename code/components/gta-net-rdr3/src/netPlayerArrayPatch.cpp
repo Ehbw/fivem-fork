@@ -133,13 +133,10 @@ static HookFunction hookFunction([]
 		const uintptr_t retnFail = patch + 19; // 142C0C208
 		const uintptr_t retnSuccess = retnFail + 2; // 0x142C0C20A
 
-		assert((uintptr_t)0x142C0C208 == retnFail);
-		assert((uintptr_t)0x142C0C20A == retnSuccess);
-
 		patchStub.Init(retnSuccess, retnFail);
 
 		hook::nop(patch, 19);
-		hook::nop(hook::get_pattern("48 81 C7 ? ? ? ? EB ? 33 FF 33 F6 85 ED 74 ? 48 8B 1F 49 8B CE 48 8B D3 E8 ? ? ? ? 84 C0 74 ? 49 8B 06 49 8B CE 0F B6 5B ? FF 50 ? 48 8B C8 8B D3 E8 ? ? ? ? 84 C0 74 ? FF C6 48 83 C7 ? 3B F5 72 ? B0 ? 48 8B 5C 24 ? 48 8B 6C 24 ? 48 8B 74 24 ? 48 8B 7C 24 ? 48 83 C4 ? 41 5E C3 32 C0 EB ? 90"), 7);
+		hook::nop(retnSuccess + 4, 7);
 		hook::jump_reg<5>(patch, patchStub.GetCode());
 	}
 
@@ -179,7 +176,7 @@ static HookFunction hookFunction([]
 				push(rax);
 				mov(r11, reinterpret_cast<uintptr_t>(&GetPlayersRemote));
 				call(r11);
-				mov(rbx, rax); // reinterpret_cast<uintptr_t>(g_playerListRemote));
+				mov(rbx, rax);
 				pop(rax);
 
 				test(dl, dl);
@@ -190,10 +187,6 @@ static HookFunction hookFunction([]
 				call(r11);
 				mov(ecx, eax);
 				pop(rax);
-
-				/*mov(r14, reinterpret_cast<uintptr_t>(&g_playerListCountRemote));
-				mov(ecx, dword_ptr[r14]);
-				*/
 
 				mov(r11, retnSuccess);
 				jmp(r11);
@@ -206,10 +199,6 @@ static HookFunction hookFunction([]
 
 		const uintptr_t retnFail = (uintptr_t)location + 19;
 		const uintptr_t retnSuccess = retnFail + 2;
-
-		// TMP ASSERTS
-		assert(0x142C1D4A2 == retnSuccess);
-		assert(0x142C1D4A0 == retnFail);
 
 		patchStub.Init(retnSuccess, retnFail);
 
@@ -282,15 +271,10 @@ static HookFunction hookFunction([]
 				movzx(eax, bl);
 				push(rcx);
 
-				//sub(rsp, 0x28);
-				//mov(qword_ptr[rsp + 0x20], rax);
-
 				mov(rcx, rax);
 				mov(r11, reinterpret_cast<uintptr_t>(&GetPlayerByIndex));
 				call(r11);
 
-				//mov(rax, qword_ptr[rsp + 0x20]);
-				//add(rsp, 0x28);
 				mov(rsi, rax);
 
 				pop(rcx);
@@ -339,6 +323,8 @@ static HookFunction hookFunction([]
 		} patchStub3;
 	}
 
-	//TODO: PATCH 0x142C0B750/sub_142C0B718 rage::netInterface::m_PlayerMgr->m_numRemotePhysicalPlayers
-	//TODO: VERIFY IF sub_142C131A0 IS NEEDED TO BE PATCHED
+
+	// 0x142394CEC: patched
+	//
+
 });
