@@ -66,15 +66,12 @@ static bool netObject__IsPlayerAcknowledged(rage::netObject* object, CNetGamePla
 	int bit = physicalIndex % 32;
 	uint32_t bitset = g_netObjAcknowledgement[object->GetObjectId()][index];
 
-	trace("is player acknowledged %i %i %i\n", object->GetObjectId(), physicalIndex, (bitset >> bit) & 1);
-
 	return (bitset >> bit) & 1;
 }
 
 static uint32_t (*g_origNetObjectSetPlayerAcknowledged)(rage::netObject*, CNetGamePlayer*, bool);
 static uint32_t netObject__setPlayerAcknowledged(rage::netObject* object, CNetGamePlayer* player, bool state)
 {
-	console::DPrintf("onesync", "setPlayerCreationAcked %i %i %i\n", object->GetObjectId(), player->physicalPlayerIndex(), state);
 	uint8_t physicalIndex = player->physicalPlayerIndex();
 
 	// Allow non-onesync and index 31 to behave as intended
