@@ -119,211 +119,7 @@ bool ConsoleHasKeyboard()
 }
 
 
-#ifndef IS_LAUNCHER
-static uintptr_t g_vtbl_grcTexture = 0;
-static uint32_t g_pointSamplerState;
-static rage::grcTexture* g_fontTexture;
-
-static void RenderDrawListInternal(ImDrawList* drawList, ImDrawData* refData)
-{
-	ImGuiIO& io = ImGui::GetIO();
-#ifndef _HAVE_GRCORE_NEWSTATES
-	SetRenderState(0, grcCullModeNone);
-	SetRenderState(2, 0); // alpha blending m8
-
-	GetD3D9Device()->SetSamplerState(0, D3DSAMP_MAGFILTER, D3DTEXF_POINT);
-	GetD3D9Device()->SetSamplerState(0, D3DSAMP_MINFILTER, D3DTEXF_POINT);
-	GetD3D9Device()->SetRenderState(D3DRS_SCISSORTESTENABLE, TRUE);
-#else
-	auto oldRasterizerState = GetRasterizerState();
-	SetRasterizerState(GetStockStateIdentifier(RasterizerStateNoCulling));
-
-	auto oldBlendState = GetBlendState();
-	SetBlendState(GetStockStateIdentifier(BlendStateDefault));
-
-	auto oldDepthStencilState = GetDepthStencilState();
-	SetDepthStencilState(GetStockStateIdentifier(DepthStencilStateNoDepth));
-#endif
-	
-	if (refData->Textures != nullptr)
-	{
-		for (ImTextureData* texture : *refData->Textures)
-		{
-			if (texture->Status != ImTextureStatus_OK)
-			{
-				ImGui_ImplDX11_UpdateTexture(texture);
-			}
-		}
-	}
-
-#ifdef GTA_FIVE
-	ImGui_ImplDX11_Data* bd = ImGui::GetCurrentContext() ? (ImGui_ImplDX11_Data*)ImGui::GetIO().BackendRendererUserData : nullptr;
-	if (!bd)
-	{
-		return;
-	}
-
-	ImGuiPlatformIO& platform_io = ImGui::GetPlatformIO();
-	ImGui_ImplDX11_RenderState render_state;
-	render_state.Device = bd->pd3dDevice;
-	render_state.DeviceContext = bd->pd3dDeviceContext;
-	render_state.SamplerDefault = bd->pFontSampler;
-	render_state.VertexConstantBuffer = bd->pVertexConstantBuffer;
-	platform_io.Renderer_RenderState = &render_state;
-#endif
-
-	size_t idxOff = 0;
-
-	for (auto& cmd : drawList->CmdBuffer)
-	{
-		if (cmd.UserCallback != nullptr)
-		{
-			cmd.UserCallback(nullptr, &cmd);
-		}
-		else
-		{
-			ImTextureID texId = cmd.GetTexID();
-
-			if (*(uintptr_t*)texId == g_vtbl_grcTexture)
-			{
-				SetTextureGtaIm(*(rage::grcTexture**)texId);
-			}
-			else
-			{
-				SetTextureGtaIm(rage::grcTextureFactory::GetNoneTexture());
-			}
-
-			PushDrawBlitImShader();
-
-			for (int s = 0; s < cmd.ElemCount; s += 2046)
-			{
-				int c = std::min(cmd.ElemCount - s, uint32_t(2046));
-				rage::grcBegin(3, c);
-
-				// trace("imgui draw %d tris\n", cmd.ElemCount);
-
-				for (int i = 0; i < c; i++)
-				{
-					auto& vertex = drawList->VtxBuffer.Data[drawList->IdxBuffer.Data[i + idxOff]];
-					auto color = vertex.col;
-
-					if (!rage::grcTexture::IsRenderSystemColorSwapped())
-					{
-						color = (color & 0xFF00FF00) | _rotl(color & 0x00FF00FF, 16);
-					}
-
-					rage::grcVertex(vertex.pos.x - refData->DisplayPos.x, vertex.pos.y - refData->DisplayPos.y, 0.0f, 0.0f, 0.0f, -1.0f, color, vertex.uv.x, vertex.uv.y);
-				}
-
-				idxOff += c;
-
-#if defined(GTA_FIVE)
-				// set scissor rects here, as they might be overwritten by a matrix push
-				D3D11_RECT scissorRect;
-				scissorRect.left = cmd.ClipRect.x - refData->DisplayPos.x;
-				scissorRect.top = cmd.ClipRect.y - refData->DisplayPos.y;
-				scissorRect.right = cmd.ClipRect.z - refData->DisplayPos.x;
-				scissorRect.bottom = cmd.ClipRect.w - refData->DisplayPos.y;
-
-				GetD3D11DeviceContext()->RSSetScissorRects(1, &scissorRect);
-#else
-				SetScissorRect(cmd.ClipRect.x - refData->DisplayPos.x, cmd.ClipRect.y - refData->DisplayPos.y, cmd.ClipRect.z - refData->DisplayPos.x, cmd.ClipRect.w - refData->DisplayPos.y);
-#endif
-
-				rage::grcEnd();
-			}
-
-			PopDrawBlitImShader();
-		}
-	}
-
-#ifdef _HAVE_GRCORE_NEWSTATES
-	SetRasterizerState(oldRasterizerState);
-
-	SetBlendState(oldBlendState);
-
-	SetDepthStencilState(oldDepthStencilState);
-#else
-	GetD3D9Device()->SetSamplerState(0, D3DSAMP_MAGFILTER, D3DTEXF_ANISOTROPIC);
-	GetD3D9Device()->SetSamplerState(0, D3DSAMP_MINFILTER, D3DTEXF_ANISOTROPIC);
-	GetD3D9Device()->SetRenderState(D3DRS_SCISSORTESTENABLE, FALSE);
-#endif
-
-	delete drawList;
-
-#if defined(GTA_FIVE)
-	{
-		D3D11_RECT scissorRect;
-		scissorRect.left = 0.0f;
-		scissorRect.top = 0.0f;
-		scissorRect.right = 1.0f;
-		scissorRect.bottom = 1.0f;
-
-		GetD3D11DeviceContext()->RSSetScissorRects(1, &scissorRect);
-	}
-
-	platform_io.Renderer_RenderState = nullptr;
-#else
-	SetScissorRect(0, 0, 0x1FFF, 0x1FFF);
-#endif
-}
-
-static void RenderDrawLists(ImDrawData* drawData)
-{
-	if (!drawData->Valid)
-	{
-		return;
-	}
-
-	for (int i = 0; i < drawData->CmdListsCount; i++)
-	{
-		ImDrawList* drawList = drawData->CmdLists[i];
-		ImDrawList* grDrawList = drawList->CloneOutput();
-
-		if (IsOnRenderThread())
-		{
-			RenderDrawListInternal(grDrawList, drawData);
-		}
-		else
-		{
-			uintptr_t argRef = (uintptr_t)grDrawList;
-			uintptr_t argRefB = (uintptr_t)drawData;
-
-			EnqueueGenericDrawCommand([](uintptr_t a, uintptr_t b)
-			{
-				RenderDrawListInternal((ImDrawList*)a, (ImDrawData*)b);
-			},
-			&argRef, &argRefB);
-		}
-	}
-}
-
-static void CreateFontTexture()
-{
-	ImGuiIO& io = ImGui::GetIO();
-	unsigned char* pixels;
-	int width, height;
-	io.Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
-
-	rage::grcTextureReference reference;
-	memset(&reference, 0, sizeof(reference));
-	reference.width = width;
-	reference.height = height;
-	reference.depth = 1;
-	reference.stride = width * 4;
-#ifdef GTA_NY
-	reference.format = 1;
-#else
-	reference.format = 1;
-#endif
-	reference.pixelData = (uint8_t*)pixels;
-
-	rage::grcTexture* texture = rage::grcTextureFactory::getInstance()->createImage(&reference, nullptr);
-	g_fontTexture = texture;
-
-	//io.Fonts->TexID = (void*)g_fontTexture->srv;
-}
-#else
+#ifdef IS_LAUNCHER
 DLL_EXPORT fwEvent<ImDrawData*> OnRenderImDrawData;
 
 static void RenderDrawLists(ImDrawData* drawData)
@@ -427,9 +223,7 @@ DLL_EXPORT void OnConsoleFrameDraw(int width, int height)
 
 	ImGuiIO& io = ImGui::GetIO();
 
-#ifdef GTA_FIVE
 	HandleFxDKInput(io);
-#endif
 
 	io.MouseDrawCursor = ConsoleHasMouse();
 
@@ -573,6 +367,7 @@ static void BuildFont(float scale)
 {
 	auto& io = ImGui::GetIO();
 	io.Fonts->Clear();
+	// ImGui asserts if Font Tex is already invalid
 	if (io.Fonts->TexData)
 	{
 		io.Fonts->SetTexID(nullptr);
@@ -631,10 +426,14 @@ extern ImGuiKey ImGui_ImplWin32_KeyEventToImGuiKey(WPARAM wParam, LPARAM lParam)
 
 static HookFunction initFunction([]()
 {
+	// Don't setup ImGUI if disable rendering is set
+#ifdef DISABLE_RENDERING
+	return;
+#endif
+
 	ImGui::CreateContext();
 
 	ImGuiIO& io = ImGui::GetIO();
-	(void)io;
 	io.ConfigDockingWithShift = true;
 	io.ConfigWindowsResizeFromEdges = true;
 	io.ConfigWindowsMoveFromTitleBarOnly = true;
@@ -850,12 +649,5 @@ static void WINAPI ReleaseCaptureStub()
 
 static HookFunction hookFunction([]()
 {
-#ifdef GTA_FIVE
-	g_vtbl_grcTexture = hook::get_address<uintptr_t>(hook::get_pattern("48 8D 05 ? ? ? ? 33 D2 48 89 07", 3));
-
-	trace("g_vtbl_grcTexture %p\n", (void*)hook::get_adjusted(g_vtbl_grcTexture));
-#elif IS_RDR3
-
-#endif
 	g_origReleaseCapture = (decltype(g_origReleaseCapture))hook::iat("user32.dll", ReleaseCaptureStub, "ReleaseCapture");
 });

@@ -1,3 +1,6 @@
+// Based on commit 6af6cec23fdb5d3cb1ea5a9394bebd25f018dc84 in docking branch for version v1.92.0-docking
+// https://github.com/ocornut/imgui/blob/docking/backends/imgui_impl_dx11.cpp
+
 // dear imgui: Renderer Backend for DirectX11
 // This needs to be used along with a Platform Backend (e.g. Win32)
 
@@ -74,12 +77,39 @@ struct ImGui_ImplDX11_Texture
 	ID3D11ShaderResourceView* pTextureView;
 };
 
+struct ImGui_ImplDX11_Data
+{
+	ID3D11Device* pd3dDevice;
+	ID3D11DeviceContext* pd3dDeviceContext;
+	IDXGIFactory* pFactory;
+	ID3D11Buffer* pVB;
+	ID3D11Buffer* pIB;
+	ID3D11VertexShader* pVertexShader;
+	ID3D11InputLayout* pInputLayout;
+	ID3D11Buffer* pVertexConstantBuffer;
+	ID3D11PixelShader* pPixelShader;
+	ID3D11SamplerState* pFontSampler;
+	ID3D11RasterizerState* pRasterizerState;
+	ID3D11BlendState* pBlendState;
+	ID3D11DepthStencilState* pDepthStencilState;
+	int VertexBufferSize;
+	int IndexBufferSize;
+	ImVector<DXGI_SWAP_CHAIN_DESC> SwapChainDescsForViewports;
+
+	ImGui_ImplDX11_Data()
+	{
+		memset((void*)this, 0, sizeof(*this));
+		VertexBufferSize = 5000;
+		IndexBufferSize = 10000;
+	}
+};
+
 struct VERTEX_CONSTANT_BUFFER_DX11
 {
 	float mvp[4][4];
 };
 
-// Added to maintain compatability with conhost-v2/ConsoleHostImpl
+// CFX: Added to maintain compatability with conhost-v2/ConsoleHostImpl
 ID3D11DeviceContext* g_pd3dDeviceContext = NULL;
 
 // Backend data stored in io.BackendRendererUserData to allow support for multiple Dear ImGui contexts
@@ -312,7 +342,12 @@ void ImGui_ImplDX11_RenderDrawData(ImDrawData* draw_data)
 				device->RSSetScissorRects(1, &r);
 
 				// Bind texture, Draw
-				// CFX, Check if texture is our custom ImGuiGrcTexture and handle appropriately.
+				// CFX, Check if texture is our custom ImGuiGrcTexture and handle appropriately.#
+#ifdef USE_SHARED_DLL
+				void* texture = (void*)pcmd->GetTexID();
+				ID3D11ShaderResourceView* texture_srv = (ID3D11ShaderResourceView*)texture;
+				device->PSSetShaderResources(0, 1, &texture_srv);
+#else
 				void* texture = (void*)pcmd->GetTexID();
 				if (ConHost::ImGuiGrcTexture::IsTexture(texture))
 				{
@@ -323,6 +358,7 @@ void ImGui_ImplDX11_RenderDrawData(ImDrawData* draw_data)
 					ID3D11ShaderResourceView* texture_srv = (ID3D11ShaderResourceView*)texture;
 					device->PSSetShaderResources(0, 1, &texture_srv);
 				}
+#endif
 				device->DrawIndexed(pcmd->ElemCount, pcmd->IdxOffset + global_idx_offset, pcmd->VtxOffset + global_vtx_offset);
 			}
 		}
@@ -695,12 +731,14 @@ bool ImGui_ImplDX11_Init(ID3D11Device* device, ID3D11DeviceContext* device_conte
 	ImGui_ImplDX11_Data* bd = IM_NEW(ImGui_ImplDX11_Data)();
 	io.BackendRendererUserData = (void*)bd;
 	//io.BackendRendererName = "imgui_impl_dx11";
+#ifndef USE_SHARED_DLL // CFX: Acts up on shared dll??
 	io.BackendFlags |= ImGuiBackendFlags_RendererHasVtxOffset; // We can honor the ImDrawCmd::VtxOffset field, allowing for large meshes.
+#endif
 	io.BackendFlags |= ImGuiBackendFlags_RendererHasTextures; // We can honor ImGuiPlatformIO::Textures[] requests during render.
 	io.BackendFlags |= ImGuiBackendFlags_RendererHasViewports; // We can create multi-viewports on the Renderer side (optional)
 
-	//ImGuiPlatformIO& platform_io = ImGui::GetPlatformIO();
-	//platform_io.Renderer_TextureMaxWidth = platform_io.Renderer_TextureMaxHeight = D3D11_REQ_TEXTURE2D_U_OR_V_DIMENSION;
+	ImGuiPlatformIO& platform_io = ImGui::GetPlatformIO();
+	platform_io.Renderer_TextureMaxWidth = platform_io.Renderer_TextureMaxHeight = D3D11_REQ_TEXTURE2D_U_OR_V_DIMENSION;
 
 	// Get factory from device
 	IDXGIDevice* pDXGIDevice = nullptr;
@@ -890,7 +928,10 @@ static void ImGui_ImplDX11_RenderWindow(ImGuiViewport* viewport, void*)
 static void ImGui_ImplDX11_SwapBuffers(ImGuiViewport* viewport, void*)
 {
 	ImGui_ImplDX11_ViewportData* vd = (ImGui_ImplDX11_ViewportData*)viewport->RendererUserData;
-	vd->SwapChain->Present(0, 0); // Present without vsync
+	if (vd->SwapChain)
+	{
+		vd->SwapChain->Present(0, 0); // Present without vsync
+	}
 }
 
 static void ImGui_ImplDX11_InitMultiViewportSupport()

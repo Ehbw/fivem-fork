@@ -2,6 +2,7 @@
 #include <ConsoleHost.h>
 
 #include <imgui.h>
+#include <ImGuiTextureHelper.h>
 
 #include <Streaming.h>
 
@@ -131,10 +132,7 @@ static void* MakeIcon(const std::string& filename)
 				reference.format = 11; // should correspond to DXGI_FORMAT_B8G8R8A8_UNORM
 				reference.pixelData = (uint8_t*)pixelData;
 
-				auto iconPtr = new void*[2];
-				iconPtr[0] = rage::grcTextureFactory::getInstance()->createImage(&reference, nullptr);
-				iconPtr[1] = nullptr;
-				return iconPtr;
+				return ConHost::MakeImGuiTexture(rage::grcTextureFactory::getInstance()->createImage(&reference, nullptr), nullptr);
 			}
 		}
 	}

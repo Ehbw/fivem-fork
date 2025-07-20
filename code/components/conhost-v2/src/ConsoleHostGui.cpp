@@ -395,6 +395,12 @@ struct CfxBigConsole : FiveMConsoleBase
 		ImGui::SetNextWindowSize(fullSize, ImGuiCond_Always);
 #endif
 
+		// Hide "resize triangle" for console window, but still allow for resizing.
+		ImGui::PushStyleColor(ImGuiCol_ResizeGrip, 0);
+		ImGui::PushStyleColor(ImGuiCol_ResizeGrip, ImGui::GetColorU32(ImGuiCol_WindowBg));
+		ImGui::PushStyleColor(ImGuiCol_ResizeGripActive, ImGui::GetColorU32(ImGuiCol_WindowBg));
+		ImGui::PushStyleColor(ImGuiCol_ResizeGripHovered, ImGui::GetColorU32(ImGuiCol_WindowBg));
+
 		ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
 		ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, { 4.0f, 3.0f });
 
@@ -410,6 +416,7 @@ struct CfxBigConsole : FiveMConsoleBase
 	virtual void EndWindow()
 	{
 		ImGui::End();
+		ImGui::PopStyleColor(4);
 		ImGui::PopStyleVar(2);
 	}
 

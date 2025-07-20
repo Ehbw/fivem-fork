@@ -789,7 +789,7 @@ static InitFunction initFunction([]()
 		}
 	});
 
-#if 0
+#ifndef IS_FXSERVER
 	static ConVar<bool> poolVar("net_showPools", ConVar_Archive | ConVar_UserPref, false, &m_enabledPools);
 
 	ConHost::OnShouldDrawGui.Connect([this](bool* should)

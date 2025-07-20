@@ -415,7 +415,9 @@ static void ImGui_ImplWin32_UpdateMouseData(ImGuiIO& io, ImGuiPlatformIO& platfo
 	//CFX: Input
 	POINT mouse_cursor_pos;
 	if (!::GetCursorPos(&mouse_cursor_pos))
+	{
 		return;
+	}
 	//
 
 	// (Optional) When using multiple viewports: call io.AddMouseViewportEvent() with the viewport the OS mouse cursor is hovering.
@@ -431,6 +433,8 @@ static void ImGui_ImplWin32_UpdateMouseData(ImGuiIO& io, ImGuiPlatformIO& platfo
 			if (ImGuiViewport* viewport = ImGui_ImplWin32_FindViewportByPlatformHandle(platform_io, hovered_hwnd))
 				mouse_viewport_id = viewport->ID;
 	io.AddMouseViewportEvent(mouse_viewport_id);
+
+
 }
 
 // Gamepad navigation mapping
