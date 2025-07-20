@@ -6,7 +6,7 @@ return function()
 	}
 
 	files {
-		'components/debug-net/src/imguivariouscontrols.cpp',
-		'components/debug-net/include/imguivariouscontrols.h',
+		'components/debug-net/src/ImGuiMultilines.cpp',
+		'components/debug-net/include/ImGuiMultilines.h',
 	}
 end

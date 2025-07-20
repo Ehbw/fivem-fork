@@ -6,7 +6,7 @@
 
 #include <ServerGui.h>
 #include <imgui.h>
-#include <imguivariouscontrols.h>
+#include <ImGuiMultilines.h>
 
 #include <deque>
 
@@ -293,7 +293,8 @@ static void ShowPopout(std::string guid, PlayerListData* data)
 				&data->advancedData.clientInBytes,
 				&data->advancedData.clientOutBytes,
 			};
-			ImGui::PlotMultiLines(
+			
+			PlotMultiLines(
 			"##playernetmetrics", 2, names, colors, [](const void* ctx, int i) -> float
 			{
 				std::deque<float>* buffer = (std::deque<float>*)ctx;

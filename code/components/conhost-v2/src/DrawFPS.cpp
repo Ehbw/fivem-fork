@@ -1,6 +1,7 @@
 #include "StdInc.h"
 #include <ConsoleHost.h>
 
+#if 0
 #include <imgui.h>
 
 #include <CoreConsole.h>
@@ -48,3 +49,4 @@ static InitFunction initFunction([]()
 		ImGui::End();
 	});
 });
+#endif

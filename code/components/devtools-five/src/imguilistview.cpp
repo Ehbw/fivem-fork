@@ -99,7 +99,10 @@ bool ListViewBase::render(float listViewHeight, const ImVector<int> *pOptionalCo
         float itemHeight = ImGui::GetTextLineHeightWithSpacing();        
         int displayStart = 0, displayEnd = (int) numRows;
 
-        ImGui::CalcListClipping(numRows, itemHeight, &displayStart, &displayEnd);
+		const auto pos = ImGui::GetCursorPos();
+		ImGuiListClipper clipper;
+		clipper.Begin(numRows, itemHeight);
+
 
         if (scrollToRow>=0) {
             if (displayStart>scrollToRow)  displayStart = scrollToRow;
@@ -318,7 +321,7 @@ bool ListViewBase::render(float listViewHeight, const ImVector<int> *pOptionalCo
                             if (pIconData->user_texture_id) {
                                 ImVec2 iconSize;
                                 iconSize.x = iconSize.y = textLineHeight;
-                                partOfTheCellClicked = ImGui::ImageButton(pIconData->user_texture_id,iconSize,pIconData->uv0,pIconData->uv1,0,pIconData->bg_col,pIconData->tint_col);
+								partOfTheCellClicked = ImGui::ImageButton("##image", pIconData->user_texture_id, iconSize, pIconData->uv0, pIconData->uv1, pIconData->bg_col, pIconData->tint_col);
                                 if (txt) ImGui::SameLine();
                             }
                         }

@@ -617,7 +617,7 @@ void TimecycleEditor::Draw()
 									continue;
 								}
 
-								if (ImGui::Selectable(varName) || (ImGui::IsItemFocused() && ImGui::IsKeyPressedMap(ImGuiKey_Enter)))
+								if (ImGui::Selectable(varName) || (ImGui::IsItemFocused() && ImGui::IsKeyPressed(ImGuiKey_Enter)))
 								{
 									strcpy(m_detailDropDownBuffer, varName);
 									isOpen = false;

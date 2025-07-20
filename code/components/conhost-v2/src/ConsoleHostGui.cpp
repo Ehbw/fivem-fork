@@ -442,7 +442,8 @@ struct CfxBigConsole : FiveMConsoleBase
 			}
 		}
 
-		ImGuiListClipper clipper(filteredIndices.size());
+		ImGuiListClipper clipper;
+		clipper.Begin(filteredIndices.size());
 		while (clipper.Step())
 		{
 			for (int i = clipper.DisplayStart; i < clipper.DisplayEnd; i++)
@@ -547,7 +548,7 @@ struct CfxBigConsole : FiveMConsoleBase
 				OpenLogFile();
 			}
 
-			ImGui::CaptureKeyboardFromApp(true);
+			ImGui::SetNextFrameWantCaptureKeyboard(true);
 #endif
 
 			ImGui::EndTable();
@@ -872,7 +873,8 @@ struct MiniConsole : CfxBigConsole
 				}
 			}
 
-			ImGuiListClipper clipper(Items.size());
+			ImGuiListClipper clipper;
+			clipper.Begin(Items.size());
 			while (clipper.Step())
 			{
 				for (int i = clipper.DisplayStart; i < clipper.DisplayEnd; i++)

@@ -177,7 +177,7 @@ static std::map<uint32_t, ImGui::ListViewBase::CellData::IconData> MakeIconDatas
 
 	for (auto& [ key, tex ] : icons)
 	{
-		ids.emplace(key, ImGui::ListViewBase::CellData::IconData{ ImTextureID{ tex }, ImVec2{ 0.0f, 0.0f }, ImVec2{ 1.0f, 1.0f }, ImVec4{ 0.0f, 0.0f, 0.0f, 0.0f } });
+		ids.emplace(key, ImGui::ListViewBase::CellData::IconData{ reinterpret_cast<ImTextureID>(tex), ImVec2{ 0.0f, 0.0f }, ImVec2{ 1.0f, 1.0f }, ImVec4{ 0.0f, 0.0f, 0.0f, 0.0f } });
 	}
 
 	return ids;

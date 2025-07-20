@@ -6,6 +6,7 @@
 #include <grcTexture.h>
 #include <DrawCommands.h>
 #include <nutsnbolts.h>
+#include <ImGuiTextureHelper.h>
 
 #include <json.hpp>
 
@@ -52,10 +53,7 @@ static InitFunction initFunction([]()
 				reference.format = (fmt) ? 12 : 11;
 				reference.pixelData = (uint8_t*)data;
 
-				auto iconPtr = new void*[2];
-				iconPtr[0] = rage::grcTextureFactory::getInstance()->createImage(&reference, nullptr);
-				iconPtr[1] = nullptr;
-				return iconPtr;
+				return ConHost::MakeImGuiTexture(rage::grcTextureFactory::getInstance()->createImage(&reference, nullptr));
 			};
 
 			id->DeleteTexture = [](void* tex)
@@ -80,8 +78,15 @@ static InitFunction initFunction([]()
 				if (entry)
 				{
 					void** td = (void**)entry;
-					delete (rage::grcTexture*)td[0];
-					delete[] td;
+					if (ConHost::ImGuiGrcTexture::IsTexture(td))
+					{
+						trace("is imgui grc texture\n");
+					}
+					else
+					{
+						delete (rage::grcTexture*)td[0];
+						delete[] td;
+					}
 				}
 			}
 

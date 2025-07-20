@@ -17,6 +17,7 @@
 #include <ctime>
 #include <chrono>
 
+#define IMGUI_DEFINE_MATH_OPERATORS
 #include <imgui.h>
 #include <imgui_internal.h>
 
@@ -788,7 +789,7 @@ static InitFunction initFunction([]()
 		}
 	});
 
-#ifndef IS_FXSERVER
+#if 0
 	static ConVar<bool> poolVar("net_showPools", ConVar_Archive | ConVar_UserPref, false, &m_enabledPools);
 
 	ConHost::OnShouldDrawGui.Connect([this](bool* should)

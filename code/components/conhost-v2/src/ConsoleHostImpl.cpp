@@ -46,10 +46,11 @@
 
 #include <HostSharedData.h>
 #include <ReverseGameData.h>
+#include <ConsoleHostWrapper.h>
 
 static void BuildFont(float scale);
 
-static ImGuiStyle InitStyle()
+static void InitStyle()
 {
 	ImGuiStyle style;
 
@@ -68,7 +69,7 @@ static ImGuiStyle InitStyle()
 	style.Colors[ImGuiCol_FrameBgHovered] = semiTransparentBgHover;
 	style.Colors[ImGuiCol_TextSelectedBg] = hiliteBlueTransparent;
 
-	return style;
+	ImGui::GetStyle() = style;
 }
 
 static bool g_conHostInitialized = false;
@@ -117,12 +118,15 @@ bool ConsoleHasKeyboard()
 	return false;
 }
 
+
 #ifndef IS_LAUNCHER
+static uintptr_t g_vtbl_grcTexture = 0;
 static uint32_t g_pointSamplerState;
 static rage::grcTexture* g_fontTexture;
 
 static void RenderDrawListInternal(ImDrawList* drawList, ImDrawData* refData)
 {
+	ImGuiIO& io = ImGui::GetIO();
 #ifndef _HAVE_GRCORE_NEWSTATES
 	SetRenderState(0, grcCullModeNone);
 	SetRenderState(2, 0); // alpha blending m8
@@ -140,6 +144,33 @@ static void RenderDrawListInternal(ImDrawList* drawList, ImDrawData* refData)
 	auto oldDepthStencilState = GetDepthStencilState();
 	SetDepthStencilState(GetStockStateIdentifier(DepthStencilStateNoDepth));
 #endif
+	
+	if (refData->Textures != nullptr)
+	{
+		for (ImTextureData* texture : *refData->Textures)
+		{
+			if (texture->Status != ImTextureStatus_OK)
+			{
+				ImGui_ImplDX11_UpdateTexture(texture);
+			}
+		}
+	}
+
+#ifdef GTA_FIVE
+	ImGui_ImplDX11_Data* bd = ImGui::GetCurrentContext() ? (ImGui_ImplDX11_Data*)ImGui::GetIO().BackendRendererUserData : nullptr;
+	if (!bd)
+	{
+		return;
+	}
+
+	ImGuiPlatformIO& platform_io = ImGui::GetPlatformIO();
+	ImGui_ImplDX11_RenderState render_state;
+	render_state.Device = bd->pd3dDevice;
+	render_state.DeviceContext = bd->pd3dDeviceContext;
+	render_state.SamplerDefault = bd->pFontSampler;
+	render_state.VertexConstantBuffer = bd->pVertexConstantBuffer;
+	platform_io.Renderer_RenderState = &render_state;
+#endif
 
 	size_t idxOff = 0;
 
@@ -151,9 +182,11 @@ static void RenderDrawListInternal(ImDrawList* drawList, ImDrawData* refData)
 		}
 		else
 		{
-			if (cmd.TextureId)
+			ImTextureID texId = cmd.GetTexID();
+
+			if (*(uintptr_t*)texId == g_vtbl_grcTexture)
 			{
-				SetTextureGtaIm(*(rage::grcTexture**)cmd.TextureId);
+				SetTextureGtaIm(*(rage::grcTexture**)texId);
 			}
 			else
 			{
@@ -167,13 +200,13 @@ static void RenderDrawListInternal(ImDrawList* drawList, ImDrawData* refData)
 				int c = std::min(cmd.ElemCount - s, uint32_t(2046));
 				rage::grcBegin(3, c);
 
-				//trace("imgui draw %d tris\n", cmd.ElemCount);
+				// trace("imgui draw %d tris\n", cmd.ElemCount);
 
 				for (int i = 0; i < c; i++)
 				{
 					auto& vertex = drawList->VtxBuffer.Data[drawList->IdxBuffer.Data[i + idxOff]];
 					auto color = vertex.col;
-					
+
 					if (!rage::grcTexture::IsRenderSystemColorSwapped())
 					{
 						color = (color & 0xFF00FF00) | _rotl(color & 0x00FF00FF, 16);
@@ -228,6 +261,8 @@ static void RenderDrawListInternal(ImDrawList* drawList, ImDrawData* refData)
 
 		GetD3D11DeviceContext()->RSSetScissorRects(1, &scissorRect);
 	}
+
+	platform_io.Renderer_RenderState = nullptr;
 #else
 	SetScissorRect(0, 0, 0x1FFF, 0x1FFF);
 #endif
@@ -279,20 +314,14 @@ static void CreateFontTexture()
 #ifdef GTA_NY
 	reference.format = 1;
 #else
-	reference.format = 11;
+	reference.format = 1;
 #endif
 	reference.pixelData = (uint8_t*)pixels;
 
 	rage::grcTexture* texture = rage::grcTextureFactory::getInstance()->createImage(&reference, nullptr);
 	g_fontTexture = texture;
 
-	if (!io.Fonts->TexID)
-	{
-		void** texId = new void*[2];
-		io.Fonts->TexID = (ImTextureID)texId;
-	}
-
-	((void**)io.Fonts->TexID)[0] = (void*)g_fontTexture;
+	//io.Fonts->TexID = (void*)g_fontTexture->srv;
 }
 #else
 DLL_EXPORT fwEvent<ImDrawData*> OnRenderImDrawData;
@@ -342,28 +371,15 @@ static void HandleFxDKInput(ImGuiIO& io)
 	}
 }
 
-void OnConsoleFrameDraw(int width, int height, bool usedSharedD3D11);
-
-DLL_EXPORT void OnConsoleFrameDraw(int width, int height)
-{
-	return OnConsoleFrameDraw(width, height, false);
-}
-
-extern ID3D11DeviceContext* g_pd3dDeviceContext;
-
 extern float ImGui_ImplWin32_GetWindowDpiScale(ImGuiViewport* viewport);
-extern void ImGui_ImplDX11_RecreateFontsTexture();
+extern void ImGui_ImplDX11_InvalidateDeviceObjects();
 
 static bool g_winConsole;
 
-void OnConsoleFrameDraw(int width, int height, bool usedSharedD3D11)
+DLL_EXPORT void OnConsoleFrameDraw(int width, int height)
 {
 	std::unique_lock lock(g_conHostMutex, std::defer_lock);
 	if (!lock.try_lock())
-	{
-		return;
-	}
-	else if (g_pd3dDeviceContext == nullptr)
 	{
 		return;
 	}
@@ -383,20 +399,12 @@ void OnConsoleFrameDraw(int width, int height, bool usedSharedD3D11)
 
 	if (scale != lastScale)
 	{
-		ImGui::GetStyle() = InitStyle();
+		InitStyle();
 		ImGui::GetStyle().ScaleAllSizes(scale);
 
 		BuildFont(scale);
-		CreateFontTexture();
-
-		ImGui_ImplDX11_RecreateFontsTexture();
 
 		lastScale = scale;
-	}
-
-	if (!g_fontTexture)
-	{
-		CreateFontTexture();
 	}
 #endif
 
@@ -412,7 +420,6 @@ void OnConsoleFrameDraw(int width, int height, bool usedSharedD3D11)
 #ifdef WITH_NUI
 		nui::SetHideCursor(false);
 #endif
-
 		lastDrawTime = timeGetTime();
 
 		return;
@@ -420,7 +427,9 @@ void OnConsoleFrameDraw(int width, int height, bool usedSharedD3D11)
 
 	ImGuiIO& io = ImGui::GetIO();
 
+#ifdef GTA_FIVE
 	HandleFxDKInput(io);
+#endif
 
 	io.MouseDrawCursor = ConsoleHasMouse();
 
@@ -428,6 +437,8 @@ void OnConsoleFrameDraw(int width, int height, bool usedSharedD3D11)
 	nui::SetHideCursor(io.MouseDrawCursor);
 #endif
 
+	// Handle Deltatime and DisplaySize outside of the ImGui Renderer Implementations
+	// This logic should be removed inside of the ImGui Implementations.
 	{
 		io.DisplaySize = ImVec2(width, height);
 		io.DeltaTime = (timeGetTime() - lastDrawTime) / 1000.0f;
@@ -460,10 +471,7 @@ void OnConsoleFrameDraw(int width, int height, bool usedSharedD3D11)
 		}
 	}
 
-	ImGui_ImplDX11_NewFrame();
-	ImGui_ImplWin32_NewFrame();
-
-	ImGui::NewFrame();
+	ConHost::PlatformNewFrame();
 
 	bool wasSmallFont = false;
 
@@ -498,36 +506,7 @@ void OnConsoleFrameDraw(int width, int height, bool usedSharedD3D11)
 		ImGui::PopFont();
 	}
 
-	ImGui::Render();
-	RenderDrawLists(ImGui::GetDrawData());
-
-	ID3D11RenderTargetView* oldRTV = nullptr;
-	ID3D11DepthStencilView* oldDSV = nullptr;
-
-	if (usedSharedD3D11)
-	{
-		g_pd3dDeviceContext->OMGetRenderTargets(1, &oldRTV, &oldDSV);
-	}
-
-    ImGui::UpdatePlatformWindows();
-	ImGui::RenderPlatformWindowsDefault();
-
-	if (usedSharedD3D11)
-	{
-		g_pd3dDeviceContext->OMSetRenderTargets(1, &oldRTV, oldDSV);
-
-		if (oldRTV)
-		{
-			oldRTV->Release();
-			oldRTV = nullptr;
-		}
-
-		if (oldDSV)
-		{
-			oldDSV->Release();
-			oldDSV = nullptr;
-		}
-	}
+	ConHost::PlatformRender();
 
 	lastDrawTime = timeGetTime();
 }
@@ -594,7 +573,10 @@ static void BuildFont(float scale)
 {
 	auto& io = ImGui::GetIO();
 	io.Fonts->Clear();
-	io.Fonts->SetTexID(nullptr);
+	if (io.Fonts->TexData)
+	{
+		io.Fonts->SetTexID(nullptr);
+	}
 
 	FILE* font = _wfopen(MakeRelativeCitPath(L"citizen/consolefont.ttf").c_str(), L"rb");
 
@@ -617,7 +599,7 @@ static void BuildFont(float scale)
 
 	builder.AddRanges(io.Fonts->GetGlyphRangesDefault());
 	builder.AddRanges(io.Fonts->GetGlyphRangesCyrillic());
-	builder.AddRanges(&extra_ranges[0]);
+	builder.AddRanges(extra_ranges);
 	builder.BuildRanges(&ranges);
 
 	if (font)
@@ -639,29 +621,26 @@ static void BuildFont(float scale)
 		io.Fonts->AddFontFromMemoryTTF(fontData.get(), fontSize, 22.0f * scale, &fontCfg, ranges.Data);
 		consoleFontSmall = io.Fonts->AddFontFromMemoryTTF(fontData.get(), fontSize, 18.0f * scale, &fontCfg, ranges.Data);
 		consoleFontTiny = io.Fonts->AddFontFromMemoryTTF(fontData.get(), fontSize, 14.0f * scale, &fontCfg, ranges.Data);
-
-		io.Fonts->Build();
 	}
 }
 
 #pragma comment(lib, "d3d11.lib")
 
-void ImGui_ImplWin32_InitPlatformInterface();
-
-extern ImGuiKey ImGui_ImplWin32_VirtualKeyToImGuiKey(WPARAM wParam);
+extern void ImGui_ImplWin32_InitMultiViewportSupport(bool platform_has_own_dc);
+extern ImGuiKey ImGui_ImplWin32_KeyEventToImGuiKey(WPARAM wParam, LPARAM lParam);
 
 static HookFunction initFunction([]()
 {
-	auto cxt = ImGui::CreateContext();
-	ImGui::SetCurrentContext(cxt);
+	ImGui::CreateContext();
 
 	ImGuiIO& io = ImGui::GetIO();
-	io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+	(void)io;
 	io.ConfigDockingWithShift = true;
 	io.ConfigWindowsResizeFromEdges = true;
 	io.ConfigWindowsMoveFromTitleBarOnly = true;
 
-	io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
+	io.ConfigFlags |= ImGuiConfigFlags_DockingEnable; // Enable Docking
+	io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable; // Enable Multi-Viewports
 	io.ConfigFlags |= ImGuiConfigFlags_NoMouseCursorChange;
 
 	io.BackendFlags |= ImGuiBackendFlags_HasSetMousePos; // We can honor io.WantSetMousePos requests (optional, rarely used)
@@ -669,83 +648,18 @@ static HookFunction initFunction([]()
 	io.BackendFlags |= ImGuiBackendFlags_HasMouseHoveredViewport; // We can set io.MouseHoveredViewport correctly (optional, not easy)
 
 	io.BackendFlags |= ImGuiBackendFlags_RendererHasViewports;
+	io.BackendFlags |= ImGuiBackendFlags_HasMouseCursors;
+
+	io.Fonts->Flags = 0;
 
 	ImGuiViewport* main_viewport = ImGui::GetMainViewport();
 	main_viewport->PlatformHandle = main_viewport->PlatformHandleRaw = nullptr;
 
-	ID3D11Device* device;
-	ID3D11DeviceContext* immcon;
-
-	auto setupDevice = [](ID3D11Device* device, ID3D11DeviceContext* immcon)
+	// Delay renderer initialization until game device is created.
+	OnGrcCreateDevice.Connect([]()
 	{
-		if (device && immcon)
-		{
-			auto& io = ImGui::GetIO();
-
-			if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
-			{
-				ImGui_ImplWin32_InitPlatformInterface();
-			}
-
-			ImGui_ImplDX11_Init(device, immcon);
-		}
-	};
-
-	bool usedSharedD3D11 = false;
-
-	// 'GTA_FIVE' is a D3D11 game so we can use the native D3D11 device
-#ifdef GTA_FIVE
-	// #TODO: if this turns out breaking, check for 'bad' graphics mods and only run this code if none is present
-	usedSharedD3D11 = true;
-
-	OnGrcCreateDevice.Connect([setupDevice]()
-	{
-		struct
-		{
-			void* vtbl;
-			ID3D11Device* rawDevice;
-		}* deviceStuff = (decltype(deviceStuff))GetD3D11Device();
-
-		setupDevice(deviceStuff->rawDevice, GetD3D11DeviceContext());
+		ConHost::InitPlatform();
 	});
-#endif
-
-	if (!usedSharedD3D11)
-	{
-		// use the system function as many proxy DLLs don't like multiple devices being made in the game process
-		// and they're 'closed source' and 'undocumented' so we can't reimplement the same functionality natively
-
-		// also, create device here and not after the game's or nui:core hacks will mismatch with proxy DLLs
-		wchar_t systemD3D11Name[512];
-		GetSystemDirectoryW(systemD3D11Name, std::size(systemD3D11Name));
-		wcscat(systemD3D11Name, L"\\d3d11.dll");
-
-		auto systemD3D11 = LoadLibraryW(systemD3D11Name);
-		assert(systemD3D11);
-
-		auto systemD3D11CreateDevice = (decltype(&D3D11CreateDevice))GetProcAddress(systemD3D11, "D3D11CreateDevice");
-
-		systemD3D11CreateDevice(NULL,
-		D3D_DRIVER_TYPE_HARDWARE,
-		nullptr,
-		0,
-		nullptr,
-		0,
-		D3D11_SDK_VERSION,
-		&device,
-		nullptr,
-		&immcon);
-
-		OnGrcCreateDevice.Connect([device, immcon, setupDevice]()
-		{
-			if (device)
-			{
-				setupDevice(device, immcon);
-			}
-		});
-	}
-
-	io.BackendFlags |= ImGuiBackendFlags_HasMouseCursors;
 
 	static std::string imguiIni = ([]
 	{
@@ -774,30 +688,12 @@ static HookFunction initFunction([]()
 	})();
 
 	io.IniFilename = const_cast<char*>(imguiIni.c_str());
-	//io.ImeWindowHandle = g_hWnd;
 
-	ImGui::GetStyle() = InitStyle();
+	InitStyle();
 
-	// fuck rounding
 	ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
 
 	BuildFont(1.0f);
-
-#ifndef IS_LAUNCHER
-	OnGrcCreateDevice.Connect([=]()
-	{
-#ifdef _HAVE_GRCORE_NEWSTATES
-#ifndef IS_RDR3
-		D3D11_SAMPLER_DESC samplerDesc = CD3D11_SAMPLER_DESC(CD3D11_DEFAULT());
-		samplerDesc.Filter = D3D11_FILTER_MIN_MAG_MIP_POINT;
-		samplerDesc.MaxAnisotropy = 0;
-
-		g_pointSamplerState = CreateSamplerState(&samplerDesc);
-#else
-		g_pointSamplerState = GetStockStateIdentifier(SamplerStatePoint);
-#endif
-#endif
-	});
 
 	InputHook::QueryInputTarget.Connect([](std::vector<InputTarget*>& targets)
 	{
@@ -816,7 +712,7 @@ static HookFunction initFunction([]()
 
 				if (vKey < 256)
 				{
-					io.AddKeyEvent(ImGui_ImplWin32_VirtualKeyToImGuiKey(vKey), true);
+					io.AddKeyEvent(ImGui_ImplWin32_KeyEventToImGuiKey(vKey, NULL), true);
 				}
 			}
 
@@ -828,7 +724,7 @@ static HookFunction initFunction([]()
 
 				if (vKey < 256)
 				{
-					io.AddKeyEvent(ImGui_ImplWin32_VirtualKeyToImGuiKey(vKey), false);
+					io.AddKeyEvent(ImGui_ImplWin32_KeyEventToImGuiKey(vKey, NULL), false);
 				}
 			}
 
@@ -896,14 +792,12 @@ static HookFunction initFunction([]()
 		}
 	});
 
-	OnPostFrontendRender.Connect([usedSharedD3D11]()
+	OnPostFrontendRender.Connect([]()
 	{
 		int width, height;
 		GetGameResolution(width, height);
-
-		OnConsoleFrameDraw(width, height, usedSharedD3D11);
+		OnConsoleFrameDraw(width, height);
 	});
-#endif
 });
 
 struct ConsoleKeyEvent
@@ -956,5 +850,12 @@ static void WINAPI ReleaseCaptureStub()
 
 static HookFunction hookFunction([]()
 {
+#ifdef GTA_FIVE
+	g_vtbl_grcTexture = hook::get_address<uintptr_t>(hook::get_pattern("48 8D 05 ? ? ? ? 33 D2 48 89 07", 3));
+
+	trace("g_vtbl_grcTexture %p\n", (void*)hook::get_adjusted(g_vtbl_grcTexture));
+#elif IS_RDR3
+
+#endif
 	g_origReleaseCapture = (decltype(g_origReleaseCapture))hook::iat("user32.dll", ReleaseCaptureStub, "ReleaseCapture");
 });

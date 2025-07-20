@@ -118,10 +118,11 @@ Still missing a lot of things:
 -> (row) selecting support (how to process mouse events to do it ?).
 -> (optional) row-based contex menu (when ImGui will support them).
 
-TODO: Header columns with type HT_CUSTOM have never been tested.
-*/
+TODO: Header columns with type HT_CUSTOM have never been tested.                                                                                                                                                                 \
+*/                                                                                                                                                                                                                               \
 
 #ifndef IMGUI_API
+#define IMGUI_DEFINE_MATH_OPERATORS
 #include <imgui.h>
 #endif //IMGUI_API
 

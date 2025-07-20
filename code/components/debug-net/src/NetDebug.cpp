@@ -18,8 +18,9 @@
 
 #include <net/PacketNames.h>
 
+#define IMGUI_DEFINE_MATH_OPERATORS
 #include <imgui.h>
-#include <imguivariouscontrols.h>
+#include <ImGuiMultilines.h>
 
 extern DLL_IMPORT fwEvent<int, int> OnPushNetMetrics;
 
@@ -548,7 +549,7 @@ void NetOverlayMetricSink::DrawGraph()
 	ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
 	ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
 
-	ImGui::PlotMultiLines("Net Bw", NET_PACKET_SUB_MAX, names, colors, [](const void* cxt, int idx) -> float
+	PlotMultiLines("Net Bw", NET_PACKET_SUB_MAX, names, colors, [](const void* cxt, int idx) -> float
 	{
 		auto dataContext = (DataContext*)cxt;
 

@@ -327,7 +327,7 @@ void TextSelect::update(const std::size_t itemOffset) {
 
     // Keyboard shortcuts
     if (ImGui::IsWindowFocused()) {
-        ImGui::CaptureKeyboardFromApp(true);
+		ImGui::SetNextFrameWantCaptureKeyboard(true);
         if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_A)) {
             selectAll();
         }

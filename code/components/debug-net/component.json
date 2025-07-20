@@ -5,7 +5,8 @@
 		"fx[2]",
 		"net",
 		"font-renderer",
-		"conhost"
+		"conhost",
+		"vendor:imgui"
 	],
 	"provides": []
 }
