@@ -75,6 +75,9 @@ extern GFX_EXPORT GraphicsAPI GetCurrentGraphicsAPI();
 // VK context or D3D12 device
 extern GFX_EXPORT void* GetGraphicsDriverHandle();
 
+// D3D12 Command Queue if D3D12 GraphicsAPI is being used.
+extern GFX_EXPORT void* GetD3D12CommandQueue();
+
 namespace rage::sga
 {
 class GFX_EXPORT GraphicsContext

@@ -47,6 +47,7 @@
 #include <HostSharedData.h>
 #include <ReverseGameData.h>
 #include <ConsoleHostWrapper.h>
+#include <ImGuiTextureHelper.h>
 
 static void BuildFont(float scale);
 
@@ -117,7 +118,6 @@ bool ConsoleHasKeyboard()
 
 	return false;
 }
-
 
 #ifdef IS_LAUNCHER
 DLL_EXPORT fwEvent<ImDrawData*> OnRenderImDrawData;
@@ -458,6 +458,8 @@ static HookFunction initFunction([]()
 	OnGrcCreateDevice.Connect([]()
 	{
 		ConHost::InitPlatform();
+		// Build font once the DX11/DX12/Vulkan impl has been built
+		BuildFont(1.0f);
 	});
 
 	static std::string imguiIni = ([]
@@ -491,8 +493,6 @@ static HookFunction initFunction([]()
 	InitStyle();
 
 	ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
-
-	BuildFont(1.0f);
 
 	InputHook::QueryInputTarget.Connect([](std::vector<InputTarget*>& targets)
 	{

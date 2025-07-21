@@ -122,7 +122,6 @@ TODO: Header columns with type HT_CUSTOM have never been tested.                
 */                                                                                                                                                                                                                               \
 
 #ifndef IMGUI_API
-#define IMGUI_DEFINE_MATH_OPERATORS
 #include <imgui.h>
 #endif //IMGUI_API
 

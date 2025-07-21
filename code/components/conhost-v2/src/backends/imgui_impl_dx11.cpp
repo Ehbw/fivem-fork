@@ -52,6 +52,7 @@
 #include <ConsoleHostWrapper.h>
 #include <ImGuiTextureHelper.h>
 
+#ifdef GTA_FIVE
 #include "imgui.h"
 #ifndef IMGUI_DISABLE
 #include "imgui_impl_dx11.h"
@@ -343,11 +344,6 @@ void ImGui_ImplDX11_RenderDrawData(ImDrawData* draw_data)
 
 				// Bind texture, Draw
 				// CFX, Check if texture is our custom ImGuiGrcTexture and handle appropriately.#
-#ifdef USE_SHARED_DLL
-				void* texture = (void*)pcmd->GetTexID();
-				ID3D11ShaderResourceView* texture_srv = (ID3D11ShaderResourceView*)texture;
-				device->PSSetShaderResources(0, 1, &texture_srv);
-#else
 				void* texture = (void*)pcmd->GetTexID();
 				if (ConHost::ImGuiGrcTexture::IsTexture(texture))
 				{
@@ -357,9 +353,8 @@ void ImGui_ImplDX11_RenderDrawData(ImDrawData* draw_data)
 				{
 					ID3D11ShaderResourceView* texture_srv = (ID3D11ShaderResourceView*)texture;
 					device->PSSetShaderResources(0, 1, &texture_srv);
+					device->DrawIndexed(pcmd->ElemCount, pcmd->IdxOffset + global_idx_offset, pcmd->VtxOffset + global_vtx_offset);
 				}
-#endif
-				device->DrawIndexed(pcmd->ElemCount, pcmd->IdxOffset + global_idx_offset, pcmd->VtxOffset + global_vtx_offset);
 			}
 		}
 		global_idx_offset += draw_list->IdxBuffer.Size;
@@ -965,3 +960,4 @@ static void ImGui_ImplDX11_ShutdownMultiViewportSupport()
 //-----------------------------------------------------------------------------
 
 #endif // #ifndef IMGUI_DISABLE
+#endif
