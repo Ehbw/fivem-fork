@@ -14,12 +14,13 @@
 #include <CrossBuildRuntime.h>
 
 fwEvent<> OnLookAliveFrame;
+fwEvent<> OnEarlyGameFrame;
 fwEvent<> OnGameFrame;
 fwEvent<> OnMainGameFrame;
 fwEvent<> OnCriticalGameFrame;
 fwEvent<> OnFirstLoadCompleted;
 
-static int(*g_appState)(void* fsm, int state, void* unk, int type);
+static int (*g_appState)(void* fsm, int state, void* unk, int type);
 
 int DoAppState(void* fsm, int state, void* unk, int type)
 {
@@ -42,7 +43,7 @@ static void WaitThing(int i)
 	Sleep(i);
 }
 
-static bool(*g_origLookAlive)();
+static bool (*g_origLookAlive)();
 
 #include <mutex>
 #include <mmsystem.h>
@@ -50,12 +51,27 @@ static bool(*g_origLookAlive)();
 static uint32_t g_lastGameFrame;
 static uint32_t g_lastCriticalFrame;
 static std::mutex* g_gameFrameMutex = new std::mutex();
+static std::mutex* g_earlyGameFrameMutex = new std::mutex();
 static std::mutex* g_criticalFrameMutex = new std::mutex();
 static DWORD g_mainThreadId;
 static bool g_executedOnMainThread;
 
-static void DoGameFrame()
+// NOTE: depends indirectly on GameProfiling.cpp in gta:core!
+static bool g_safeGameFrame;
+
+extern "C" DLL_EXPORT void DoGameFrame()
 {
+	if (g_earlyGameFrameMutex->try_lock())
+	{
+		OnEarlyGameFrame();
+		g_earlyGameFrameMutex->unlock();
+	}
+
+	if (!g_safeGameFrame)
+	{
+		return;
+	}
+
 	if (g_gameFrameMutex->try_lock())
 	{
 		OnGameFrame();
@@ -84,18 +100,14 @@ static void DoGameFrame()
 // actually: 'should exit game' function called by LookAlive
 static bool OnLookAlive()
 {
-/*	if (Instance<ICoreGameInit>::Get()->GetGameLoaded())
-	{
-		DoGameFrame();
-	}*/
-	DoGameFrame();
+	g_safeGameFrame = true;
 
 	OnLookAliveFrame();
 
 	return g_origLookAlive();
 }
 
-static bool(*g_origFrameFunc)(void*);
+static bool (*g_origFrameFunc)(void*);
 
 bool DoLoadsFrame(void* a)
 {
@@ -143,7 +155,6 @@ static HookFunction hookFunction([]()
 {
 	g_mainThreadId = GetCurrentThreadId();
 
-	//void* lookAliveFrameCall = hook::pattern("84 C0 75 05 40 84 FF 74 22 E8").count(1).get(0).get<void>(-5);
 	void* lookAliveFrameCall = hook::pattern("84 C0 75 15 40 84 FF 75 10 48 8B").count(1).get(0).get<void>(-5);
 
 	hook::set_call(&g_origLookAlive, lookAliveFrameCall);
