@@ -606,7 +606,7 @@ static int Lua_CanonicalizeRef(lua_State* L)
 {
 	auto& luaRuntime = LuaScriptRuntime::GetCurrent();
 
-	char* refString;
+	char* refString = nullptr;
 	result_t hr = luaRuntime->GetScriptHost()->CanonicalizeRef(luaL_checkinteger(L, 1), luaRuntime->GetInstanceId(), &refString);
 
 	lua_pushstring(L, refString);
@@ -627,9 +627,9 @@ static int Lua_InvokeFunctionReference(lua_State* L)
 
 	// invoke
 	fx::OMPtr<IScriptBuffer> retvalBuffer;
-	if (FX_FAILED(scriptHost->InvokeFunctionReference(const_cast<char*>(luaL_checkstring(L, 1)), const_cast<char*>(argString), argLength, retvalBuffer.GetAddressOf())))
+	if (FX_FAILED(scriptHost->InvokeFunctionReference(const_cast<const char*>(luaL_checkstring(L, 1)), const_cast<char*>(argString), argLength, retvalBuffer.GetAddressOf())))
 	{
-		char* error = "Unknown";
+		const char* error = "Unknown";
 		scriptHost->GetLastErrorText(&error);
 
 		_profile.Close();
@@ -1479,7 +1479,7 @@ int32_t LuaScriptRuntime::GetInstanceId()
 	return m_instanceId;
 }
 
-result_t LuaScriptRuntime::LoadFileInternal(OMPtr<fxIStream> stream, char* scriptFile)
+result_t LuaScriptRuntime::LoadFileInternal(OMPtr<fxIStream> stream, const char* scriptFile)
 {
 	// read file data
 	uint64_t length;
@@ -1587,7 +1587,7 @@ static int Lua_CreateHostFileThread(lua_State* L)
 	return 0;
 }
 
-result_t LuaScriptRuntime::LoadHostFileInternal(char* scriptFile)
+result_t LuaScriptRuntime::LoadHostFileInternal(const char* scriptFile)
 {
 	// open the file
 	OMPtr<fxIStream> stream;
@@ -1611,7 +1611,7 @@ result_t LuaScriptRuntime::LoadHostFileInternal(char* scriptFile)
 	return hr;
 }
 
-result_t LuaScriptRuntime::LoadSystemFileInternal(char* scriptFile)
+result_t LuaScriptRuntime::LoadSystemFileInternal(const char* scriptFile)
 {
 	// open the file
 	OMPtr<fxIStream> stream;
@@ -1627,7 +1627,7 @@ result_t LuaScriptRuntime::LoadSystemFileInternal(char* scriptFile)
 	return LoadFileInternal(stream, scriptFile);
 }
 
-result_t LuaScriptRuntime::RunFileInternal(char* scriptName, std::function<result_t(char*)> loadFunction)
+result_t LuaScriptRuntime::RunFileInternal(const char* scriptName, std::function<result_t(const char*)> loadFunction)
 {
 	LuaPushEnvironment pushed(this);
 	lua_pushcfunction(m_state, GetDbTraceback());
@@ -1653,17 +1653,17 @@ result_t LuaScriptRuntime::RunFileInternal(char* scriptName, std::function<resul
 	return FX_S_OK;
 }
 
-result_t LuaScriptRuntime::LoadFile(char* scriptName)
+result_t LuaScriptRuntime::LoadFile(const char* scriptName)
 {
 	return RunFileInternal(scriptName, std::bind(&LuaScriptRuntime::LoadHostFileInternal, this, std::placeholders::_1));
 }
 
-result_t LuaScriptRuntime::LoadSystemFile(char* scriptName)
+result_t LuaScriptRuntime::LoadSystemFile(const char* scriptName)
 {
 	return RunFileInternal(scriptName, std::bind(&LuaScriptRuntime::LoadSystemFileInternal, this, std::placeholders::_1));
 }
 
-int32_t LuaScriptRuntime::HandlesFile(char* fileName, IScriptHostWithResourceData* metadata)
+int32_t LuaScriptRuntime::HandlesFile(const char* fileName, IScriptHostWithResourceData* metadata)
 {
 	return strstr(fileName, ".lua") != nullptr;
 }
@@ -1684,14 +1684,14 @@ result_t LuaScriptRuntime::TickBookmarks(uint64_t* bookmarks, int numBookmarks)
 	return FX_S_OK;
 }
 
-result_t LuaScriptRuntime::WalkStack(char* boundaryStart, uint32_t boundaryStartLength, char* boundaryEnd, uint32_t boundaryEndLength, IScriptStackWalkVisitor* visitor)
+result_t LuaScriptRuntime::WalkStack(const char* boundaryStart, uint32_t boundaryStartLength, const char* boundaryEnd, uint32_t boundaryEndLength, IScriptStackWalkVisitor* visitor)
 {
 	if (m_stackTraceRoutine)
 	{
 		char* out = nullptr;
 		size_t outLen = 0;
 
-		m_stackTraceRoutine(boundaryStart, boundaryEnd, &out, &outLen);
+		m_stackTraceRoutine((void*)boundaryStart, (void*)boundaryEnd, &out, &outLen);
 
 		if (out)
 		{
@@ -1712,7 +1712,7 @@ result_t LuaScriptRuntime::WalkStack(char* boundaryStart, uint32_t boundaryStart
 	return FX_S_OK;
 }
 
-result_t LuaScriptRuntime::TriggerEvent(char* eventName, char* eventPayload, uint32_t payloadSize, char* eventSource)
+result_t LuaScriptRuntime::TriggerEvent(const char* eventName, const char* eventPayload, uint32_t payloadSize, const char* eventSource)
 {
 	if (m_eventRoutine)
 	{
@@ -1724,7 +1724,7 @@ result_t LuaScriptRuntime::TriggerEvent(char* eventName, char* eventPayload, uin
 	return FX_S_OK;
 }
 
-result_t LuaScriptRuntime::CallRef(int32_t refIdx, char* argsSerialized, uint32_t argsLength, IScriptBuffer** retval)
+result_t LuaScriptRuntime::CallRef(int32_t refIdx, const char* argsSerialized, uint32_t argsLength, IScriptBuffer** retval)
 {
 	*retval = nullptr;
 
@@ -1779,7 +1779,7 @@ result_t LuaScriptRuntime::GetMemoryUsage(int64_t* memoryUsage)
 	return FX_S_OK;
 }
 
-result_t LuaScriptRuntime::SetScriptIdentifier(char* fileName, int32_t scriptId)
+result_t LuaScriptRuntime::SetScriptIdentifier(const char* fileName, int32_t scriptId)
 {
 	m_scriptIds[fileName] = scriptId;
 
@@ -1793,7 +1793,7 @@ result_t LuaScriptRuntime::SetDebugEventListener(IDebugEventListener* listener)
 	return FX_S_OK;
 }
 
-result_t LuaScriptRuntime::EmitWarning(char* channel, char* message)
+result_t LuaScriptRuntime::EmitWarning(const char* channel, const char* message)
 {
 	lua_warning(m_state, va("[%s] %s", channel, message), 0);
 	return FX_S_OK;

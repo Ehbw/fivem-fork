@@ -218,15 +218,15 @@ private:
 	int m_curStringValue;
 
 private:
-	result_t LoadFileInternal(OMPtr<fxIStream> stream, char* scriptFile, Local<Script>* outScript);
+	result_t LoadFileInternal(OMPtr<fxIStream> stream, const char* scriptFile, Local<Script>* outScript);
 
-	result_t LoadHostFileInternal(char* scriptFile, Local<Script>* outScript);
+	result_t LoadHostFileInternal(const char* scriptFile, Local<Script>* outScript);
 
-	result_t LoadSystemFileInternal(char* scriptFile, Local<Script>* outScript);
+	result_t LoadSystemFileInternal(const char* scriptFile, Local<Script>* outScript);
 
-	result_t RunFileInternal(char* scriptFile, std::function<result_t(char*, Local<Script>*)> loadFunction);
+	result_t RunFileInternal(const char* scriptFile, std::function<result_t(const char*, Local<Script>*)> loadFunction);
 
-	result_t LoadSystemFile(char* scriptFile);
+	result_t LoadSystemFile(const char* scriptFile);
 
 public:
 	inline V8ScriptRuntime()
@@ -307,7 +307,7 @@ public:
 
 	inline const char* GetResourceName()
 	{
-		char* resourceName = "";
+		const char* resourceName = "";
 		m_resourceHost->GetResourceName(&resourceName);
 
 		return resourceName;
@@ -863,11 +863,11 @@ static void V8_CanonicalizeRef(const v8::FunctionCallbackInfo<v8::Value>& args)
 {
 	V8ScriptRuntime* runtime = GetScriptRuntimeFromArgs(args);
 
-	char* refString;
+	char* refString = nullptr;
 	result_t hr = runtime->GetScriptHost()->CanonicalizeRef(args[0]->Int32Value(runtime->GetContext()).ToChecked(), runtime->GetInstanceId(), &refString);
 
 	args.GetReturnValue().Set(String::NewFromUtf8(GetV8Isolate(), refString).ToLocalChecked());
-	fwFree(refString);
+	fwFree((char*)refString);
 }
 
 struct RefAndPersistent {
@@ -895,7 +895,7 @@ static void V8_InvokeFunctionReference(const v8::FunctionCallbackInfo<v8::Value>
 	fx::OMPtr<IScriptBuffer> retvalBuffer;
 	if (FX_FAILED(scriptHost->InvokeFunctionReference(const_cast<char*>(refData->ref.GetRef().c_str()), reinterpret_cast<char*>(argsBuffer.data()), argsBuffer.size(), retvalBuffer.GetAddressOf())))
 	{
-		char* error = "Unknown";
+		const char* error = "Unknown";
 		scriptHost->GetLastErrorText(&error);
 
 		auto throwException = [&](const std::string& exceptionString)
@@ -1912,7 +1912,7 @@ void V8ScriptRuntime::SetParentObject(void* parentObject)
 	m_parentObject = parentObject;
 }
 
-result_t V8ScriptRuntime::LoadFileInternal(OMPtr<fxIStream> stream, char* scriptFile, Local<Script>* outScript)
+result_t V8ScriptRuntime::LoadFileInternal(OMPtr<fxIStream> stream, const char* scriptFile, Local<Script>* outScript)
 {
 	// read file data
 	uint64_t length;
@@ -1957,7 +1957,7 @@ result_t V8ScriptRuntime::LoadFileInternal(OMPtr<fxIStream> stream, char* script
 	return FX_S_OK;
 }
 
-result_t V8ScriptRuntime::LoadHostFileInternal(char* scriptFile, Local<Script>* outScript)
+result_t V8ScriptRuntime::LoadHostFileInternal(const char* scriptFile, Local<Script>* outScript)
 {
 	// open the file
 	OMPtr<fxIStream> stream;
@@ -1970,13 +1970,13 @@ result_t V8ScriptRuntime::LoadHostFileInternal(char* scriptFile, Local<Script>* 
 		return hr;
 	}
 
-	char* resourceName;
+	const char* resourceName;
 	m_resourceHost->GetResourceName(&resourceName);
 
 	return LoadFileInternal(stream, (scriptFile[0] != '@') ? const_cast<char*>(fmt::sprintf("@%s/%s", resourceName, scriptFile).c_str()) : scriptFile, outScript);
 }
 
-result_t V8ScriptRuntime::LoadSystemFileInternal(char* scriptFile, Local<Script>* outScript)
+result_t V8ScriptRuntime::LoadSystemFileInternal(const char* scriptFile, Local<Script>* outScript)
 {
 	// open the file
 	OMPtr<fxIStream> stream;
@@ -1992,7 +1992,7 @@ result_t V8ScriptRuntime::LoadSystemFileInternal(char* scriptFile, Local<Script>
 	return LoadFileInternal(stream, scriptFile, outScript);
 }
 
-result_t V8ScriptRuntime::RunFileInternal(char* scriptName, std::function<result_t(char*, Local<Script>*)> loadFunction)
+result_t V8ScriptRuntime::RunFileInternal(const char* scriptName, std::function<result_t(const char*, Local<Script>*)> loadFunction)
 {
 	V8PushEnvironment pushed(this);
 
@@ -2023,12 +2023,12 @@ result_t V8ScriptRuntime::RunFileInternal(char* scriptName, std::function<result
 	return FX_S_OK;
 }
 
-result_t V8ScriptRuntime::LoadFile(char* scriptName)
+result_t V8ScriptRuntime::LoadFile(const char* scriptName)
 {
 	return RunFileInternal(scriptName, std::bind(&V8ScriptRuntime::LoadHostFileInternal, this, std::placeholders::_1, std::placeholders::_2));
 }
 
-result_t V8ScriptRuntime::LoadSystemFile(char* scriptName)
+result_t V8ScriptRuntime::LoadSystemFile(const char* scriptName)
 {
 	return RunFileInternal(scriptName, std::bind(&V8ScriptRuntime::LoadSystemFileInternal, this, std::placeholders::_1, std::placeholders::_2));
 }
@@ -2038,7 +2038,7 @@ int V8ScriptRuntime::GetInstanceId()
 	return m_instanceId;
 }
 
-int32_t V8ScriptRuntime::HandlesFile(char* fileName, IScriptHostWithResourceData* metadata)
+int32_t V8ScriptRuntime::HandlesFile(const char* fileName, IScriptHostWithResourceData* metadata)
 {
 #ifdef V8_12_2
 	constexpr bool isInLegacyRuntime = false;
@@ -2056,7 +2056,7 @@ int32_t V8ScriptRuntime::HandlesFile(char* fileName, IScriptHostWithResourceData
 		return false;
 	}
 
-	char* versionStr = "16";
+	const char* versionStr = "16";
 	metadata->GetResourceMetaData("node_version", 0, &versionStr);
 
 	const bool useLegacyRuntime = !strcmp("16", versionStr);
@@ -2097,7 +2097,7 @@ result_t V8ScriptRuntime::Tick()
 	return FX_S_OK;
 }
 
-result_t V8ScriptRuntime::TriggerEvent(char* eventName, char* eventPayload, uint32_t payloadSize, char* eventSource)
+result_t V8ScriptRuntime::TriggerEvent(const char* eventName, const char* eventPayload, uint32_t payloadSize, const char* eventSource)
 {
 	if (m_eventRoutine)
 	{
@@ -2109,7 +2109,7 @@ result_t V8ScriptRuntime::TriggerEvent(char* eventName, char* eventPayload, uint
 	return FX_S_OK;
 }
 
-result_t V8ScriptRuntime::CallRef(int32_t refIdx, char* argsSerialized, uint32_t argsLength, IScriptBuffer** retval)
+result_t V8ScriptRuntime::CallRef(int32_t refIdx, const char* argsSerialized, uint32_t argsLength, IScriptBuffer** retval)
 {
 	*retval = nullptr;
 
@@ -2150,7 +2150,7 @@ result_t V8ScriptRuntime::RemoveRef(int32_t refIdx)
 	return FX_S_OK;
 }
 
-result_t V8ScriptRuntime::WalkStack(char* boundaryStart, uint32_t boundaryStartLength, char* boundaryEnd, uint32_t boundaryEndLength, IScriptStackWalkVisitor* visitor)
+result_t V8ScriptRuntime::WalkStack(const char* boundaryStart, uint32_t boundaryStartLength, const char* boundaryEnd, uint32_t boundaryEndLength, IScriptStackWalkVisitor* visitor)
 {
 	if (m_stackTraceRoutine)
 	{
@@ -2159,7 +2159,7 @@ result_t V8ScriptRuntime::WalkStack(char* boundaryStart, uint32_t boundaryStartL
 		char* out = nullptr;
 		size_t outLen = 0;
 
-		m_stackTraceRoutine(boundaryStart, boundaryEnd, &out, &outLen);
+		m_stackTraceRoutine((void*)boundaryStart, (void*)boundaryEnd, &out, &outLen);
 
 		if (out)
 		{
@@ -2180,7 +2180,7 @@ result_t V8ScriptRuntime::WalkStack(char* boundaryStart, uint32_t boundaryStartL
 	return FX_S_OK;
 }
 
-result_t V8ScriptRuntime::EmitWarning(char* channel, char* message)
+result_t V8ScriptRuntime::EmitWarning(const char* channel, const char* message)
 {
 	if (!m_context.IsEmpty())
 	{

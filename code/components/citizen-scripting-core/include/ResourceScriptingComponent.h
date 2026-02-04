@@ -108,13 +108,13 @@ public:
 	{
 	}
 
-	result_t OM_DECL GetResourceName(char** outResourceName)
+	result_t OM_DECL GetResourceName(const char** outResourceName)
 	{
 		*outResourceName = const_cast<char*>(m_resource->GetName().c_str());
 		return FX_S_OK;
 	}
 
-	result_t OM_DECL GetNumResourceMetaData(char* fieldName, int32_t* numFields)
+	result_t OM_DECL GetNumResourceMetaData(const char* fieldName, int32_t* numFields)
 	{
 		auto metaData = m_resource->GetComponent<ResourceMetaDataComponent>();
 
@@ -125,7 +125,7 @@ public:
 		return FX_S_OK;
 	}
 
-	result_t OM_DECL GetResourceMetaData(char* fieldName, int32_t fieldIndex, char** fieldValue)
+	result_t OM_DECL GetResourceMetaData(const char* fieldName, int32_t fieldIndex, const char** fieldValue)
 	{
 		auto metaData = m_resource->GetComponent<ResourceMetaDataComponent>();
 
@@ -138,7 +138,7 @@ public:
 		{
 			if (fieldIndex == i)
 			{
-				*fieldValue = const_cast<char*>(entry.second.c_str());
+				*fieldValue = entry.second.c_str();
 				return FX_S_OK;
 			}
 
@@ -166,7 +166,7 @@ public:
 		return FX_E_INVALIDARG;
 	}
 
-	result_t OM_DECL IsManifestVersionV2Between(char* lowerBound, char* upperBound, bool* _retval)
+	result_t OM_DECL IsManifestVersionV2Between(const char* lowerBound, const char* upperBound, bool* _retval)
 	{
 		// get the manifest version
 		auto metaData = m_resource->GetComponent<ResourceMetaDataComponent>();

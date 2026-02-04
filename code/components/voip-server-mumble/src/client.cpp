@@ -308,7 +308,7 @@ void recheckCodecVersions(client_t *connectingClient)
 			iCodecBeta = version;
 	} else if (bOpus && enableOpus) {
 		if (connectingClient && !connectingClient->bOpus)
-			Client_textmessage(connectingClient, OPUS_WARN_USING);
+			Client_textmessage(connectingClient, (const char*)OPUS_WARN_USING);
 		return;
 	}
 
@@ -325,7 +325,7 @@ void recheckCodecVersions(client_t *connectingClient)
 		while (Client_iterate(&client_itr) != NULL) {
 			if ((client_itr->authenticated || client_itr == connectingClient) &&
 				!client_itr->bOpus) {
-				Client_textmessage(client_itr, OPUS_WARN_SWITCHING);
+				Client_textmessage(client_itr, (const char*)OPUS_WARN_SWITCHING);
 			}
 		}
 		Log_info("OPUS codec %s", bOpus ? "enabled" : "disabled");
@@ -712,7 +712,7 @@ client_t *Client_iterate(client_t **client_itr)
 	return c;
 }
 
-void Client_textmessage(client_t *client, char *text)
+void Client_textmessage(client_t *client, const char *text)
 {
 	char *message;
 	uint32_t *tree_id;

@@ -161,7 +161,7 @@ static void DevGui_Draw(const DevGuiNode* node)
 
 		try
 		{
-			auto boolEntry = std::dynamic_pointer_cast<internal::ConsoleVariableEntry<bool>>(entry);
+			auto boolEntry = std::dynamic_pointer_cast<fx::internal::ConsoleVariableEntry<bool>>(entry);
 
 			if (boolEntry)
 			{
@@ -178,7 +178,7 @@ static void DevGui_Draw(const DevGuiNode* node)
 				return;
 			}
 
-			auto intEntry = std::dynamic_pointer_cast<internal::ConsoleVariableEntry<int>>(entry);
+			auto intEntry = std::dynamic_pointer_cast<fx::internal::ConsoleVariableEntry<int>>(entry);
 
 			if (intEntry)
 			{

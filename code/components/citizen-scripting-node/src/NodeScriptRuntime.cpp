@@ -178,7 +178,7 @@ result_t NodeScriptRuntime::Create(IScriptHost* host)
 		m_manifestHost = manifestPtr.GetRef();
 	}
 
-	char* resourceName = nullptr;
+	const char* resourceName = nullptr;
 	m_resourceHost->GetResourceName(&resourceName);
 	m_resourceName = resourceName;
 
@@ -328,7 +328,7 @@ result_t NodeScriptRuntime::Tick()
 	return FX_S_OK;
 }
 
-result_t NodeScriptRuntime::TriggerEvent(char* eventName, char* eventPayload, uint32_t payloadSize, char* eventSource)
+result_t NodeScriptRuntime::TriggerEvent(const char* eventName, const char* eventPayload, uint32_t payloadSize, const char* eventSource)
 {
 	if (m_eventRoutine)
 	{
@@ -353,11 +353,11 @@ int NodeScriptRuntime::GetInstanceId()
 	return m_instanceId;
 }
 
-int NodeScriptRuntime::HandlesFile(char* filename, IScriptHostWithResourceData* metadata)
+int NodeScriptRuntime::HandlesFile(const char* filename, IScriptHostWithResourceData* metadata)
 {
 	if(strstr(filename, ".js"))
 	{
-		char* versionStr = "16";
+		const char* versionStr = "16";
 		metadata->GetResourceMetaData("node_version", 0, &versionStr);
 
 		return !strcmp("22", versionStr);
@@ -365,7 +365,7 @@ int NodeScriptRuntime::HandlesFile(char* filename, IScriptHostWithResourceData* 
     return false;
 }
 
-result_t NodeScriptRuntime::LoadFileInternal(OMPtr<fxIStream> stream, char* scriptFile, v8::Local<v8::Script>* outScript)
+result_t NodeScriptRuntime::LoadFileInternal(OMPtr<fxIStream> stream, const char* scriptFile, v8::Local<v8::Script>* outScript)
 {
 	// read file data
 	uint64_t length;
@@ -409,7 +409,7 @@ result_t NodeScriptRuntime::LoadFileInternal(OMPtr<fxIStream> stream, char* scri
 	return FX_S_OK;
 }
 
-result_t NodeScriptRuntime::LoadHostFileInternal(char* scriptFile, v8::Local<v8::Script>* outScript, bool isSystem)
+result_t NodeScriptRuntime::LoadHostFileInternal(const char* scriptFile, v8::Local<v8::Script>* outScript, bool isSystem)
 {
 	// open the file
 	OMPtr<fxIStream> stream;
@@ -422,13 +422,13 @@ result_t NodeScriptRuntime::LoadHostFileInternal(char* scriptFile, v8::Local<v8:
 		return hr;
 	}
 
-	char* resourceName;
+	const char* resourceName;
 	m_resourceHost->GetResourceName(&resourceName);
 
 	return LoadFileInternal(stream, (scriptFile[0] != '@') ? const_cast<char*>(fmt::sprintf("@%s/%s", resourceName, scriptFile).c_str()) : scriptFile, outScript);
 }
 	
-result_t NodeScriptRuntime::RunFileInternal(char* scriptName, std::function<result_t(char*, v8::Local<v8::Script>*)> loadFunction)
+result_t NodeScriptRuntime::RunFileInternal(const char* scriptName, std::function<result_t(const char*, v8::Local<v8::Script>*)> loadFunction)
 {
 	SharedPushEnvironment pushed(this);
 
@@ -458,17 +458,17 @@ result_t NodeScriptRuntime::RunFileInternal(char* scriptName, std::function<resu
 	return FX_S_OK;
 }
 
-result_t NodeScriptRuntime::LoadFile(char* scriptName)
+result_t NodeScriptRuntime::LoadFile(const char* scriptName)
 {
 	return RunFileInternal(scriptName, std::bind(&NodeScriptRuntime::LoadHostFileInternal, this, std::placeholders::_1, std::placeholders::_2, false));
 }
 
-result_t NodeScriptRuntime::LoadSystemFile(char* scriptName)
+result_t NodeScriptRuntime::LoadSystemFile(const char* scriptName)
 {
 	return RunFileInternal(scriptName, std::bind(&NodeScriptRuntime::LoadHostFileInternal, this, std::placeholders::_1, std::placeholders::_2, true));
 }
 
-result_t NodeScriptRuntime::CallRef(int32_t refIdx, char* argsSerialized, uint32_t argsLength, IScriptBuffer** retval)
+result_t NodeScriptRuntime::CallRef(int32_t refIdx, const char* argsSerialized, uint32_t argsLength, IScriptBuffer** retval)
 {
 	*retval = nullptr;
 
@@ -506,16 +506,16 @@ result_t NodeScriptRuntime::RemoveRef(int32_t refIdx)
 	return FX_S_OK;
 }
 
-result_t NodeScriptRuntime::WalkStack(char* boundaryStart, uint32_t boundaryStartLength, char* boundaryEnd, uint32_t boundaryEndLength, IScriptStackWalkVisitor* visitor)
+result_t NodeScriptRuntime::WalkStack(const char* boundaryStart, uint32_t boundaryStartLength, const char* boundaryEnd, uint32_t boundaryEndLength, IScriptStackWalkVisitor* visitor)
 {
 	if (m_stackTraceRoutine)
 	{
 		SharedPushEnvironment pushed(this);
 
-		char* out = nullptr;
+		const char* out = nullptr;
 		size_t outLen = 0;
 
-		m_stackTraceRoutine(boundaryStart, boundaryEnd, &out, &outLen);
+		m_stackTraceRoutine((void*)boundaryStart, (void*)boundaryEnd, &out, &outLen);
 
 		if (out)
 		{
@@ -535,7 +535,7 @@ result_t NodeScriptRuntime::WalkStack(char* boundaryStart, uint32_t boundaryStar
 	return FX_S_OK;
 }
 
-result_t NodeScriptRuntime::EmitWarning(char* channel, char* message)
+result_t NodeScriptRuntime::EmitWarning(const char* channel, const char* message)
 {
 	if (!m_context.IsEmpty())
 	{

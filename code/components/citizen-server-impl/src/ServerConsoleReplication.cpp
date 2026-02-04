@@ -38,7 +38,7 @@ static InitFunction initFunction([]()
 		{
 			std::map<std::string, std::string> variableList;
 			
-			console->GetVariableManager()->ForAllVariables([&variableList](const std::string& name, int flags, const std::shared_ptr<internal::ConsoleVariableEntryBase>& var)
+			console->GetVariableManager()->ForAllVariables([&variableList](const std::string& name, int flags, const std::shared_ptr<fx::internal::ConsoleVariableEntryBase>& var)
 			{
 				variableList.emplace(name, var->GetValue());
 			}, ConVar_Replicated);
@@ -50,7 +50,7 @@ static InitFunction initFunction([]()
 		{
 			std::map<std::string, std::string> variableList;
 
-			console->GetVariableManager()->ForAllVariables([console, &variableList](const std::string& name, int flags, const std::shared_ptr<internal::ConsoleVariableEntryBase>& var)
+			console->GetVariableManager()->ForAllVariables([console, &variableList](const std::string& name, int flags, const std::shared_ptr<fx::internal::ConsoleVariableEntryBase>& var)
 			{
 				if ((flags & (ConVar_Replicated | ConVar_Modified)) == (ConVar_Replicated | ConVar_Modified))
 				{

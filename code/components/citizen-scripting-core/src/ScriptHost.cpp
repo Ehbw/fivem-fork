@@ -287,9 +287,9 @@ public:
 	}
 };
 
-result_t TestScriptHost::GetLastErrorText(char** text)
+result_t TestScriptHost::GetLastErrorText(const char** text)
 {
-	*text = const_cast<char*>(m_lastError.c_str());
+	*text = m_lastError.c_str();
 
 	return FX_S_OK;
 }
@@ -365,23 +365,23 @@ result_t TestScriptHost::WrapVFSStreamResult(fwRefContainer<vfs::Stream> stream,
 	return 0x80070002;
 }
 
-result_t TestScriptHost::ScriptTrace(char* string)
+result_t TestScriptHost::ScriptTrace(const char* string)
 {
 	StructuredTrace({ "type", "script_log" }, { "resource", m_resource->GetName() }, { "text", string });
 
 	return FX_S_OK;
 }
 
-result_t TestScriptHost::OpenSystemFile(char *fileName, fxIStream * *stream)
+result_t TestScriptHost::OpenSystemFile(const char *fileName, fxIStream * *stream)
 {
-	m_resource->GetComponent<fx::ResourceScriptingComponent>()->OnOpenScript(fileName, fileName);
+	m_resource->template GetComponent<fx::ResourceScriptingComponent>()->OnOpenScript(fileName, fileName);
 
 	fwRefContainer<vfs::Stream> nativeStream = vfs::OpenRead(fileName);
 
 	return WrapVFSStreamResult(nativeStream, stream);
 }
 
-result_t TestScriptHost::OpenHostFile(char *fileName, fxIStream * *stream)
+result_t TestScriptHost::OpenHostFile(const char *fileName, fxIStream * *stream)
 {
 	std::string_view fn = fileName;
 	std::string fileNameStr = m_resource->GetPath() + "/" + fileName;
@@ -402,7 +402,7 @@ result_t TestScriptHost::OpenHostFile(char *fileName, fxIStream * *stream)
 		fileNameStr = resource->GetPath() + "/" + std::string(fn);
 	}
 
-	m_resource->GetComponent<fx::ResourceScriptingComponent>()->OnOpenScript(fileNameStr, "@" + m_resource->GetName() + "/" + fileName);
+	m_resource->template GetComponent<fx::ResourceScriptingComponent>()->OnOpenScript(fileNameStr, "@" + m_resource->GetName() + "/" + fileName);
 
 	fwRefContainer<vfs::Stream> nativeStream = vfs::OpenRead(fileNameStr);
 	
@@ -420,7 +420,7 @@ result_t TestScriptHost::CanonicalizeRef(int32_t refIdx, int32_t instanceId, cha
 	return FX_S_OK;
 }
 
-result_t TestScriptHost::InvokeFunctionReference(char* refId, char* argsSerialized, uint32_t argsSize, IScriptBuffer** ret)
+result_t TestScriptHost::InvokeFunctionReference(const char* refId, const char* argsSerialized, uint32_t argsSize, IScriptBuffer** ret)
 {
 	int32_t refIdx;
 	fx::OMPtr<IScriptRefRuntime> refRuntime = ValidateAndLookUpRef(refId, &refIdx);
@@ -433,17 +433,17 @@ result_t TestScriptHost::InvokeFunctionReference(char* refId, char* argsSerializ
 	return FX_E_INVALIDARG;
 }
 
-result_t TestScriptHost::GetResourceName(char** outResourceName)
+result_t TestScriptHost::GetResourceName(const char** outResourceName)
 {
 	return meta.GetResourceName(outResourceName);
 }
 
-result_t TestScriptHost::GetNumResourceMetaData(char* metaDataName, int32_t* entryCount)
+result_t TestScriptHost::GetNumResourceMetaData(const char* metaDataName, int32_t* entryCount)
 {
 	return meta.GetNumResourceMetaData(metaDataName, entryCount);
 }
 
-result_t TestScriptHost::GetResourceMetaData(char* metaDataName, int32_t entryIndex, char** outMetaData)
+result_t TestScriptHost::GetResourceMetaData(const char* metaDataName, int32_t entryIndex, const char** outMetaData)
 {
 	return meta.GetResourceMetaData(metaDataName, entryIndex, outMetaData);
 }
@@ -453,7 +453,7 @@ result_t TestScriptHost::IsManifestVersionBetween(const guid_t & lowerBound, con
 	return meta.IsManifestVersionBetween(lowerBound, upperBound, _retval);
 }
 
-result_t TestScriptHost::IsManifestVersionV2Between(char* lowerBound, char* upperBound, bool* _retval)
+result_t TestScriptHost::IsManifestVersionV2Between(const char* lowerBound, const char* upperBound, bool* _retval)
 {
 	return meta.IsManifestVersionV2Between(lowerBound, upperBound, _retval);
 }
@@ -468,7 +468,7 @@ static std::recursive_mutex ms_runtimeMutex;
 
 static bool g_suppressErrors;
 
-result_t TestScriptHost::SubmitBoundaryStart(char* boundaryData, int boundarySize)
+result_t TestScriptHost::SubmitBoundaryStart(const char* boundaryData, int boundarySize)
 {
 	if (!ms_boundaryStack.empty())
 	{
@@ -478,7 +478,7 @@ result_t TestScriptHost::SubmitBoundaryStart(char* boundaryData, int boundarySiz
 	return FX_S_OK;
 }
 
-result_t TestScriptHost::SubmitBoundaryEnd(char* boundaryData, int boundarySize)
+result_t TestScriptHost::SubmitBoundaryEnd(const char* boundaryData, int boundarySize)
 {
 	if (!ms_boundaryStack.empty())
 	{
@@ -671,7 +671,7 @@ struct ScriptStackFrame
 	MSGPACK_DEFINE_MAP(name, file, sourcefile, line);
 };
 
-result_t StringifyingStackVisitor::SubmitStackFrame(char* blob, uint32_t size)
+result_t StringifyingStackVisitor::SubmitStackFrame(const char* blob, uint32_t size)
 {
 	msgpack::unpacked up = msgpack::unpack(blob, size);
 	auto frame = up.get().as<ScriptStackFrame>();

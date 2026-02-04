@@ -327,6 +327,8 @@ public:
 };
 #endif
 
+namespace fx
+{
 namespace internal
 {
 template <typename TArgument>
@@ -452,6 +454,7 @@ public:
 		return true;
 	}
 };
+}
 }
 
 DECLARE_INSTANCE_TYPE(ConsoleCommandManager);

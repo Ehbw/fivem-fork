@@ -17,7 +17,7 @@ namespace fx
 	class PushEnvironment
 	{
 	private:
-		static inline auto CreateHandler()
+		static inline OMPtr<IScriptRuntimeHandler> CreateHandler()
 		{
 			OMPtr<IScriptRuntimeHandler> handler;
 			assert(FX_SUCCEEDED(fx::MakeInterface(&handler, CLSID_ScriptRuntimeHandler)));
@@ -25,7 +25,7 @@ namespace fx
 			return handler;
 		}
 
-		static inline auto EnsureHandler()
+		static inline OMPtr<IScriptRuntimeHandler> EnsureHandler()
 		{
 			static auto handler = CreateHandler();
 

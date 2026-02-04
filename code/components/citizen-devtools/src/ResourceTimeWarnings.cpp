@@ -75,12 +75,6 @@ std::string PrettyFormatFileTime(uint64_t filetime)
 
 	return ss.str();
 }
-#endif
-
-inline std::chrono::microseconds usec()
-{
-	return std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::high_resolution_clock::now().time_since_epoch());
-}
 
 template<typename T>
 static void SendSdkMessage(const std::string& type, const T& payload)
@@ -92,6 +86,12 @@ static void SendSdkMessage(const std::string& type, const T& payload)
 	resourceDatasJson["data"] = payload;
 
 	NativeInvoke::Invoke<SEND_SDK_MESSAGE, const char*>(resourceDatasJson.dump().c_str());
+}
+#endif
+
+inline static std::chrono::microseconds usec()
+{
+	return std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::high_resolution_clock::now().time_since_epoch());
 }
 
 static ImVec4 GetColorForRange(float min, float max, float num)

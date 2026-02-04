@@ -10,7 +10,7 @@ private:
 	int m_token;
 	ConsoleVariableManager* m_manager;
 
-	std::shared_ptr<internal::ConsoleVariableEntry<TVariable>> m_helper;
+	std::shared_ptr<fx::internal::ConsoleVariableEntry<TVariable>> m_helper;
 
 public:
 	ConVar(const std::string& name, int flags, const TVariable& defaultValue)
@@ -33,17 +33,17 @@ public:
 	{
 	}
 
-	ConVar(const std::string& name, int flags, const TVariable& defaultValue, void (*changeCallback)(internal::ConsoleVariableEntry<TVariable>*))
+	ConVar(const std::string& name, int flags, const TVariable& defaultValue, void (*changeCallback)(fx::internal::ConsoleVariableEntry<TVariable>*))
 		: ConVar(ConsoleVariableManager::GetDefaultInstance(), name, flags, defaultValue, nullptr, changeCallback)
 	{
 	}
 
-	ConVar(console::Context* context, const std::string& name, int flags, const TVariable& defaultValue, void (*changeCallback)(internal::ConsoleVariableEntry<TVariable>*))
+	ConVar(console::Context* context, const std::string& name, int flags, const TVariable& defaultValue, void (*changeCallback)(fx::internal::ConsoleVariableEntry<TVariable>*))
 		: ConVar(context->GetVariableManager(), name, flags, defaultValue, nullptr, changeCallback)
 	{
 	}
 
-	ConVar(ConsoleVariableManager* manager, const std::string& name, int flags, const TVariable& defaultValue, TVariable* trackingVar = nullptr, void (*changeCallback)(internal::ConsoleVariableEntry<TVariable>*) = nullptr)
+	ConVar(ConsoleVariableManager* manager, const std::string& name, int flags, const TVariable& defaultValue, TVariable* trackingVar = nullptr, void (*changeCallback)(fx::internal::ConsoleVariableEntry<TVariable>*) = nullptr)
 	    : m_manager(manager)
 	{
 		m_helper = CreateVariableEntry<TVariable>(manager, name, defaultValue);
@@ -73,7 +73,7 @@ public:
 		return m_helper->GetRawValue();
 	}
 
-	inline std::shared_ptr<internal::ConsoleVariableEntry<TVariable>> GetHelper()
+	inline std::shared_ptr<fx::internal::ConsoleVariableEntry<TVariable>> GetHelper()
 	{
 		return m_helper;
 	}

@@ -32,7 +32,7 @@ void GenerateAuthHash(const std::string& user, const std::string& password)
 	g_prometheusAuthHash = "Basic " + Botan::base64_encode(reinterpret_cast<const uint8_t*>(authString.data()), authString.size());
 }
 
-void OnPrometheusBasicAuthUserChanged(internal::ConsoleVariableEntry<std::string>* variableEntry)
+void OnPrometheusBasicAuthUserChanged(fx::internal::ConsoleVariableEntry<std::string>* variableEntry)
 {
 	std::string user = variableEntry->GetValue();
 	std::string password = g_prometheusBasicAuthPassword->GetValue();
@@ -40,7 +40,7 @@ void OnPrometheusBasicAuthUserChanged(internal::ConsoleVariableEntry<std::string
 	GenerateAuthHash(user, password);
 }
 
-void OnPrometheusBasicAuthPasswordChanged(internal::ConsoleVariableEntry<std::string>* variableEntry)
+void OnPrometheusBasicAuthPasswordChanged(fx::internal::ConsoleVariableEntry<std::string>* variableEntry)
 {
 	std::string user = g_prometheusBasicAuthUser->GetValue();
 	std::string password = variableEntry->GetValue();

@@ -108,7 +108,7 @@ result_t MonoScriptRuntime::Create(IScriptHost* host)
 			m_manifestHost = manifestPtr.GetRef();
 		}
 
-		char* resourceName = nullptr;
+		const char* resourceName = nullptr;
 		m_resourceHost->GetResourceName(&resourceName);
 		m_resourceName = resourceName;
 
@@ -211,7 +211,7 @@ result_t MonoScriptRuntime::Tick()
 	return ReturnOrError(exc);
 }
 
-result_t MonoScriptRuntime::TriggerEvent(char* eventName, char* argsSerialized, uint32_t serializedSize, char* sourceId)
+result_t MonoScriptRuntime::TriggerEvent(const char* eventName, const char* argsSerialized, uint32_t serializedSize, const char* sourceId)
 {
 	fx::PushEnvironment env(this);
 	MonoDomainScope scope(m_appDomain);
@@ -245,10 +245,10 @@ int MonoScriptRuntime::GetInstanceId()
 	return m_instanceId;
 }
 
-int MonoScriptRuntime::HandlesFile(char* filename, IScriptHostWithResourceData* metadata)
+int MonoScriptRuntime::HandlesFile(const char* filename, IScriptHostWithResourceData* metadata)
 {
 	int monoRT2FlagCount = 0;
-	metadata->GetNumResourceMetaData(const_cast<char*>("mono_rt2"), &monoRT2FlagCount); // should've been const qualified
+	metadata->GetNumResourceMetaData("mono_rt2", &monoRT2FlagCount); // should've been const qualified
 
 	// check if mono_rt2 has been set
 	if (monoRT2FlagCount == 0)
@@ -304,7 +304,7 @@ int MonoScriptRuntime::HandlesFile(char* filename, IScriptHostWithResourceData* 
 		const char* flagValue = nullptr;
 
 		// TODO: fix ill formed and/or unclear usage of non-const char* parameters
-		if (FX_SUCCEEDED(metadata->GetResourceMetaData(const_cast<char*>("mono_rt2"), i, const_cast<char**>(&flagValue))))
+		if (FX_SUCCEEDED(metadata->GetResourceMetaData("mono_rt2", i, &flagValue)))
 		{
 			for (auto& value : allowedValues)
 			{
@@ -323,7 +323,7 @@ int MonoScriptRuntime::HandlesFile(char* filename, IScriptHostWithResourceData* 
 	return false;
 }
 
-result_t MonoScriptRuntime::LoadFile(char* scriptFile)
+result_t MonoScriptRuntime::LoadFile(const char* scriptFile)
 {
 	fx::PushEnvironment env(this);
 	MonoComponentHost::EnsureThreadAttached();
@@ -342,7 +342,7 @@ result_t MonoScriptRuntime::LoadFile(char* scriptFile)
 	return ReturnOrError(exc);
 }
 
-result_t MonoScriptRuntime::CallRef(int32_t refIndex, char* argsSerialized, uint32_t argsSize, IScriptBuffer** buffer)
+result_t MonoScriptRuntime::CallRef(int32_t refIndex, const char* argsSerialized, uint32_t argsSize, IScriptBuffer** buffer)
 {
 	fx::PushEnvironment env(this);
 	MonoComponentHost::EnsureThreadAttached();
@@ -446,7 +446,7 @@ result_t MonoScriptRuntime::GetMemoryUsage(int64_t* memoryUsage)
 	return FX_S_OK;
 }
 
-result_t MonoScriptRuntime::SetScriptIdentifier(char* fileName, int32_t scriptId)
+result_t MonoScriptRuntime::SetScriptIdentifier(const char* fileName, int32_t scriptId)
 {
 	m_scriptIds[fileName] = scriptId;
 

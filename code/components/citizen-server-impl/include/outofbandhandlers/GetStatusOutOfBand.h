@@ -63,7 +63,7 @@ public:
 		}
 
 		server->GetInstance()->template GetComponent<console::Context>()->GetVariableManager()->ForAllVariables(
-			[&](const std::string& name, int flags, const std::shared_ptr<internal::ConsoleVariableEntryBase>& var)
+			[&](const std::string& name, int flags, const std::shared_ptr<fx::internal::ConsoleVariableEntryBase>& var)
 			{
 				addInfo(name, var->GetValue());
 			}, ConVar_ServerInfo);

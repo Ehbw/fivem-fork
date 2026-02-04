@@ -1,5 +1,7 @@
 #pragma once
 
+#include <StdInc.h>
+
 #include <boost/preprocessor/seq/for_each.hpp>
 #include <boost/preprocessor/wstringize.hpp>
 
@@ -265,7 +267,7 @@ inline HWND CoreGetGameWindow()
 		}
 	}
 
-	return (!func) ? false : func();
+	return func ? func() : nullptr;
 }
 
 inline void CoreSetGameWindow(HWND hWnd)
@@ -277,10 +279,10 @@ inline void CoreSetGameWindow(HWND hWnd)
 		if (auto coreRT = GetModuleHandleW(L"CoreRT.dll"))
 		{
 			func = (decltype(func))GetProcAddress(coreRT, "CoreSetGameWindow");
+
+			func(hWnd);
 		}
 	}
-
-	return (!func) ? void() : func(hWnd);
 }
 #endif
 #endif

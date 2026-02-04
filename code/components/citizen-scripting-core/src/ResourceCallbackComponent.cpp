@@ -90,7 +90,7 @@ int ResourceCallbackScriptRuntime::GetInstanceId()
 	return 'CBRT';
 }
 
-result_t ResourceCallbackScriptRuntime::CallRef(int32_t refIdx, char* argsSerialized, uint32_t argsLength, IScriptBuffer** retval)
+result_t ResourceCallbackScriptRuntime::CallRef(int32_t refIdx, const char* argsSerialized, uint32_t argsLength, IScriptBuffer** retval)
 {
 	// preset retval to be null
 	{

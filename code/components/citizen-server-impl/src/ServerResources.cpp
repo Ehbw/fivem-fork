@@ -117,7 +117,7 @@ namespace
 		fx::scripting::Warningf("natives", "TRIGGER_LATENT_CLIENT_EVENT_INTERNAL requires setr sv_enableNetEventReassembly true\n");
 	}
 
-	void EnableEventReassemblyChangedWithInstance(internal::ConsoleVariableEntry<bool>* variableEntry, fx::ServerInstanceBase* instance, const fwRefContainer<fx::EventReassemblyComponent>& rac)
+	void EnableEventReassemblyChangedWithInstance(fx::internal::ConsoleVariableEntry<bool>* variableEntry, fx::ServerInstanceBase* instance, const fwRefContainer<fx::EventReassemblyComponent>& rac)
 	{
 		instance->GetComponent<fx::GameServer>()->OnNetworkTick.Disconnect(g_eventReassemblyNetworkCookie);
 
@@ -138,7 +138,7 @@ namespace
 		}
 	}
 
-	void EnableEventReassemblyChanged(internal::ConsoleVariableEntry<bool>* variableEntry)
+	void EnableEventReassemblyChanged(fx::internal::ConsoleVariableEntry<bool>* variableEntry)
 	{
 		const auto resourceManager = fx::ResourceManager::GetCurrent();
 

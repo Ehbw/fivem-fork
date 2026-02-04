@@ -157,7 +157,7 @@ namespace fx::v8shared
 		runtime->GetScriptHost()->CanonicalizeRef(args[0]->Int32Value(runtime->GetContext()).ToChecked(), runtime->GetInstanceId(), &refString);
 
 		args.GetReturnValue().Set(v8::String::NewFromUtf8(isolate, refString).ToLocalChecked());
-		fwFree(refString);
+		fwFree((char*)refString);
 	}
 
 	template<class RuntimeType>
@@ -188,9 +188,9 @@ namespace fx::v8shared
 		abv->CopyContents(argsBuffer.data(), argsBuffer.size());
 
 		fx::OMPtr<IScriptBuffer> retvalBuffer;
-		if (FX_FAILED(scriptHost->InvokeFunctionReference(const_cast<char*>(refData->ref.GetRef().c_str()), reinterpret_cast<char*>(argsBuffer.data()), argsBuffer.size(), retvalBuffer.GetAddressOf())))
+		if (FX_FAILED(scriptHost->InvokeFunctionReference(refData->ref.GetRef().c_str(), (const char*)(argsBuffer.data()), argsBuffer.size(), retvalBuffer.GetAddressOf())))
 		{
-			char* error = "Unknown";
+			const char* error = "Unknown";
 			scriptHost->GetLastErrorText(&error);
 
 			auto throwException = [&](const std::string& exceptionString)

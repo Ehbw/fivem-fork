@@ -29,7 +29,7 @@ public:
 	{
 		auto functionRef = detail::make_function(function);
 
-		using ConsoleCommandFunction = internal::ConsoleCommandFunction<decltype(functionRef)>;
+		using ConsoleCommandFunction = fx::internal::ConsoleCommandFunction<decltype(functionRef)>;
 
 		m_token = m_manager->Register(name, m_resource, [=](ConsoleExecutionContext& context) {
 			return ConsoleCommandFunction::Call(functionRef, context);

@@ -34,31 +34,31 @@ interface IScriptHost : fxIBase
 {
 	void InvokeNative(inout NativeCtx context);
 
-	void OpenSystemFile(in charPtr fileName, out fxIStream stream);
+	void OpenSystemFile(in constCharPtr fileName, out fxIStream stream);
 
-	void OpenHostFile(in charPtr fileName, out fxIStream stream);
+	void OpenHostFile(in constCharPtr fileName, out fxIStream stream);
 
 	void CanonicalizeRef(in int32_t localRef, in int32_t instanceId, out charPtr refString);
 	
-	void ScriptTrace(in charPtr message);
+	void ScriptTrace(in constCharPtr message);
 
-	void SubmitBoundaryStart(in charPtr boundaryData, in int32_t boundarySize);
+	void SubmitBoundaryStart(in constCharPtr boundaryData, in int32_t boundarySize);
 
-	void SubmitBoundaryEnd(in charPtr boundaryData, in int32_t boundarySize);
+	void SubmitBoundaryEnd(in constCharPtr boundaryData, in int32_t boundarySize);
 
-	void GetLastErrorText(out charPtr errorString);
+	void GetLastErrorText(out constCharPtr errorString);
 
-	void InvokeFunctionReference(in charPtr refId, in charPtr argsSerialized, in uint32_t argsSize, out IScriptBuffer ret);
+	void InvokeFunctionReference(in constCharPtr refId, in constCharPtr argsSerialized, in uint32_t argsSize, out IScriptBuffer ret);
 };
 
 [uuid(9568DF2D-27C8-4B9E-B29D-48272C317084)]
 interface IScriptHostWithResourceData : fxIBase
 {
-	void GetResourceName(out charPtr resourceName);
+	void GetResourceName(out constCharPtr resourceName);
 
-	void GetNumResourceMetaData(in charPtr fieldName, out int32_t numFields);
+	void GetNumResourceMetaData(in constCharPtr fieldName, out int32_t numFields);
 
-	void GetResourceMetaData(in charPtr fieldName, in int32_t fieldIndex, out charPtr fieldValue);
+	void GetResourceMetaData(in constCharPtr fieldName, in int32_t fieldIndex, out constCharPtr fieldValue);
 };
 
 [uuid(5E212027-3AAD-46D1-97E0-B8BC5EF89E18)]
@@ -66,7 +66,7 @@ interface IScriptHostWithManifest : fxIBase
 {
 	boolean IsManifestVersionBetween(in fxIIDRef lowerBound, in fxIIDRef upperBound);
 
-	boolean IsManifestVersionV2Between(in charPtr lowerBound, in charPtr upperBound);
+	boolean IsManifestVersionV2Between(in constCharPtr lowerBound, in constCharPtr upperBound);
 };
 
 [uuid(67B28AF1-AAF9-4368-8296-F93AFC7BDE96)]
@@ -114,13 +114,13 @@ interface IScriptTickRuntimeWithBookmarks : fxIBase
 [uuid(637140DB-24E5-46BF-A8BD-08F2DBAC519A)]
 interface IScriptEventRuntime : fxIBase
 {
-	void TriggerEvent(in charPtr eventName, in charPtr argsSerialized, in uint32_t serializedSize, in charPtr sourceId);
+	void TriggerEvent(in constCharPtr eventName, in constCharPtr argsSerialized, in uint32_t serializedSize, in constCharPtr sourceId);
 };
 
 [uuid(A2F1B24B-A29F-4121-8162-86901ECA8097)]
 interface IScriptRefRuntime : fxIBase
 {
-	void CallRef(in int32_t refIdx, in charPtr argsSerialized, in uint32_t argsSize, out IScriptBuffer ret);
+	void CallRef(in int32_t refIdx, in constCharPtr argsSerialized, in uint32_t argsSize, out IScriptBuffer ret);
 
 	void DuplicateRef(in int32_t refIdx, out int32_t newRefIdx);
 
@@ -130,21 +130,21 @@ interface IScriptRefRuntime : fxIBase
 [uuid(567634C6-3BDD-4D0E-AF39-7472AED479B7)]
 interface IScriptFileHandlingRuntime : fxIBase
 {
-	[notxpcom] int32_t HandlesFile(in charPtr scriptFile, in IScriptHostWithResourceData metadata);
+	[notxpcom] int32_t HandlesFile(in constCharPtr scriptFile, in IScriptHostWithResourceData metadata);
 
-	void LoadFile(in charPtr scriptFile);
+	void LoadFile(in constCharPtr scriptFile);
 };
 
 [uuid(182CAAF3-E33D-474B-A6AF-33D59FF0E9ED)]
 interface IScriptStackWalkVisitor : fxIBase
 {
-	void SubmitStackFrame(in charPtr frameBlob, in uint32_t frameBlobSize);
+	void SubmitStackFrame(in constCharPtr frameBlob, in uint32_t frameBlobSize);
 };
 
 [uuid(567D2FDA-610C-4FA0-AE3E-4F700AE5CE56)]
 interface IScriptStackWalkingRuntime : fxIBase
 {
-	void WalkStack(in charPtr boundaryStart, in uint32_t boundaryStartLength, in charPtr boundaryEnd, in uint32_t boundaryEndLength, in IScriptStackWalkVisitor visitor);
+	void WalkStack(in constCharPtr boundaryStart, in uint32_t boundaryStartLength, in constCharPtr boundaryEnd, in uint32_t boundaryEndLength, in IScriptStackWalkVisitor visitor);
 };
 
 [uuid(D98A35CF-D6EE-4B51-A1C3-99B70F4EC1E6)]
@@ -158,7 +158,7 @@ interface IScriptMemInfoRuntime : fxIBase
 [uuid(d72be411-5152-4474-917c-5361ac051181)]
 interface IScriptWarningRuntime : fxIBase
 {
-	void EmitWarning(in charPtr channel, in charPtr message);
+	void EmitWarning(in constCharPtr channel, in constCharPtr message);
 };
 
 [uuid(782A4496-2AE3-4C70-B54A-FAD8FD8AEEFD)]
@@ -172,7 +172,7 @@ interface IScriptProfiler : fxIBase
 [uuid(08E68541-A1C9-4F51-8737-3C77F8AB5B21)]
 interface IDebugEventListener : fxIBase
 {
-	void OnBreakpointsDefined(in int32_t scriptId, in charPtr breakpointJson);
+	void OnBreakpointsDefined(in int32_t scriptId, in constCharPtr breakpointJson);
 };
 
 [uuid(7EB9F56A-8EBE-4BB2-B467-A6F6C099597B)]
@@ -180,7 +180,7 @@ interface IScriptDebugRuntime : fxIBase
 {
 	void SetDebugEventListener(in IDebugEventListener listener);
 
-	void SetScriptIdentifier(in charPtr fileName, in int32_t scriptId);
+	void SetScriptIdentifier(in constCharPtr fileName, in int32_t scriptId);
 };
 
 [uuid(2A7E092D-6CE9-4B9D-AC4F-8DA818BD0DA4)]

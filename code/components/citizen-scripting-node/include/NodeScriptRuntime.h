@@ -39,7 +39,7 @@ private:
 	typedef std::function<fx::OMPtr<IScriptBuffer>(int32_t, const char*, size_t)> TCallRefRoutine;
 	typedef std::function<int32_t(int32_t)> TDuplicateRefRoutine;
 	typedef std::function<void(int32_t)> TDeleteRefRoutine;
-	typedef std::function<void(void*, void*, char**, size_t*)> TStackTraceRoutine;
+	typedef std::function<void(void*, void*, const char**, size_t*)> TStackTraceRoutine;
 	typedef std::function<void(v8::PromiseRejectMessage&)> TUnhandledPromiseRejectionRoutine;
 	typedef std::function<void()> TTickRoutine;
 
@@ -82,10 +82,10 @@ public:
 		m_curStringValue = 0;
 	}
 
-	result_t LoadFileInternal(OMPtr<fxIStream> stream, char* scriptFile, v8::Local<v8::Script>* outScript);
-	result_t LoadHostFileInternal(char* scriptFile, v8::Local<v8::Script>* outScript, bool isSystem = false);
-	result_t RunFileInternal(char* scriptName, std::function<result_t(char*, v8::Local<v8::Script>*)> loadFunction);
-	result_t LoadSystemFile(char* scriptFile);
+	result_t LoadFileInternal(OMPtr<fxIStream> stream, const char* scriptFile, v8::Local<v8::Script>* outScript);
+	result_t LoadHostFileInternal(const char* scriptFile, v8::Local<v8::Script>* outScript, bool isSystem = false);
+	result_t RunFileInternal(const char* scriptName, std::function<result_t(const char*, v8::Local<v8::Script>*)> loadFunction);
+	result_t LoadSystemFile(const char* scriptFile);
 	const char* AssignStringValue(const v8::Local<v8::Value>& value, size_t* length);
 
 	v8::Isolate* GetIsolate() const
@@ -105,7 +105,7 @@ public:
 
 	const char* GetResourceName() const
 	{
-		char* resourceName = nullptr;
+		const char* resourceName = nullptr;
 		m_resourceHost->GetResourceName(&resourceName);
 
 		return resourceName;

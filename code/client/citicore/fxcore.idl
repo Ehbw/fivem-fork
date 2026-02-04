@@ -19,6 +19,7 @@ typedef unsigned long       size_t;
 
 [ptr]         native voidPtr(void);
 [ptr]         native charPtr(char);
+[ptr]         native constCharPtr(const char);
 
 [ref, nsid]   native fxIIDRef(guid_t);
 

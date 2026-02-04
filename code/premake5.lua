@@ -174,7 +174,7 @@ workspace "CitizenMP"
 			buildoptions { '/await', '/d2FH4-' }
 		end
 
-		buildoptions { '/Zc:preprocessor' }
+		buildoptions { '/Zc:preprocessor', '/permissive-'}
 
 		systemversion '10.0.22000.0'
 	else

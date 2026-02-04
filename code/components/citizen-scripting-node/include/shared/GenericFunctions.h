@@ -106,7 +106,9 @@ namespace fx::v8shared
 		v8::Local<v8::Function> function = v8::Local<v8::Function>::Cast(args[0]);
 		v8::UniquePersistent<v8::Function> functionRef(isolate, function);
 
-		runtime->SetStackTraceRoutine(make_shared_function([runtime, isolate, functionRef{ std::move(functionRef) }](void* start, void* end, char** blob, size_t* size)
+		//auto sf = make_shared_function([ runtime, isolate, functionRef{ std::move(functionRef) } ](void* start, void* end))
+
+		runtime->SetStackTraceRoutine(make_shared_function([runtime, isolate, functionRef{ std::move(functionRef) }](void* start, void* end, const char** blob, size_t* size)
 			{
 				// static array for retval output (sadly)
 				static std::vector<char> retvalArray(32768);

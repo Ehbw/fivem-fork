@@ -357,7 +357,7 @@ namespace fx
 				
 			resourceManager->ForAllResources([this, now](const fwRefContainer<fx::Resource>& resource)
 			{
-				auto& metricRef = GetImpl()->GetMetricFor(resource);
+				auto metricRef = GetImpl()->GetMetricFor(resource);
 					
 				if (metricRef)
 				{
