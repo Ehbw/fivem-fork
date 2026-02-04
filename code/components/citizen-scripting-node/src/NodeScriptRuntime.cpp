@@ -357,8 +357,8 @@ int NodeScriptRuntime::HandlesFile(char* filename, IScriptHostWithResourceData* 
 {
 	if(strstr(filename, ".js"))
 	{
-		char* versionStr = "16";
-		metadata->GetResourceMetaData("node_version", 0, &versionStr);
+		char* versionStr = const_cast<char*>("16");
+		metadata->GetResourceMetaData(const_cast<char*>("node_version"), 0, &versionStr);
 
 		return !strcmp("22", versionStr);
 	}

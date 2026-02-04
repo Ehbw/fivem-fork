@@ -41,7 +41,7 @@ five::pgDictionary<five::grcTexturePC>* convert(payne::pgDictionary<payne::grcTe
 
 	if (txd->GetCount()) // amazingly there's 0-sized TXDs?
 	{
-		for (auto& texture : *txd)
+		for (const auto& texture : *txd)
 		{
 			payne::grcTexturePC* nyTexture = texture.second;
 			five::grcTexturePC* fiveTexture = new(false) five::grcTexturePC(
@@ -1221,7 +1221,7 @@ five::pgDictionary<five::gtaDrawable>* convert(payne::pgDictionary<payne::gtaDra
 
 	if (dwd->GetCount()) // amazingly there's 0-sized TXDs?
 	{
-		for (auto& drawable : *dwd)
+		for (const auto& drawable : *dwd)
 		{
 			newDrawables.Add(drawable.first, convert<five::gtaDrawable*>(drawable.second));
 		}

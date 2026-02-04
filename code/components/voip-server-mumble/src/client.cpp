@@ -712,7 +712,7 @@ client_t *Client_iterate(client_t **client_itr)
 	return c;
 }
 
-void Client_textmessage(client_t *client, char *text)
+void Client_textmessage(client_t *client, const char *text)
 {
 	char *message;
 	uint32_t *tree_id;

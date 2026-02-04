@@ -69,7 +69,7 @@
 #define strnicmp strncasecmp
 #endif
 
-typedef struct {
+struct client_t {
 	fwRefContainer<net::TcpServerStream> stream;
 	bool_t SSLready;
 	bool_t shutdown_wait;
@@ -107,7 +107,7 @@ typedef struct {
 	uint32_t UDPPackets, TCPPackets;
 	fx::UdpInterceptor* interceptor;
 	uint32_t numFailedCrypt;
-} client_t;
+};
 
 typedef struct {
 	int codec, count;
@@ -141,7 +141,7 @@ void recheckCodecVersions(client_t *connectingClient);
 void Client_codec_add(client_t *client, int codec);
 void Client_codec_free(client_t *client);
 codec_t *Client_codec_iterate(client_t *client, codec_t **codec_itr);
-void Client_textmessage(client_t *client, char *text);
+void Client_textmessage(client_t *client, const char *text);
 bool_t Client_token_match(client_t *client, char const *str);
 void Client_token_free(client_t *client);
 void Client_token_add(client_t *client, char *token_string);

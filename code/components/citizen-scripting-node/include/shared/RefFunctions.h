@@ -190,7 +190,7 @@ namespace fx::v8shared
 		fx::OMPtr<IScriptBuffer> retvalBuffer;
 		if (FX_FAILED(scriptHost->InvokeFunctionReference(const_cast<char*>(refData->ref.GetRef().c_str()), reinterpret_cast<char*>(argsBuffer.data()), argsBuffer.size(), retvalBuffer.GetAddressOf())))
 		{
-			char* error = "Unknown";
+			char* error = const_cast<char*>("Unknown");
 			scriptHost->GetLastErrorText(&error);
 
 			auto throwException = [&](const std::string& exceptionString)

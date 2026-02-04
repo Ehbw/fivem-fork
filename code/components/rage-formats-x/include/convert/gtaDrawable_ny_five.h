@@ -97,7 +97,7 @@ five::pgDictionary<five::grcTexturePC>* convert(ny::pgDictionary<ny::grcTextureP
 
 	if (txd->GetCount()) // amazingly there's 0-sized TXDs?
 	{
-		for (auto& texture : *txd)
+		for (const auto& texture : *txd)
 		{
 			ny::grcTexturePC* nyTexture = texture.second;
 			five::grcTexturePC* fiveTexture = new(false) five::grcTexturePC(
@@ -236,7 +236,7 @@ five::grmShaderGroup* convert(ny::grmShaderGroup* shaderGroup)
 
 				if (out->GetTextures())
 				{
-					for (auto& outTexture : *out->GetTextures())
+					for (const auto& outTexture : *out->GetTextures())
 					{
 						if (!_stricmp(outTexture.second->GetName(), textureName))
 						{

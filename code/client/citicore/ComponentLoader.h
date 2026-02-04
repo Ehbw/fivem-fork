@@ -7,8 +7,8 @@
 
 #pragma once
 
-#include "Singleton.h"
 #include "EventCore.h"
+#include "ResumeComponent.h"
 #include <unordered_map>
 
 #include <boost/type_index.hpp>

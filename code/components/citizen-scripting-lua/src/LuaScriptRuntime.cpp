@@ -629,7 +629,7 @@ static int Lua_InvokeFunctionReference(lua_State* L)
 	fx::OMPtr<IScriptBuffer> retvalBuffer;
 	if (FX_FAILED(scriptHost->InvokeFunctionReference(const_cast<char*>(luaL_checkstring(L, 1)), const_cast<char*>(argString), argLength, retvalBuffer.GetAddressOf())))
 	{
-		char* error = "Unknown";
+		char* error = const_cast<char*>("Unknown");
 		scriptHost->GetLastErrorText(&error);
 
 		_profile.Close();
@@ -1339,7 +1339,7 @@ result_t LuaScriptRuntime::Create(IScriptHost* scriptHost)
 	{
 		bool isGreater;
 
-		if (FX_SUCCEEDED(m_manifestHost->IsManifestVersionV2Between("adamant", "", &isGreater)) && isGreater)
+		if (FX_SUCCEEDED(m_manifestHost->IsManifestVersionV2Between(const_cast<char*>("adamant"), const_cast<char*>(""), &isGreater)) && isGreater)
 		{
 			nativesBuild =
 #if defined(GTA_FIVE)
@@ -1587,8 +1587,9 @@ static int Lua_CreateHostFileThread(lua_State* L)
 	return 0;
 }
 
-result_t LuaScriptRuntime::LoadHostFileInternal(char* scriptFile)
+result_t LuaScriptRuntime::LoadHostFileInternal(const char* constScriptFile)
 {
+	char* scriptFile = const_cast<char*>(constScriptFile);
 	// open the file
 	OMPtr<fxIStream> stream;
 
@@ -1611,12 +1612,12 @@ result_t LuaScriptRuntime::LoadHostFileInternal(char* scriptFile)
 	return hr;
 }
 
-result_t LuaScriptRuntime::LoadSystemFileInternal(char* scriptFile)
+result_t LuaScriptRuntime::LoadSystemFileInternal(const char* scriptFile)
 {
 	// open the file
 	OMPtr<fxIStream> stream;
 
-	result_t hr = m_scriptHost->OpenSystemFile(scriptFile, stream.GetAddressOf());
+	result_t hr = m_scriptHost->OpenSystemFile(const_cast<char*>(scriptFile), stream.GetAddressOf());
 
 	if (FX_FAILED(hr))
 	{
@@ -1624,10 +1625,10 @@ result_t LuaScriptRuntime::LoadSystemFileInternal(char* scriptFile)
 		return hr;
 	}
 
-	return LoadFileInternal(stream, scriptFile);
+	return LoadFileInternal(stream, const_cast<char*>(scriptFile));
 }
 
-result_t LuaScriptRuntime::RunFileInternal(char* scriptName, std::function<result_t(char*)> loadFunction)
+result_t LuaScriptRuntime::RunFileInternal(const char* scriptName, std::function<result_t(const char*)> loadFunction)
 {
 	LuaPushEnvironment pushed(this);
 	lua_pushcfunction(m_state, GetDbTraceback());
@@ -1658,7 +1659,7 @@ result_t LuaScriptRuntime::LoadFile(char* scriptName)
 	return RunFileInternal(scriptName, std::bind(&LuaScriptRuntime::LoadHostFileInternal, this, std::placeholders::_1));
 }
 
-result_t LuaScriptRuntime::LoadSystemFile(char* scriptName)
+result_t LuaScriptRuntime::LoadSystemFile(const char* scriptName)
 {
 	return RunFileInternal(scriptName, std::bind(&LuaScriptRuntime::LoadSystemFileInternal, this, std::placeholders::_1));
 }

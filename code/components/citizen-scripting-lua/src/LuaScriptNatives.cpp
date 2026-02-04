@@ -378,11 +378,11 @@ int Lua_LoadNative(lua_State* L)
 	try
 	{
 		int isCfxv2 = 0;
-		runtime->GetScriptHost2()->GetNumResourceMetaData("is_cfxv2", &isCfxv2);
+		runtime->GetScriptHost2()->GetNumResourceMetaData(const_cast<char*>("is_cfxv2"), &isCfxv2);
 
 		if (isCfxv2) // TODO/TEMPORARY: fxv2 oal is disabled by default for now
 		{
-			runtime->GetScriptHost2()->GetNumResourceMetaData("use_experimental_fxv2_oal", &isCfxv2);
+			runtime->GetScriptHost2()->GetNumResourceMetaData(const_cast<char*>("use_experimental_fxv2_oal"), &isCfxv2);
 		}
 
 		// #if !defined(GTA_FIVE) || (LUA_VERSION_NUM == 504)

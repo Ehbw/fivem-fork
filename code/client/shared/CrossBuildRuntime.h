@@ -2,6 +2,7 @@
 
 #include <boost/preprocessor/seq/for_each.hpp>
 #include <boost/preprocessor/wstringize.hpp>
+#include <StdInc.h>
 
 namespace xbr
 {
@@ -22,6 +23,7 @@ enum Build : int
 	Winter_2025 = 3717,
 
 	Summer_2025 = 3570,
+
 
 	Latest = Winter_2025,
 };
@@ -265,7 +267,7 @@ inline HWND CoreGetGameWindow()
 		}
 	}
 
-	return (!func) ? false : func();
+	return func ? func() : nullptr;
 }
 
 inline void CoreSetGameWindow(HWND hWnd)
@@ -280,7 +282,7 @@ inline void CoreSetGameWindow(HWND hWnd)
 		}
 	}
 
-	return (!func) ? void() : func(hWnd);
+	return func ? func(hWnd) : void();
 }
 #endif
 #endif

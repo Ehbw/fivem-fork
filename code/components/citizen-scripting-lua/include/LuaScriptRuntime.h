@@ -351,13 +351,13 @@ public:
 private:
 	result_t LoadFileInternal(OMPtr<fxIStream> stream, char* scriptFile);
 
-	result_t LoadHostFileInternal(char* scriptFile);
+	result_t LoadHostFileInternal(const char* scriptFile);
 
-	result_t LoadSystemFileInternal(char* scriptFile);
+	result_t LoadSystemFileInternal(const char* scriptFile);
 
-	result_t RunFileInternal(char* scriptFile, std::function<result_t(char*)> loadFunction);
+	result_t RunFileInternal(const char* scriptFile, std::function<result_t(const char*)> loadFunction);
 
-	result_t LoadSystemFile(char* scriptFile);
+	result_t LoadSystemFile(const char* scriptFile);
 
 	result_t LoadNativesBuild(const std::string& nativeBuild);
 

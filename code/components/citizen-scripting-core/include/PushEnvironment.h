@@ -8,6 +8,8 @@
 #pragma once
 
 #include <optional>
+#include "fxScripting.h"
+#include <om/OMPtr.h>
 
 FX_DEFINE_GUID(CLSID_ScriptRuntimeHandler,
 			   0xc41e7194, 0x7556, 0x4c02, 0xba, 0x45, 0xa9, 0xc8, 0x4d, 0x18, 0xad, 0x43);
@@ -17,7 +19,7 @@ namespace fx
 	class PushEnvironment
 	{
 	private:
-		static inline auto CreateHandler()
+		static inline OMPtr<IScriptRuntimeHandler> CreateHandler()
 		{
 			OMPtr<IScriptRuntimeHandler> handler;
 			assert(FX_SUCCEEDED(fx::MakeInterface(&handler, CLSID_ScriptRuntimeHandler)));
@@ -25,7 +27,7 @@ namespace fx
 			return handler;
 		}
 
-		static inline auto EnsureHandler()
+		static inline OMPtr<IScriptRuntimeHandler> EnsureHandler()
 		{
 			static auto handler = CreateHandler();
 

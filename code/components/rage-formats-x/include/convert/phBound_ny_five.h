@@ -647,7 +647,7 @@ five::pgDictionary<five::phBound>* convert(ny::pgDictionary<ny::phBound>* phd)
 
 	if (phd->GetCount())
 	{
-		for (auto& bound : *phd)
+		for (const auto& bound : *phd)
 		{
 			newDrawables.Add(bound.first, convert<five::phBound*>(bound.second));
 		}

@@ -307,10 +307,10 @@ public:
 
 	inline const char* GetResourceName()
 	{
-		char* resourceName = "";
+		char* resourceName = nullptr;
 		m_resourceHost->GetResourceName(&resourceName);
 
-		return resourceName;
+		return resourceName ? resourceName : "";
 	}
 
 	void RunMicrotasks()
@@ -895,7 +895,7 @@ static void V8_InvokeFunctionReference(const v8::FunctionCallbackInfo<v8::Value>
 	fx::OMPtr<IScriptBuffer> retvalBuffer;
 	if (FX_FAILED(scriptHost->InvokeFunctionReference(const_cast<char*>(refData->ref.GetRef().c_str()), reinterpret_cast<char*>(argsBuffer.data()), argsBuffer.size(), retvalBuffer.GetAddressOf())))
 	{
-		char* error = "Unknown";
+		char* error = const_cast<char*>("Unknown");
 		scriptHost->GetLastErrorText(&error);
 
 		auto throwException = [&](const std::string& exceptionString)
@@ -1836,7 +1836,7 @@ global.require = m.exports.require;
 	// set the 'window' variable to the global itself
 	context->Global()->Set(context, String::NewFromUtf8(GetV8Isolate(), "global", NewStringType::kNormal).ToLocalChecked(), context->Global());
 
-	if (FX_SUCCEEDED(m_manifestHost->IsManifestVersionV2Between("bodacious", "", &isGreater)) && !isGreater)
+	if (FX_SUCCEEDED(m_manifestHost->IsManifestVersionV2Between(const_cast<char*>("bodacious"), const_cast<char*>(""), &isGreater)) && !isGreater)
 	{
 		// set the 'window' variable to the global itself
 		context->Global()->Set(context, String::NewFromUtf8(GetV8Isolate(), "window", NewStringType::kNormal).ToLocalChecked(), context->Global());
@@ -2056,8 +2056,8 @@ int32_t V8ScriptRuntime::HandlesFile(char* fileName, IScriptHostWithResourceData
 		return false;
 	}
 
-	char* versionStr = "16";
-	metadata->GetResourceMetaData("node_version", 0, &versionStr);
+	char* versionStr = const_cast<char*>("16");
+	metadata->GetResourceMetaData(const_cast<char*>("node_version"), 0, &versionStr);
 
 	const bool useLegacyRuntime = !strcmp("16", versionStr);
 

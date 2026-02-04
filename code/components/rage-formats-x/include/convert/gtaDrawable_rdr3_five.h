@@ -96,7 +96,7 @@ five::pgDictionary<five::grcTexturePC>* convert(rdr3::pgDictionary<rdr3::grcText
 
 	if (txd->GetCount()) // amazingly there's 0-sized TXDs?
 	{
-		for (auto& texture : *txd)
+		for (const auto& texture : *txd)
 		{
 			rdr3::grcTexturePC* nyTexture = texture.second;
 

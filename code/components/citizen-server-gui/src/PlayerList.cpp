@@ -31,7 +31,7 @@ struct PlayerAdvancedData
 		Reset();
 	}
 	static constexpr int GRAPH_MAX_SAMPLES = 150;
-	static constexpr char* UPDATE_RATES[] = { "2 Seconds", "1 Second", "1/2 Second", "1/4 Second", "1/8 Second" };
+	static constexpr const char* UPDATE_RATES[] = { "2 Seconds", "1 Second", "1/2 Second", "1/4 Second", "1/8 Second" };
 	static constexpr int UPDATE_RATE_VALUES_MS[] = { 2000, 1000, 500, 250, 125 };
 	int graphUpdateRate; //array index ^^
 	std::chrono::milliseconds lastUpdate;

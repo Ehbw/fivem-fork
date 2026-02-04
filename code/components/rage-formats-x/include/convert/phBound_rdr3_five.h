@@ -557,7 +557,7 @@ namespace rage
 
 		if (phd->GetCount())
 		{
-			for (auto& bound : *phd)
+			for (const auto& bound : *phd)
 			{
 				newDrawables.Add(bound.first, convert<five::phBound*>(bound.second));
 			}

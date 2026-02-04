@@ -162,7 +162,7 @@ bool pgStreamManager::IsInBlockMap(void* ptr, BlockMap* blockMap, bool physical)
 
 	if (allocBlock == g_allocationData.end())
 	{
-		return nullptr;
+		return false;
 	}
 
 	auto& allocInfo = allocBlock->second;
