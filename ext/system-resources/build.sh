@@ -26,6 +26,11 @@ node_modules/.bin/yarn
 node_modules/.bin/webpack
 cd ../../
 
+# sessionmanager-rdr3
+cd resources/sessionmanager-rdr3
+node_modules/.bin/yarn
+cd ../../
+
 rm -rf resources/chat/node_modules/
 cp -a resources/chat data/chat
 rm -rf data/chat/package.json data/chat/yarn.lock
@@ -35,3 +40,6 @@ cp -a resources/chat/html/vendor data/chat/html/vendor
 
 cp -a resources/yarn data/yarn
 cp -a resources/webpack data/webpack
+
+cp -a resources/sessionmanager-rdr3 data/sessionmanager-rdr3
+rm -rf resources/sessionmanager-rdr3/node_modules/

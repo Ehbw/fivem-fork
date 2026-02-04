@@ -92,7 +92,7 @@ void ServerResourceList::ScanResources(const std::string& resourceRoot, ScanResu
 				}
 
 				// these are now in "system_resources"
-				if (findData.name == "yarn" || findData.name == "webpack")
+				if (findData.name == "yarn" || findData.name == "webpack" || findData.name == "sessionmanager-rdr3")
 				{
 					if (!isSystemResourceRoot)
 					{

@@ -83,8 +83,26 @@ if not exist "%SRRoot%\webpack" mkdir "%SRRoot%\webpack"
 xcopy . "%SRRoot%\webpack" /e /y || goto :error
 popd
 echo Done adding webpack
-goto :success
 :: /webpack
+
+:: sessionmanager
+:sessionmanager
+echo Adding sessionmanager-rdr3
+
+pushd resources\sessionmanager-rdr3
+rmdir /s /q node_modules
+
+node %~dp0\..\native-doc-gen\yarn_cli.js || goto :error
+popd
+
+rmdir /s /q %SRRoot%\sessionmanager-rdr3\
+xcopy /y /e resources\sessionmanager-rdr3\ %SRRoot%\sessionmanager-rdr3\ || goto :error
+del %SRRoot%\sessionmanager-rdr3\yarn.lock
+rmdir /s /q resources\sessionmanager-rdr3\node_modules
+
+echo Done adding sessionmanager-rdr3
+goto :success
+:: /sessionmanager
 
 :error
 echo Failed to build system resources
