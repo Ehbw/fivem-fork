@@ -7876,13 +7876,7 @@ static InitFunction initFunction([]()
 		g_experimentalOneSyncPopulation = instance->AddVariable<bool>("sv_experimentalOneSyncPopulation", ConVar_None, true);
 		g_experimentalNetGameEventHandler = instance->AddVariable<bool>("sv_experimentalNetGameEventHandler", ConVar_None, true);
 
-		constexpr bool canLengthHack =
-#ifdef STATE_RDR3
-		false
-#else
-		true
-#endif
-		;
+		constexpr bool canLengthHack = true;
 
 		fx::SetBigModeHack(g_oneSyncBigMode->GetValue(), canLengthHack && g_oneSyncLengthHack->GetValue());
 		if (g_experimentalOneSyncPopulation->GetValue() || g_experimentalNetGameEventHandler->GetValue())
