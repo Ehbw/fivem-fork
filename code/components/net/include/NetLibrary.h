@@ -36,7 +36,7 @@
 #include "ByteWriter.h"
 #include "SerializableComponent.h"
 
-#define NETWORK_PROTOCOL 12
+#define NETWORK_PROTOCOL 13
 
 enum NetAddressType
 {
