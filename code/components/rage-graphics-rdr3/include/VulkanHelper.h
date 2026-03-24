@@ -7,7 +7,7 @@
 
 #include <DrawCommands.h>
 
-inline std::string_view ResultToString(VkResult result)
+inline std::string ResultToString(VkResult result)
 {
 	switch (result)
 	{
@@ -72,18 +72,32 @@ inline std::string_view ResultToString(VkResult result)
 		case VK_ERROR_INVALID_DEVICE_ADDRESS_EXT:
 			return "VK_ERROR_INVALID_DEVICE_ADDRESS_EXT A buffer creation failed because the requested address is not available.";
 		default:
-			return std::to_string(static_cast<uint32_t>(result));
+			return std::to_string(static_cast<int32_t>(result));
 	}
 }
 
-static uint32_t FindMemoryType(VkPhysicalDevice physicalDevice, uint32_t typeFilter, VkMemoryPropertyFlags properties)
+static uint32_t FindExternalMemoryType(VkDevice device, VkPhysicalDevice physicalDevice, HANDLE handle, uint32_t typeFilter, VkMemoryPropertyFlags properties)
 {
-	VkPhysicalDeviceMemoryProperties memProperties;
-	vkGetPhysicalDeviceMemoryProperties(physicalDevice, &memProperties);
-
-	for (uint32_t i = 0; i < memProperties.memoryTypeCount; i++)
+	for (uint32_t i = 0; i < 32; i++)
 	{
-		if ((typeFilter & (1 << i)) && (memProperties.memoryTypes[i].propertyFlags & properties) == properties)
+		if (!(typeFilter & (1 << i)))
+		{
+			continue;
+		}
+
+        VkMemoryWin32HandlePropertiesKHR handleProps = {
+			VK_STRUCTURE_TYPE_MEMORY_WIN32_HANDLE_PROPERTIES_KHR
+		};
+
+		// Finding the first 'VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT' memory type wasn't good enough on some system configurations.
+		// Check the handle properties against vkGetMemoryWin32HandlePropertiesKHR and 'VK_EXTERNAL_MEMORY_HANDLE_TYPE_D3D11_TEXTURE_BIT' if its good enough
+		static auto _vkGetMemoryWin32HandlePropertiesKHR = (PFN_vkGetMemoryWin32HandlePropertiesKHR)vkGetDeviceProcAddr(device, "vkGetMemoryWin32HandlePropertiesKHR");
+		if (_vkGetMemoryWin32HandlePropertiesKHR(device, VK_EXTERNAL_MEMORY_HANDLE_TYPE_D3D11_TEXTURE_BIT, handle, &handleProps) != VK_SUCCESS)
+		{
+			continue;
+		}
+
+		if (handleProps.memoryTypeBits & (1 << i))
 		{
 			return i;
 		}
@@ -131,10 +145,10 @@ static void CreateVKImageFromShareHandle(VkDevice& device, HANDLE handle, unsign
 	VkPhysicalDeviceMemoryProperties memProps;
 	vkGetPhysicalDeviceMemoryProperties(GetVulkanPhysicalHandle(), &memProps);
 
-	MemoryAllocateInfo.memoryTypeIndex = FindMemoryType(GetVulkanPhysicalHandle(), MemoryRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+	MemoryAllocateInfo.memoryTypeIndex = FindExternalMemoryType(device, GetVulkanPhysicalHandle(), handle, MemoryRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 	if (MemoryAllocateInfo.memoryTypeIndex == INT32_MAX)
 	{
-		FatalError("Failed to compatible memory type for NUI. This system may not be equipped to run RedM under Vulkan.\n");
+		FatalError("Failed to compatible memory type for NUI. This system may not be equipped to run RedM under Vulkan.");
 	}
 
 	if (result = vkAllocateMemory(device, &MemoryAllocateInfo, nullptr, &outMemory); result != VK_SUCCESS)
