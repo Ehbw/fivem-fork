@@ -72,22 +72,6 @@ void NUIRenderHandler::OnImeCompositionRangeChanged(CefRefPtr<CefBrowser> browse
 	}
 }
 
-void NUIRenderHandler::OnAcceleratedPaint(CefRefPtr<CefBrowser> browser, PaintElementType type, const RectList& dirtyRects, void* shared_handle)
-{
-	if (m_owner->GetWindowValid())
-	{
-		m_owner->GetWindow()->UpdateSharedResource(shared_handle, -1, dirtyRects, type);
-	}
-}
-
-void NUIRenderHandler::OnAcceleratedPaint2(CefRefPtr<CefBrowser> browser, PaintElementType type, const RectList& dirtyRects, void* shared_handle, bool new_texture)
-{
-	if (m_owner->GetWindowValid())
-	{
-		m_owner->GetWindow()->UpdateSharedResource(shared_handle, -1, dirtyRects, type);
-	}
-}
-
 void NUIRenderHandler::OnPaint(CefRefPtr<CefBrowser> browser, PaintElementType type, const RectList& dirtyRects, const void* buffer, int width, int height)
 {
 	if (m_owner->GetWindowValid() && m_owner->GetWindow()->GetRenderBuffer())
@@ -310,6 +294,18 @@ bool NUIRenderHandler::StartDragging(CefRefPtr<CefBrowser> browser, CefRefPtr<Ce
 void NUIRenderHandler::UpdateDragCursor(CefRefPtr<CefBrowser> browser,
 	CefRenderHandler::DragOperation operation) {
 	m_currentDragOp = operation;
+}
+
+void NUIRenderHandler::OnAcceleratedPaint(CefRefPtr<CefBrowser> browser, PaintElementType type, const RectList& dirtyRects, const CefAcceleratedPaintInfo& info)
+{
+	if (m_owner->GetWindowValid())
+	{
+#ifdef CEF_OSR_LOCK_FRAME
+		m_owner->GetWindow()->UpdateSharedResource(type);
+#else
+		m_owner->GetWindow()->UpdateSharedResource(info.shared_texture_handle, dirtyRects, type);
+#endif
+	}
 }
 
 CefBrowserHost::DragOperationsMask NUIRenderHandler::OnDragEnter(

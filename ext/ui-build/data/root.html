@@ -41,6 +41,9 @@ let handoverBlob = {};
 let serverAddress = '';
 let frameEscapeFunctions = {};
 
+const SendEpoxyMessage = sendEpoxyMessage;
+sendEpoxyMessage = null;
+
 registerPushFunction(function(type, ...args) {
 	switch (type) {
 		case 'rootCall': {
@@ -85,9 +88,21 @@ registerFrameFunction(function(msg, frameName, frameUrl)
 		const frame = document.createElement('iframe');
 		frame.name = frameName;
 		frame.style.visibility = 'hidden';
-		frame.allow = 'microphone *; camera *;';
+		// focus-without-user-activation to maintain backwards compatability with 'autofocus' fields used in resources like chat.
+		// autoplay & encrypted-media to maintain backwards compatability with 'autoplay' and for certain media types
+		frame.allow = 'microphone *; camera *; focus-without-user-activation; autoplay; encrypted-media';
+		frame.sandbox = 'allow-forms allow-modals allow-scripts allow-same-origin allow-presentation';
 		frame.src = frameUrl;
 		frame.tabIndex = -1;
+
+		if (frameName === 'loadingScreen')
+		{
+			nuiHandoverData = handoverBlob || {};
+			nuiHandoverData.serverAddress = serverAddress;
+			SendEpoxyMessage(frameName, "setHandoverData", {
+				handoverData: nuiHandoverData
+			});
+		}
 
 		citFrames[frameName] = frame;
 		zStack.push(frameName);
@@ -101,11 +116,6 @@ registerFrameFunction(function(msg, frameName, frameUrl)
 			frame.blur();
 			curElement.focus();
 		}
-
-		frame.contentWindow.addEventListener('DOMContentLoaded', function()
-		{
-			frame.style.visibility = 'visible';
-		}, true);
 		
 		frameEscapeFunctions[frameName] = () => {
 			setTimeout(() => {
@@ -115,17 +125,10 @@ registerFrameFunction(function(msg, frameName, frameUrl)
 				}
 			}, 32);
 		}
-
-		frame.contentWindow.GetParentResourceName = function()
-		{
-			return frameName;
-		}
-		
-		if (frameName === 'loadingScreen')
-		{
-			frame.contentWindow.nuiHandoverData = handoverBlob || {};
-			frame.contentWindow.nuiHandoverData.serverAddress = serverAddress;
-		}
+                
+		frame.addEventListener('load', function() {
+		    frame.style.visibility = 'visible';
+        });
 	}
 	else if (msg == "destroyFrame")
 	{
@@ -201,6 +204,7 @@ blurFrame = function(frameName)
 		focusFrame(focusStack[0]);
 	}
 };
+
 </script>
 </head>
 <body>

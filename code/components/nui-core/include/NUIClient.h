@@ -18,6 +18,8 @@
 #include <include/cef_permission_handler.h>
 #endif
 
+//#define NUI_WITH_AUDIO_SINKS
+
 #include <CefOverlay.h>
 
 #include <regex>
@@ -97,12 +99,36 @@ public:
 
 // CefClient
 protected:
-	virtual CefRefPtr<CefLifeSpanHandler> GetLifeSpanHandler() override;
-	virtual CefRefPtr<CefDisplayHandler> GetDisplayHandler() override;
-	virtual CefRefPtr<CefContextMenuHandler> GetContextMenuHandler() override;
-	virtual CefRefPtr<CefLoadHandler> GetLoadHandler() override;
-	virtual CefRefPtr<CefRenderHandler> GetRenderHandler() override;
-	virtual CefRefPtr<CefRequestHandler> GetRequestHandler() override;
+	virtual CefRefPtr<CefLifeSpanHandler> GetLifeSpanHandler() override
+	{
+		return this;
+	}
+
+	virtual CefRefPtr<CefDisplayHandler> GetDisplayHandler() override
+	{
+		return this;
+	}
+
+	virtual CefRefPtr<CefContextMenuHandler> GetContextMenuHandler() override
+	{
+		return this;
+	}
+	
+	virtual CefRefPtr<CefLoadHandler> GetLoadHandler() override
+	{
+		return this;
+	}
+	
+	virtual CefRefPtr<CefRenderHandler> GetRenderHandler() override
+	{
+		return m_renderHandler;
+	}
+	
+	virtual CefRefPtr<CefRequestHandler> GetRequestHandler() override
+	{
+		return this;
+	}
+
 	virtual CefRefPtr<CefResourceRequestHandler> GetResourceRequestHandler(
 		CefRefPtr<CefBrowser> browser,
 		CefRefPtr<CefFrame> frame,
@@ -116,7 +142,10 @@ protected:
 	}
 
 #ifdef NUI_WITH_MEDIA_ACCESS
-	virtual CefRefPtr<CefPermissionHandler> GetPermissionHandler() override;
+	virtual CefRefPtr<CefPermissionHandler> GetPermissionHandler() override
+	{
+		return this;
+	}
 #endif
 
 	virtual bool OnProcessMessageReceived(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, CefProcessId source_process, CefRefPtr<CefProcessMessage> message) override;
@@ -127,7 +156,7 @@ public:
 	void AddProcessMessageHandler(std::string key, TProcessMessageHandler handler);
 
 private:
-	std::map<std::string, TProcessMessageHandler> m_processMessageHandlers;
+	std::unordered_map<std::string, TProcessMessageHandler> m_processMessageHandlers;
 
 	CefRefPtr<CefRenderHandler> m_renderHandler;
 
@@ -139,6 +168,7 @@ protected:
 
 	virtual bool OnBeforePopup(CefRefPtr<CefBrowser> browser,
 		CefRefPtr<CefFrame> frame,
+		int popup_id,
 		const CefString& target_url,
 		const CefString& target_frame_name,
 		CefLifeSpanHandler::WindowOpenDisposition target_disposition,
@@ -155,6 +185,8 @@ protected:
 	virtual void OnLoadStart(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, TransitionType transitionType) override;
 
 	virtual void OnLoadEnd(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, int httpStatusCode) override;
+
+	virtual void OnLoadError(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, ErrorCode errorCode, const CefString& errorText, const CefString& failedUrl) override;
 
 // CefContextMenuHandler
 protected:
@@ -175,9 +207,21 @@ protected:
 	const CefString& requesting_url,
 	uint32_t requested_permissions,
 	CefRefPtr<CefMediaAccessCallback> callback) override;
+
+    virtual bool OnShowPermissionPrompt(
+	CefRefPtr<CefBrowser> browser,
+	uint64_t prompt_id,
+	const CefString& requesting_origin,
+	uint32_t requested_permissions,
+	CefRefPtr<CefPermissionPromptCallback> callback) override;
+
+	virtual void OnDismissPermissionPrompt(
+	CefRefPtr<CefBrowser> browser,
+	uint64_t prompt_id,
+	cef_permission_request_result_t result) override;
 #endif
 
-#if 0
+#if NUI_WITH_AUDIO_SINKS
 // CefAudioHandler
 protected:
 	virtual void OnAudioStreamStarted(CefRefPtr<CefBrowser> browser,
@@ -193,12 +237,11 @@ protected:
 		int audio_stream_id,
 		const float** data,
 		int frames,
-		int64 pts) override;
+		int64_t pts) override;
 
 	virtual void OnAudioStreamStopped(CefRefPtr<CefBrowser> browser,
 		CefRefPtr<CefFrame> frame,
 		int audio_stream_id) override;
-#endif
 
 public:
 	virtual void OnAudioCategoryConfigure(const std::string& frame, const std::string& category);
@@ -209,12 +252,12 @@ private:
 	std::multimap<std::string, std::pair<int, int>> m_audioStreamsByFrame;
 
 	std::map<std::string, std::string> m_audioFrameCategories;
-
+#endif
 protected:
 	// CefResourceRequestHandler
 	virtual ReturnValue OnBeforeResourceLoad(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, CefRefPtr<CefRequest> request, CefRefPtr<CefCallback> callback) override;
 
-	virtual void OnRenderProcessTerminated(CefRefPtr<CefBrowser> browser, TerminationStatus status) override;
+	virtual void OnRenderProcessTerminated(CefRefPtr<CefBrowser> browser, TerminationStatus status, int error_code,	const CefString& error_string) override;
 
 	// CefRequestHandler
 	virtual bool OnOpenURLFromTab(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, const CefString& target_url, CefRequestHandler::WindowOpenDisposition target_disposition, bool user_gesture) override;

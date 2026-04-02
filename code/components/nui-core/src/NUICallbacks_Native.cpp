@@ -133,7 +133,7 @@ static InitFunction initFunction([] ()
 			auto args = message->GetArgumentList();
 			auto nativeType = args->GetString(0);
 
-			nui::OnInvokeNative(nativeType.c_str(), ToWide(args->GetString(1).ToString()).c_str());
+			nui::OnInvokeNative((wchar_t*)nativeType.c_str(), ToWide(args->GetString(1).ToString()).c_str());
 
 			if (nativeType == "quit")
 			{

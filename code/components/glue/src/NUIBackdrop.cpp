@@ -49,7 +49,7 @@ public:
 		return true;
 	}
 
-	virtual void GetResponseHeaders(CefRefPtr<CefResponse> response, int64& response_length, CefString& redirectUrl) override
+	virtual void GetResponseHeaders(CefRefPtr<CefResponse> response, int64_t& response_length, CefString& redirectUrl) override
 	{
 		response->SetMimeType("application/octet-stream");
 

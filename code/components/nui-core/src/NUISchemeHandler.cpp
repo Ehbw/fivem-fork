@@ -47,7 +47,7 @@ public:
 		Close();
 	}
 
-	virtual bool ProcessRequest(CefRefPtr<CefRequest> request, CefRefPtr<CefCallback> callback)
+	virtual bool Open(CefRefPtr<CefRequest> request, bool& handle_request, CefRefPtr<CefCallback> callback)
 	{
 		std::wstring path;
 		std::vector<std::string> tryFiles;
@@ -159,12 +159,13 @@ public:
 			}
 		}
 
+		handle_request = false;
 		callback->Continue();
 
 		return true;
 	}
 
-	virtual void GetResponseHeaders(CefRefPtr<CefResponse> response, int64& response_length, CefString& redirectUrl)
+	virtual void GetResponseHeaders(CefRefPtr<CefResponse> response, int64_t& response_length, CefString& redirectUrl)
 	{
 		response->SetMimeType(mimeType_);
 
@@ -259,7 +260,7 @@ public:
 		return true;
 	}
 
-	virtual void GetResponseHeaders(CefRefPtr<CefResponse> response, int64& response_length, CefString& redirectUrl) override
+	virtual void GetResponseHeaders(CefRefPtr<CefResponse> response, int64_t& response_length, CefString& redirectUrl) override
 	{
 		response->SetStatus(403);
 		response_length = 0;
@@ -299,11 +300,7 @@ CefRefPtr<CefResourceHandler> NUISchemeHandlerFactory::Create(CefRefPtr<CefBrows
 		{
 			CefString hostString = &urlParts.host;
 
-			if (hostString == "nui-game-internal")
-			{
-				return new NUIResourceHandler();
-			}
-			else if (hostString.ToString().find("cfx-nui-") == 0)
+			if (hostString == "nui-game-internal" || hostString.ToString().find("cfx-nui-") == 0)
 			{
 				return new NUIResourceHandler();
 			}

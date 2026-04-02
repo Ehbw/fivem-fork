@@ -34,6 +34,10 @@
 
 #include <queue>
 
+#ifdef IS_RDR3
+#include <d3d12.h>
+#endif
+
 #ifdef WANT_CEF_INTERNALS
 class NUIExtensionHandler : public CefV8Handler
 {
@@ -165,6 +169,8 @@ namespace nui
 			return CreateTextureFromShareHandle(shareHandle);
 		}
 
+		virtual void UpdateTexture(HANDLE shareHandle, fwRefContainer<GITexture> texture, cef_rect_t* dirtyRects, int dirtyRectCount, int width, int height, std::function<void()> cb = nullptr) = 0;
+
 		virtual void SetTexture(fwRefContainer<GITexture> texture, bool pm = false) = 0;
 
 		virtual void DrawRectangles(int numRectangles, const ResultingRectangle* rectangles) = 0;
@@ -182,6 +188,14 @@ namespace nui
 		virtual ID3D11DeviceContext* GetD3D11DeviceContext() = 0;
 
 		virtual fwRefContainer<GITexture> CreateTextureFromD3D11Texture(ID3D11Texture2D* texture) = 0;
+
+#ifdef IS_RDR3
+		virtual ID3D12Device* GetD3D12Device() = 0;
+
+		virtual bool IsUsingD3D12() = 0;
+
+		virtual void* GetVulkanDevice() = 0;
+#endif
 
 		virtual bool RequestMediaAccess(const std::string& frameOrigin, const std::string& url, int permissions, const std::function<void(bool /* success */, int /* allowed mask */)>& onComplete)
 		{

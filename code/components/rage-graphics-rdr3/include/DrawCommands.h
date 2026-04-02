@@ -62,6 +62,7 @@ void GFX_EXPORT SetScissorRect(int x, int y, int z, int w);
 
 extern GFX_EXPORT fwEvent<> OnPostFrontendRender;
 extern GFX_EXPORT fwEvent<> OnGrcCreateDevice;
+extern GFX_EXPORT fwEvent<> OnDevicePresent;
 
 enum class GraphicsAPI
 {
@@ -74,6 +75,9 @@ extern GFX_EXPORT GraphicsAPI GetCurrentGraphicsAPI();
 
 // VK context or D3D12 device
 extern GFX_EXPORT void* GetGraphicsDriverHandle();
+
+// Vulkan Specific
+extern GFX_EXPORT void* GetVulkanPhysicalDevice();
 
 namespace rage::sga
 {

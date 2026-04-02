@@ -248,6 +248,7 @@ void Render()
 		rgd->mainWindowHandle = NULL;
 	}
 
+	// TODO: rgd->inited is never set to true, investigate why (seems to be a recent breakage, happens on CEF 103, 124 and 130.. maybe just broken in debug?)
 	if ((rgd->inited && !inited) || rgd->createHandles)
 	{
 		inited = true;

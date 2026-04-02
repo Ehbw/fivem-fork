@@ -14,6 +14,7 @@
 #include <PureModeState.h>
 
 #include <include/cef_parser.h>
+#include <EpoxyScript.h>
 
 #include <winrt/Windows.Foundation.Collections.h>
 #include <winrt/Windows.System.UserProfile.h>
@@ -59,6 +60,16 @@ void NUIApp::OnContextCreated(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame>
 	window->SetValue("registerFrameFunction", CefV8Value::CreateFunction("registerFrameFunction", this), V8_PROPERTY_ATTRIBUTE_READONLY);
 	window->SetValue("registerPushFunction", CefV8Value::CreateFunction("registerPushFunction", this), V8_PROPERTY_ATTRIBUTE_READONLY);
 
+	// register epoxy functions in order to provide CORS compliant messaging between game root and resource windows without breaking backwards compatibility.
+	window->SetValue("sendEpoxyMessage", CefV8Value::CreateFunction("sendEpoxyMessage", this), V8_PROPERTY_ATTRIBUTE_READONLY);
+	window->SetValue("registerEpoxyHandler", CefV8Value::CreateFunction("registerEpoxyHandler", this), V8_PROPERTY_ATTRIBUTE_NONE);
+
+    // Load epoxy on context creation (and not devtools)
+	if (auto parent = frame->GetParent(); parent && parent->IsMain())
+	{
+		frame->ExecuteJavaScript(fmt::sprintf(g_epoxyScript, frame->GetName().ToString()), "nui://epoxy", 0);
+	}
+
 	if (!IsWindows10OrGreater())
 	{
 		ULONG langs = 0;
@@ -79,11 +90,11 @@ void NUIApp::OnContextCreated(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame>
 				ptr += len + 1;
 			}
 
-			auto languages = CefV8Value::CreateArray(langList.size());
+			auto languages = CefV8Value::CreateArray(int(langList.size()));
 
 			for (size_t i = 0; i < langList.size(); i++)
 			{
-				languages->SetValue(i, CefV8Value::CreateString(CefString{ langList[i].data(), langList[i].length(), true }));
+				languages->SetValue(int(i), CefV8Value::CreateString(CefString{ (char16_t*)langList[i].data(), langList[i].length(), true }));
 			}
 
 			window->SetValue("nuiSystemLanguages", languages, V8_PROPERTY_ATTRIBUTE_READONLY);
@@ -100,18 +111,20 @@ void NUIApp::OnContextCreated(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame>
 			langList.push_back(std::wstring{ lang });
 		}
 
-		auto languages = CefV8Value::CreateArray(langList.size());
+		auto languages = CefV8Value::CreateArray(int(langList.size()));
 
 		for (size_t i = 0; i < langList.size(); i++)
 		{
-			languages->SetValue(i, CefV8Value::CreateString(CefString{ langList[i].data(), langList[i].length(), true }));
+			languages->SetValue(int(i), CefV8Value::CreateString(CefString{ (char16_t*)langList[i].data(), langList[i].length(), true }));
 		}
 
 		window->SetValue("nuiSystemLanguages", languages, V8_PROPERTY_ATTRIBUTE_READONLY);
 	}
 
 	window->SetValue("invokeNative", CefV8Value::CreateFunction("invokeNative", this), V8_PROPERTY_ATTRIBUTE_READONLY);
+#ifdef NUI_WITH_AUDIO_SINKS
 	window->SetValue("nuiSetAudioCategory", CefV8Value::CreateFunction("nuiSetAudioCategory", this), V8_PROPERTY_ATTRIBUTE_READONLY);
+#endif
 	window->SetValue("nuiTargetGame", CefV8Value::CreateString(
 #ifdef IS_LAUNCHER
 		"launcher"
@@ -127,7 +140,6 @@ void NUIApp::OnContextCreated(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame>
 	), V8_PROPERTY_ATTRIBUTE_READONLY);
 	window->SetValue("nuiTargetGameBuild", CefV8Value::CreateInt(xbr::GetRequestedGameBuild()), V8_PROPERTY_ATTRIBUTE_READONLY);
 	window->SetValue("nuiTargetGamePureLevel", CefV8Value::CreateInt(fx::client::GetPureLevel()), V8_PROPERTY_ATTRIBUTE_READONLY);
-
 
 	// FxDK API
 	{
@@ -191,14 +203,18 @@ void NUIApp::OnBeforeCommandLineProcessing(const CefString& process_type, CefRef
 	}
 
 	command_line->AppendSwitch("enable-experimental-web-platform-features");
-	command_line->AppendSwitch("ignore-gpu-blacklist");
-	command_line->AppendSwitch("ignore-gpu-blocklist"); // future proofing for when Google disables the above
+	command_line->AppendSwitch("ignore-gpu-blocklist");
 	command_line->AppendSwitch("disable-direct-composition");
 	command_line->AppendSwitch("disable-gpu-driver-bug-workarounds");
 	command_line->AppendSwitchWithValue("default-encoding", "utf-8");
 	command_line->AppendSwitchWithValue("autoplay-policy", "no-user-gesture-required");
 	command_line->AppendSwitchWithValue("disable-features", "HardwareMediaKeyHandling");
 
+	// Disable features forced into CEF by Chrome runtime/bootstrap
+	command_line->AppendSwitch("disable-gaia-services");
+	command_line->AppendSwitch("disable-sync");
+	command_line->AppendSwitch("disable-extensions");
+	command_line->AppendSwitch("disable-spell-checking");
 #if !GTA_NY
 	command_line->AppendSwitch("enable-gpu-rasterization");
 #else
@@ -210,22 +226,17 @@ void NUIApp::OnBeforeCommandLineProcessing(const CefString& process_type, CefRef
 	// important switch to prevent users from mentioning 'why are there 50 chromes again'
 	command_line->AppendSwitch("disable-site-isolation-trials");
 
+	// TODO: remove this flag in the future
+	command_line->AppendSwitch("disable-web-security");
+
 	// some GPUs are in the GPU blacklist as 'forcing D3D9'
 	// this just forces D3D11 anyway.
 	command_line->AppendSwitchWithValue("use-angle", "d3d11");
-
-	// CORB is not handled by CEF CefAddCrossOriginWhitelistEntry, disable CORS entirely
-	command_line->AppendSwitch("disable-web-security");
 
 	// disable accelerated video decoding, something in M91 upgrade broke this (instant hang when playing Twitter video)
 	command_line->AppendSwitch("disable-accelerated-video-decode");
 	command_line->AppendSwitch("disable-accelerated-video-encode");
 	command_line->AppendSwitch("disable-accelerated-mjpeg-decode");
-
-	// register the CitizenFX game view plugin
-#if !GTA_NY
-	command_line->AppendSwitchWithValue("register-pepper-plugins", fmt::sprintf("%s;application/x-cfx-game-view", ToNarrow(MakeRelativeCitPath(L"bin\\d3d_rendering.dll"))));
-#endif
 }
 
 bool NUIApp::OnProcessMessageReceived(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, CefProcessId source_process, CefRefPtr<CefProcessMessage> message)
