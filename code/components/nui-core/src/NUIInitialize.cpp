@@ -119,7 +119,7 @@ static void glBindTextureHook(GLenum target, GLuint texture)
 	if (handleData->handle != lastBackbufHandle)
 	{
 		lastBackbufHandle = handleData->handle;
-
+			
 		for (auto textureId : g_backBufferTextures)
 		{
 			g_curGlTexture = textureId;
@@ -906,7 +906,7 @@ static void PatchAdapter(IDXGIAdapter** pAdapter)
 
 #include <d3d11_1.h>
 
-static bool g_reshit;
+static bool g_usingReshade;
 
 template<typename TFnLeft, typename TFnRight>
 void VHook(intptr_t& ref, TFnLeft fn, TFnRight out)
@@ -982,7 +982,7 @@ static void PatchCreateResults(ID3D11Device** ppDevice, ID3D11DeviceContext** pp
 	}
 
 	// horrible hack as 'reshade' doesn't give us our original device back
-	if (g_reshit && ppDevice && *ppDevice)
+	if (g_usingReshade && ppDevice && *ppDevice)
 	{
 		// get context
 		WRL::ComPtr<ID3D11DeviceContext> cxt;
@@ -1190,7 +1190,7 @@ static HRESULT D3D11CreateDeviceHookMain(_In_opt_ IDXGIAdapter* pAdapter, D3D_DR
 	return hr;
 }
 
-#include <psapi.h>
+#include <include/cef_version_info.h>
 
 void HookLibGL(HMODULE libGL)
 {
@@ -1228,7 +1228,7 @@ void HookLibGL(HMODULE libGL)
 	g_d3d11 = std::unique_ptr<ModuleData>(new ModuleData{ realSysDll });
 
 	// maybe
-	g_reshit = true;
+	g_usingReshade = true;
 
 	MH_Initialize();
 	MH_CreateHook(GetProcAddress(libGL, "glTexParameterf"), glTexParameterfHook, (void**)&g_origglTexParameterf);
@@ -1267,14 +1267,6 @@ void Component_RunPreInit()
 		return;
 	}
 
-#ifdef _M_AMD64
-	// again, a Win7 SP1 check (Chromium x64 isn't supported below this operating level)
-	if (!IsWindows7SP1OrGreater())
-	{
-		FatalError("CitizenFX requires Windows 7 SP1 or higher. Please upgrade to this operating system version to run CitizenFX.");
-	}
-#endif
-
 	// CEF keeps loading/unloading this - load it ourselves to make the refcount always 1
 	LoadLibrary(L"bluetoothapis.dll");
 
@@ -1307,16 +1299,15 @@ void Component_RunPreInit()
 
 	// verify if the CEF API hash is screwed
 	{
-		const char* apiHash = cef_api_hash(0);
-		const char* apiHashUniversal = cef_api_hash(1);
-		if (strcmp(apiHash, CEF_API_HASH_PLATFORM) != 0 || strcmp(apiHashUniversal, CEF_API_HASH_UNIVERSAL) != 0)
+		const char* apiHash = cef_api_hash(CEF_API_VERSION, 0);
+		const char* apiHashUniversal = cef_api_hash(CEF_API_VERSION, 1);
+ 		if (strcmp(apiHash, CEF_API_HASH_PLATFORM) != 0)
 		{
 			_wunlink(MakeRelativeCitPath(L"content_index.xml").c_str());
-			FatalError("CEF API hash mismatch\nA mismatch was detected between `nui-core.dll` and `bin/libcef.dll`. Please restart the game and try again.\n\nPlatform hash:\n%s\n%s\n\nUniversal hash:\n%s\n%s",
+			FatalError("CEF API hash mismatch\nA mismatch was detected between `nui-core.dll` and `bin/libcef.dll`. Please restart the game and try again.\n\nPlatform hash:\n%s\n%s\n\nUniversal hash:\n%s",
 			apiHash,
 			CEF_API_HASH_PLATFORM,
-			apiHashUniversal,
-			CEF_API_HASH_UNIVERSAL);
+			apiHashUniversal);
 		}
 	}
 
@@ -1509,10 +1500,7 @@ void Initialize(nui::GameInterface* gi)
 			version = atoi(ver);
 		}
 
-		// #TODONY: why is this missing from official CEF?
-#ifndef GTA_NY
 		CefString(&cSettings.user_agent_product).FromWString(fmt::sprintf(L"Chrome/%d.%d.%d.%d CitizenFX/1.0.0.%d", cef_version_info(4), cef_version_info(5), cef_version_info(6), cef_version_info(7), version));
-#endif
 
 		CefString(&cSettings.log_file).FromWString(MakeRelativeCitPath(L"cef_console.txt"));
 
@@ -1522,7 +1510,7 @@ void Initialize(nui::GameInterface* gi)
 
 		CefString(&cSettings.cookieable_schemes_list).FromString("nui");
 
-		std::wstring resPath = MakeRelativeCitPath(L"bin/cef/");
+		std::wstring resPath = MakeRelativeCitPath(L"bin\\cef");
 
 		CefString(&cSettings.resources_dir_path).FromWString(resPath);
 		CefString(&cSettings.locales_dir_path).FromWString(resPath);

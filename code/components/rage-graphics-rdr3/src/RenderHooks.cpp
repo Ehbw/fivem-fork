@@ -192,7 +192,7 @@ static VkResult __stdcall vkCreateInstanceHook(VkInstanceCreateInfo* pCreateInfo
 
 	if (result != VK_SUCCESS)
 	{
-		trace("Vulkan instance creation returned: %s\n", ResultToString(result));
+		trace("Vulkan instance creation returned: %s\n", vk::ResultToString(result));
 	}
 
 	g_vkInstance = *pInstance;
@@ -276,7 +276,7 @@ static HRESULT vkCreateDeviceHook(VkPhysicalDevice physicalDevice, VkDeviceCreat
 
 	if (result != VK_SUCCESS)
 	{
-		trace("Vulkan device creation returned: %s\n", ResultToString(result));
+		trace("Vulkan device creation returned: %s\n", vk::ResultToString(result));
 	}
 
 	return result;

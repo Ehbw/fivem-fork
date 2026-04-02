@@ -14,6 +14,7 @@
 #include <RelativeDevice.h>
 
 #include <wrl.h>
+#include <d3d11_1.h>
 
 #include <tbb/concurrent_queue.h>
 
@@ -142,6 +143,8 @@ private:
 
 	HANDLE m_lastShareHandle;
 
+	ID3D11Device1* m_d3d11Device1 = nullptr;
+
 public:
 	void Initialize(citizen::GameWindow* window);
 
@@ -191,7 +194,7 @@ public:
 
 			WRL::ComPtr<ID3D11Texture2D> sharedTexture;
 
-			HRESULT hr = GetD3D11Device()->OpenSharedResource(shareHandle, __uuidof(ID3D11Texture2D), (void**)sharedTexture.GetAddressOf());
+			HRESULT hr = GetD3D11Device1()->OpenSharedResource1(shareHandle, __uuidof(ID3D11Texture2D), (void**)sharedTexture.GetAddressOf());
 
 			if (FAILED(hr))
 			{
@@ -222,6 +225,11 @@ public:
 		});
 
 		return texture;
+	}
+
+	virtual void UpdateTexture(HANDLE shareHandle, fwRefContainer<GITexture> texture, cef_rect_t* dirtyRects, int dirtyRectCount, int width, int height, std::function<void()> cb = nullptr) override
+	{
+		// TODO: FxDK support
 	}
 
 	virtual void SetTexture(fwRefContainer<GITexture> texture, bool pm = false) override
@@ -324,6 +332,23 @@ public:
 		return ((ID3D11Device*)bgfx::getInternalData()->context);
 	}
 
+	virtual ID3D11Device1* GetD3D11Device1()
+	{
+#ifdef GTA_FIVE
+		if (!m_d3d11Device1)
+		{
+			auto device = GetD3D11Device();
+			if (device)
+			{
+				device->QueryInterface(IID_PPV_ARGS(&m_d3d11Device1));
+			}
+		}
+		return m_d3d11Device1;
+#else
+		return nullptr;
+#endif
+	}
+
 	virtual ID3D11DeviceContext* GetD3D11DeviceContext() override
 	{
 		static ID3D11DeviceContext* cxt;
@@ -335,6 +360,26 @@ public:
 
 		return cxt;
 	}
+
+#ifdef IS_RDR3
+	virtual ID3D12Device* GetD3D12Device() override
+	{
+		assert(!"FrontendNUI doesn't support RedM");
+		return nullptr;
+	}
+
+	virtual void* GetVulkanDevice() override
+	{
+		assert(!"FrontendNUI doesn't support RedM");
+		return nullptr;
+	}
+
+	virtual bool IsUsingD3D12() override
+	{
+		assert(!"FrontendNUI doesn't support RedM");
+		return false;
+	}
+#endif
 
 	virtual fwRefContainer<GITexture> CreateTextureFromD3D11Texture(ID3D11Texture2D* texture) override
 	{

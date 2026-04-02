@@ -144,7 +144,8 @@ extern void TriggerLoadEnd(const std::string& name);
 void NUIClient::OnLoadEnd(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, int httpStatusCode)
 {
 	auto url = frame->GetURL();
-	TriggerLoadEnd((url == "nui://game/ui/root.html") ? "__root" : frame->GetName());
+	auto name = frame->GetName();
+	TriggerLoadEnd((url == "nui://game/ui/root.html") ? "__root" : name);
 
 	if (auto parent = frame->GetParent(); parent && parent->IsMain())
 	{
@@ -191,6 +192,26 @@ Object.prototype.__defineGetter__ = function(prop, func) {
 	}
 	return oldDefineGetter.call(this, prop, func);
 };
+
+// Provide backwards compatability for 'application/x-cfx-game-view' mime type.
+// Originally implemented through the now removed PepperPlugins.
+const __cfx_game_view_observer = new MutationObserver(() => {
+	const node = document.querySelector(
+		'[type="application/x-cfx-game-view"]'
+	);
+
+	if (node) {
+	  __cfx_game_view.ReplaceGameView(node, __cfx_game_view.CreateCanvasRenderer);
+	}
+});
+
+__cfx_game_view_observer.observe(document.documentElement, {
+	childList: true,
+	subtree: true
+});
+
+// Replace all legacy canvas's at startup.
+__cfx_game_view.FindLegacyGameView(__cfx_game_view.CreateCanvasRenderer);
 )",
 		"nui://patches", 0);
 	}
@@ -255,6 +276,24 @@ Object.prototype.__defineGetter__ = function(prop, func) {
 	}
 }
 
+void NUIClient::OnLoadError(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, ErrorCode errorCode, const CefString& errorText, const CefString& failedUrl)
+{
+	if (errorCode == ERR_ABORTED)
+	{
+		return;
+	}
+
+	// Restore alloy runtime (<M128) behaviour of not displaying anything should an page error occur.
+	// currently, with the chrome runtime it will display an error page which can block game view and cause confusion
+	// as you are not able to focus on to it to see the error it self.
+	// instead, we'll replace any pages (usually iframes) that fail to load with about:blank.
+	// with chrome runtime it will, by default, display an error page.
+	frame->LoadURL("about:blank");
+#ifdef _DEBUG
+	trace("Failed to load page because of errorcode %i", errorCode);
+#endif
+}
+
 void NUIClient::OnAfterCreated(CefRefPtr<CefBrowser> browser)
 {
 	m_browser = browser;
@@ -281,6 +320,12 @@ bool NUIClient::OnProcessMessageReceived(CefRefPtr<CefBrowser> browser, CefRefPt
 
 void NUIClient::OnBeforeContextMenu(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, CefRefPtr<CefContextMenuParams> params, CefRefPtr<CefMenuModel> model)
 {
+	// Don't block context menu for devtools
+	if (!frame->GetURL().ToString().find("devtools://"))
+	{
+		return;
+	}
+
 	model->Clear();
 }
 
@@ -347,6 +392,7 @@ bool NUIClient::OnConsoleMessage(CefRefPtr<CefBrowser> browser, cef_log_severity
 
 auto NUIClient::OnBeforePopup(CefRefPtr<CefBrowser> browser,
 	CefRefPtr<CefFrame> frame,
+	int popup_id,
 	const CefString& target_url,
 	const CefString& target_frame_name,
 	CefLifeSpanHandler::WindowOpenDisposition target_disposition,
@@ -358,18 +404,23 @@ auto NUIClient::OnBeforePopup(CefRefPtr<CefBrowser> browser,
 	CefRefPtr<CefDictionaryValue>& extra_info,
 	bool* no_javascript_access) -> bool
 {
-	if (target_disposition == WOD_NEW_FOREGROUND_TAB || target_disposition == WOD_NEW_BACKGROUND_TAB || target_disposition == WOD_NEW_POPUP || target_disposition == WOD_NEW_WINDOW )
+	if (target_disposition == CEF_WOD_CURRENT_TAB)
 	{
-		return true;
+		return false;
 	}
-	return false;
+
+	return true;
 }
 
 auto NUIClient::OnBeforeResourceLoad(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, CefRefPtr<CefRequest> request, CefRefPtr<CefCallback> callback) -> ReturnValue
 {
 	auto url = request->GetURL().ToString();
 
-	if (boost::algorithm::to_lower_copy(url).find("file://") != std::string::npos)
+	// We don't want NUI to use certain schemes it has no business accessing.
+	if (boost::algorithm::to_lower_copy(url).find("file://") != std::string::npos || 
+		boost::algorithm::to_lower_copy(url).find("chrome://") != std::string::npos ||
+		boost::algorithm::to_lower_copy(url).find("javascript://") != std::string::npos
+	   )
 	{
 		return RV_CANCEL;
 	}
@@ -378,6 +429,26 @@ auto NUIClient::OnBeforeResourceLoad(CefRefPtr<CefBrowser> browser, CefRefPtr<Ce
 	if (!CefParseURL(request->GetURL(), urlParts))
 	{
 		return RV_CONTINUE;
+	}
+
+	// When NUI scripts attempt to make HTTP requests before being fully initalized, "Origin" field will be null.
+	// Breaking NUI strict mode (espically in chat), in order to maintain backwards compatability make sure Origin is present.
+	if (request->GetMethod() == "POST")
+	{
+		CefString origin = request->GetHeaderByName("Origin");
+		// Sometimes origin will also be "null"
+		if (origin.empty() || origin == "null")
+		{
+			CefURLParts frameParts;
+			if (!CefParseURL(frame->GetURL(), frameParts))
+			{
+				// Somehow frame isn't a valid URL?
+				return RV_CANCEL;
+			}
+
+			std::string hostString = CefString(&frameParts.host).ToString();
+			request->SetHeaderByName("Origin", CefString(&frameParts.scheme).ToString() + "://" + hostString, true);
+		}
 	}
 
 	std::string hostString = CefString(&urlParts.host).ToString();
@@ -416,7 +487,6 @@ auto NUIClient::OnBeforeResourceLoad(CefRefPtr<CefBrowser> browser, CefRefPtr<Ce
 			return RV_CONTINUE;
 		}
 	}
-
 
 	// DiscordApp breaks as of late and affects end users, tuning the headers seems to fix it
 	if (boost::algorithm::ends_with(hostString, "discordapp.com") ||
@@ -466,7 +536,7 @@ auto NUIClient::OnBeforeResourceLoad(CefRefPtr<CefBrowser> browser, CefRefPtr<Ce
 					return RV_CANCEL;
 				}
 			}
-			catch (std::exception& e)
+			catch (std::exception&)
 			{
 			}
 		}
@@ -516,6 +586,7 @@ void NUIClient::AddProcessMessageHandler(std::string key, TProcessMessageHandler
 	m_processMessageHandlers[key] = handler;
 }
 
+#ifdef NUI_WITH_AUDIO_SINKS
 void NUIClient::OnAudioCategoryConfigure(const std::string& frame, const std::string& category)
 {
 	m_audioFrameCategories[frame] = category;
@@ -543,7 +614,6 @@ void NUIClient::OnAudioCategoryConfigure(const std::string& frame, const std::st
 	}
 }
 
-#if 0
 void NUIClient::OnAudioStreamStarted(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, int audio_stream_id, int channels, ChannelLayout channel_layout, int sample_rate, int frames_per_buffer)
 {
 	if (g_audioSink)
@@ -618,8 +688,24 @@ void NUIClient::OnAudioStreamStopped(CefRefPtr<CefBrowser> browser, CefRefPtr<Ce
 
 extern bool g_shouldCreateRootWindow;
 
-void NUIClient::OnRenderProcessTerminated(CefRefPtr<CefBrowser> browser, TerminationStatus status)
+void NUIClient::OnRenderProcessTerminated(CefRefPtr<CefBrowser> browser, TerminationStatus status, int error_code, const CefString& error_string)
 {
+	switch (status)
+	{
+		case TS_PROCESS_CRASHED:
+			trace("CEF renderer process was killed, error_code = %i,%s\n", error_code, error_string.ToString());
+			break;
+		case TS_PROCESS_WAS_KILLED:
+			trace("CEF renderer was killed, error_code = %i,%s\n", error_code, error_string.ToString());
+			break;
+		case TS_PROCESS_OOM:
+			trace("CEF renderer ran out of memory, error_code %i, %s\n", error_code, error_string.ToString());
+			break;
+		case TS_ABNORMAL_TERMINATION:
+			trace("CEF renderer was abnormally terminated, error_code %i, %s\n", error_code, error_string.ToString());
+			break;
+	}
+
 	if (browser->GetMainFrame()->GetURL() == "nui://game/ui/root.html" || (m_windowValid && m_window && m_window->GetName() == "nui_mpMenu"))
 	{
 		browser->GetHost()->CloseBrowser(true);
@@ -630,9 +716,12 @@ void NUIClient::OnRenderProcessTerminated(CefRefPtr<CefBrowser> browser, Termina
 
 bool NUIClient::OnOpenURLFromTab(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, const CefString& target_url, CefRequestHandler::WindowOpenDisposition target_disposition, bool user_gesture)
 {
-	// Discards middle mouse clicks / ctrl-clicks of links
+	// Discards middle mouse clicks / shift-click / ctrl-clicks of links. Also discard opening links from devtools
 	// Default behavior is to open them in a new tab and switch to it, with no back button the player had no way to go back to CfxUI
-	if (target_disposition == CefRequestHandler::WindowOpenDisposition::WOD_NEW_BACKGROUND_TAB && user_gesture)
+	if ((target_disposition == CefRequestHandler::WindowOpenDisposition::CEF_WOD_NEW_BACKGROUND_TAB 
+		|| target_disposition == CefRequestHandler::WindowOpenDisposition::CEF_WOD_NEW_FOREGROUND_TAB
+		|| target_disposition == CefRequestHandler::WindowOpenDisposition::CEF_WOD_NEW_WINDOW
+	) && user_gesture)
 	{
 		return true;
 	}
@@ -642,36 +731,6 @@ bool NUIClient::OnOpenURLFromTab(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFra
 void NUIClient::OnBeforeClose(CefRefPtr<CefBrowser> browser)
 {
 	m_browser = nullptr;
-}
-
-CefRefPtr<CefLifeSpanHandler> NUIClient::GetLifeSpanHandler()
-{
-	return this;
-}
-
-CefRefPtr<CefDisplayHandler> NUIClient::GetDisplayHandler()
-{
-	return this;
-}
-
-CefRefPtr<CefContextMenuHandler> NUIClient::GetContextMenuHandler()
-{
-	return this;
-}
-
-CefRefPtr<CefLoadHandler> NUIClient::GetLoadHandler()
-{
-	return this;
-}
-
-CefRefPtr<CefRequestHandler> NUIClient::GetRequestHandler()
-{
-	return this;
-}
-
-CefRefPtr<CefRenderHandler> NUIClient::GetRenderHandler()
-{
-	return m_renderHandler;
 }
 
 extern nui::GameInterface* g_nuiGi;
@@ -701,9 +760,18 @@ bool NUIClient::OnRequestMediaAccessPermission(CefRefPtr<CefBrowser> browser, Ce
 	});
 }
 
-CefRefPtr<CefPermissionHandler> NUIClient::GetPermissionHandler()
+bool NUIClient::OnShowPermissionPrompt(CefRefPtr<CefBrowser> browser, uint64_t prompt_id, const CefString& requesting_origin, uint32_t requested_permissions, CefRefPtr<CefPermissionPromptCallback> callback)
 {
-	return this;
+	// With the default of Chrome runtime in M128+
+	// Permission Prompts for tasks such as allowing sharing geolocation or multiple downloads
+	// would attempt to show an chrome style permission popup, which in OSR will not behave properly
+	// As such, restore alloy behaviour by denying all permission prompts.
+	callback->Continue(CEF_PERMISSION_RESULT_DENY);
+	return true;
+}
+
+void NUIClient::OnDismissPermissionPrompt(CefRefPtr<CefBrowser> browser, uint64_t prompt_id, cef_permission_request_result_t result)
+{
 }
 #endif
 

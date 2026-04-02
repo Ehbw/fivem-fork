@@ -1,10 +1,6 @@
 #include "StdInc.h"
 #include "NUIApp.h"
-#include "NUIClient.h"
 #include "memdbgon.h"
-
-// frame name list for the render process
-static std::map<int, std::string> g_frameNames;
 
 class PushCallbacks
 {
@@ -43,18 +39,6 @@ public:
 		auto nuiApp = Instance<NUIApp>::Get();
 		nuiApp->AddProcessMessageHandler("pushEvent", pushCB);
 
-		nuiApp->AddProcessMessageHandler("setName", [](CefRefPtr<CefBrowser> browser, CefRefPtr<CefProcessMessage> message)
-		{
-			auto& argList = message->GetArgumentList();
-
-			if (argList->GetSize() == 1)
-			{
-				g_frameNames[browser->GetIdentifier()] = argList->GetString(0);
-			}
-
-			return true;
-		});
-
 		nuiApp->AddV8Handler("registerPushFunction", [=](const CefV8ValueList& arguments, CefString& exception)
 		{
 			if (arguments.size() == 1 && arguments[0]->IsFunction())
@@ -70,13 +54,6 @@ public:
 			return CefV8Value::CreateNull();
 		});
 
-		nuiApp->AddV8Handler("GetParentResourceName", [=](const CefV8ValueList& arguments, CefString& exception)
-		{
-			auto context = CefV8Context::GetCurrentContext();
-
-			return CefV8Value::CreateString(g_frameNames[context->GetBrowser()->GetIdentifier()]);
-		});
-
 		nuiApp->AddContextReleaseHandler([=](CefRefPtr<CefV8Context> context)
 		{
 			for (auto it = m_pushCallbacks.begin(); it != m_pushCallbacks.end(); )
@@ -90,28 +67,6 @@ public:
 					++it;
 				}
 			}
-		});
-
-		NUIClient::OnClientCreated.Connect([](NUIClient* client)
-		{
-			auto window = client->GetWindow();
-
-			if (!window)
-			{
-				return;
-			}
-
-			auto frameName = window->GetName();
-
-			if (frameName.find("nui_") == 0)
-			{
-				frameName = frameName.substr(4);
-			}
-
-			auto processMessage = CefProcessMessage::Create("setName");
-			processMessage->GetArgumentList()->SetString(0, frameName);
-
-			client->GetBrowser()->GetMainFrame()->SendProcessMessage(PID_RENDERER, processMessage);
 		});
 	}
 };

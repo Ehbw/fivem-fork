@@ -45,10 +45,7 @@ protected:
 	void UpdateDragCursor(CefRefPtr<CefBrowser> browser,
 		CefRenderHandler::DragOperation operation) override;
 
-	virtual void OnAcceleratedPaint(CefRefPtr<CefBrowser> browser, PaintElementType type, const RectList& dirtyRects, void* shared_handle) override;
-
-	virtual void OnAcceleratedPaint2(CefRefPtr<CefBrowser> browser, PaintElementType type, const RectList& dirtyRects, void* shared_handle, bool new_texture) override;
-
+	virtual void OnAcceleratedPaint(CefRefPtr<CefBrowser> browser, PaintElementType type, const RectList& dirtyRects, const CefAcceleratedPaintInfo& info) override;
 private:
 	void PaintView(const RectList& dirtyRects, const void* buffer, int width, int height);
 

@@ -10,6 +10,7 @@
 
 #include "NUIClient.h"
 #include "NUIWindowManager.h"
+#include "DUIShaders.h"
 
 #include <Error.h>
 
@@ -34,16 +35,21 @@ static bool nuiFixedSizeEnabled;
 namespace nui
 {
 extern bool g_rendererInit;
-
+extern bool g_hasFirstRender;
 extern void AddSchemeHandlerFactories(CefRefPtr<CefRequestContext> rc);
 }
 
 NUIWindow::NUIWindow(bool rawBlit, int width, int height, const std::string& windowContext)
-	: m_rawBlit(rawBlit), m_width(width), m_height(height), m_renderBuffer(nullptr), m_dirtyFlag(0), m_onClientCreated(nullptr), m_nuiTexture(nullptr), m_popupTexture(nullptr), m_swapTexture(nullptr),
-	  m_swapRtv(nullptr), m_swapSrv(nullptr), m_dereferencedNuiTexture(false), m_lastFrameTime(0), m_lastMessageTime(0), m_roundedHeight(0), m_roundedWidth(0),
-	  m_syncKey(0), m_paintType(NUIPaintTypeDummy), m_windowContext(windowContext)
+	: m_isPrimary(rawBlit), m_width(width), m_height(height), m_renderBuffer(nullptr), m_dirtyFlag(0), m_onClientCreated(nullptr), m_nuiTexture(nullptr), m_popupTexture(nullptr),
+	  m_usingSharedTextures(false), m_lastFrameTime(0), m_lastMessageTime(0), m_roundedHeight(0), m_roundedWidth(0),
+	  m_paintType(NUIPaintTypeDummy), m_windowContext(windowContext)
+#ifdef GTA_FIVE
+	  ,m_swapTexture(nullptr), m_swapRtv(nullptr), m_swapSrv(nullptr)
+#endif
 {
 	memset(&m_lastDirtyRect, 0, sizeof(m_lastDirtyRect));
+	memset(&m_sharedResourceTexturesCreated, 0, sizeof(m_sharedResourceTexturesCreated));
+	memset(&m_lastParentHandle, 0, sizeof(m_lastParentHandle));
 
 	Instance<NUIWindowManager>::Get()->AddWindow(this);
 }
@@ -108,207 +114,6 @@ void NUIWindow::DeferredCreate()
 	}
 }
 
-#pragma region shaders
-/*
-// fxc /T ps_4_0 /E PSMain /Qstrip_reflect /Fo test.cso /Fh test.h test.hlsl
-
-Texture2D tx : register(t0);
-SamplerState sm : register(s0);
-
-float4 PSMain(in float4 pos : SV_Position, in float2 uv : TEXCOORD0): SV_TARGET {
-    float4 color = tx.Sample(sm, uv);
-    color.rgb /= color.a;
-    return color;
-}
-*/
-
-const BYTE quadPS[] =
-{
-     68,  88,  66,  67, 143,   7,
-    231, 175,  20,  94, 243, 235,
-    204,  15,  80,  20, 247, 182,
-    206,  11,   1,   0,   0,   0,
-     92,   1,   0,   0,   3,   0,
-      0,   0,  44,   0,   0,   0,
-    132,   0,   0,   0, 184,   0,
-      0,   0,  73,  83,  71,  78,
-     80,   0,   0,   0,   2,   0,
-      0,   0,   8,   0,   0,   0,
-     56,   0,   0,   0,   0,   0,
-      0,   0,   1,   0,   0,   0,
-      3,   0,   0,   0,   0,   0,
-      0,   0,  15,   0,   0,   0,
-     68,   0,   0,   0,   0,   0,
-      0,   0,   0,   0,   0,   0,
-      3,   0,   0,   0,   1,   0,
-      0,   0,   3,   3,   0,   0,
-     83,  86,  95,  80, 111, 115,
-    105, 116, 105, 111, 110,   0,
-     84,  69,  88,  67,  79,  79,
-     82,  68,   0, 171, 171, 171,
-     79,  83,  71,  78,  44,   0,
-      0,   0,   1,   0,   0,   0,
-      8,   0,   0,   0,  32,   0,
-      0,   0,   0,   0,   0,   0,
-      0,   0,   0,   0,   3,   0,
-      0,   0,   0,   0,   0,   0,
-     15,   0,   0,   0,  83,  86,
-     95,  84,  65,  82,  71,  69,
-     84,   0, 171, 171,  83,  72,
-     68,  82, 156,   0,   0,   0,
-     64,   0,   0,   0,  39,   0,
-      0,   0,  90,   0,   0,   3,
-      0,  96,  16,   0,   0,   0,
-      0,   0,  88,  24,   0,   4,
-      0, 112,  16,   0,   0,   0,
-      0,   0,  85,  85,   0,   0,
-     98,  16,   0,   3,  50,  16,
-     16,   0,   1,   0,   0,   0,
-    101,   0,   0,   3, 242,  32,
-     16,   0,   0,   0,   0,   0,
-    104,   0,   0,   2,   1,   0,
-      0,   0,  69,   0,   0,   9,
-    242,   0,  16,   0,   0,   0,
-      0,   0,  70,  16,  16,   0,
-      1,   0,   0,   0,  70, 126,
-     16,   0,   0,   0,   0,   0,
-      0,  96,  16,   0,   0,   0,
-      0,   0,  14,   0,   0,   7,
-    114,  32,  16,   0,   0,   0,
-      0,   0,  70,   2,  16,   0,
-      0,   0,   0,   0, 246,  15,
-     16,   0,   0,   0,   0,   0,
-     54,   0,   0,   5, 130,  32,
-     16,   0,   0,   0,   0,   0,
-     58,   0,  16,   0,   0,   0,
-      0,   0,  62,   0,   0,   1
-};
-
-const BYTE quadVS[] =
-{
-	68,  88,  66,  67, 203, 141,
-	78, 146,   5, 246, 239, 246,
-	166,  36, 242, 232,  80,   1,
-	231, 115,   1,   0,   0,   0,
-	208,   2,   0,   0,   5,   0,
-	0,   0,  52,   0,   0,   0,
-	128,   0,   0,   0, 180,   0,
-	0,   0,  12,   1,   0,   0,
-	84,   2,   0,   0,  82,  68,
-	69,  70,  68,   0,   0,   0,
-	0,   0,   0,   0,   0,   0,
-	0,   0,   0,   0,   0,   0,
-	28,   0,   0,   0,   0,   4,
-	254, 255,   0,   1,   0,   0,
-	28,   0,   0,   0,  77, 105,
-	99, 114, 111, 115, 111, 102,
-	116,  32,  40,  82,  41,  32,
-	72,  76,  83,  76,  32,  83,
-	104,  97, 100, 101, 114,  32,
-	67, 111, 109, 112, 105, 108,
-	101, 114,  32,  49,  48,  46,
-	49,   0,  73,  83,  71,  78,
-	44,   0,   0,   0,   1,   0,
-	0,   0,   8,   0,   0,   0,
-	32,   0,   0,   0,   0,   0,
-	0,   0,   6,   0,   0,   0,
-	1,   0,   0,   0,   0,   0,
-	0,   0,   1,   1,   0,   0,
-	83,  86,  95,  86,  69,  82,
-	84,  69,  88,  73,  68,   0,
-	79,  83,  71,  78,  80,   0,
-	0,   0,   2,   0,   0,   0,
-	8,   0,   0,   0,  56,   0,
-	0,   0,   0,   0,   0,   0,
-	1,   0,   0,   0,   3,   0,
-	0,   0,   0,   0,   0,   0,
-	15,   0,   0,   0,  68,   0,
-	0,   0,   0,   0,   0,   0,
-	0,   0,   0,   0,   3,   0,
-	0,   0,   1,   0,   0,   0,
-	3,  12,   0,   0,  83,  86,
-	95,  80,  79,  83,  73,  84,
-	73,  79,  78,   0,  84,  69,
-	88,  67,  79,  79,  82,  68,
-	0, 171, 171, 171,  83,  72,
-	68,  82,  64,   1,   0,   0,
-	64,   0,   1,   0,  80,   0,
-	0,   0,  96,   0,   0,   4,
-	18,  16,  16,   0,   0,   0,
-	0,   0,   6,   0,   0,   0,
-	103,   0,   0,   4, 242,  32,
-	16,   0,   0,   0,   0,   0,
-	1,   0,   0,   0, 101,   0,
-	0,   3,  50,  32,  16,   0,
-	1,   0,   0,   0, 104,   0,
-	0,   2,   2,   0,   0,   0,
-	54,   0,   0,   8, 194,  32,
-	16,   0,   0,   0,   0,   0,
-	2,  64,   0,   0,   0,   0,
-	0,   0,   0,   0,   0,   0,
-	0,   0,   0,   0,   0,   0,
-	128,  63,   1,   0,   0,   7,
-	18,   0,  16,   0,   0,   0,
-	0,   0,  10,  16,  16,   0,
-	0,   0,   0,   0,   1,  64,
-	0,   0,   1,   0,   0,   0,
-	85,   0,   0,   7, 130,   0,
-	16,   0,   0,   0,   0,   0,
-	10,  16,  16,   0,   0,   0,
-	0,   0,   1,  64,   0,   0,
-	1,   0,   0,   0,  86,   0,
-	0,   5,  50,   0,  16,   0,
-	0,   0,   0,   0, 198,   0,
-	16,   0,   0,   0,   0,   0,
-	0,   0,   0,  10,  50,   0,
-	16,   0,   1,   0,   0,   0,
-	70,   0,  16,   0,   0,   0,
-	0,   0,   2,  64,   0,   0,
-	0,   0,   0, 191,   0,   0,
-	0, 191,   0,   0,   0,   0,
-	0,   0,   0,   0,   0,   0,
-	0,   8,  66,   0,  16,   0,
-	0,   0,   0,   0,  26,   0,
-	16, 128,  65,   0,   0,   0,
-	0,   0,   0,   0,   1,  64,
-	0,   0,   0,   0, 128,  63,
-	54,   0,   0,   5,  50,  32,
-	16,   0,   1,   0,   0,   0,
-	134,   0,  16,   0,   0,   0,
-	0,   0,   0,   0,   0,   7,
-	18,  32,  16,   0,   0,   0,
-	0,   0,  10,   0,  16,   0,
-	1,   0,   0,   0,  10,   0,
-	16,   0,   1,   0,   0,   0,
-	56,   0,   0,   7,  34,  32,
-	16,   0,   0,   0,   0,   0,
-	26,   0,  16,   0,   1,   0,
-	0,   0,   1,  64,   0,   0,
-	0,   0,   0, 192,  62,   0,
-	0,   1,  83,  84,  65,  84,
-	116,   0,   0,   0,  10,   0,
-	0,   0,   2,   0,   0,   0,
-	0,   0,   0,   0,   3,   0,
-	0,   0,   4,   0,   0,   0,
-	0,   0,   0,   0,   2,   0,
-	0,   0,   1,   0,   0,   0,
-	0,   0,   0,   0,   0,   0,
-	0,   0,   0,   0,   0,   0,
-	0,   0,   0,   0,   0,   0,
-	0,   0,   0,   0,   0,   0,
-	0,   0,   0,   0,   0,   0,
-	0,   0,   0,   0,   0,   0,
-	0,   0,   0,   0,   0,   0,
-	0,   0,   2,   0,   0,   0,
-	0,   0,   0,   0,   1,   0,
-	0,   0,   0,   0,   0,   0,
-	0,   0,   0,   0,   0,   0,
-	0,   0,   0,   0,   0,   0,
-	0,   0,   0,   0,   0,   0,
-	0,   0,   0,   0,   0,   0
-}; 
-#pragma endregion
-
 static auto roundUp(int x, int y)
 {
 	return x + (y - (x % y));
@@ -316,20 +121,8 @@ static auto roundUp(int x, int y)
 
 void NUIWindow::Initialize(CefString url)
 {
-#if defined(GTA_NY)
-	static bool nuiSharedResourcesEnabled = false;
-#else
 	static bool nuiSharedResourcesEnabled = true;
 	static ConVar<bool> nuiSharedResources("nui_useSharedResources", ConVar_Archive, true, &nuiSharedResourcesEnabled);
-#endif
-
-	// Vulkan/D3D12(on7) don't support shared resources before Windows 10
-#if defined(IS_RDR3)
-	if (!IsWindows10OrGreater())
-	{
-		nuiSharedResourcesEnabled = false;
-	}
-#endif
 
 	if (m_renderBuffer)
 	{
@@ -350,9 +143,13 @@ void NUIWindow::Initialize(CefString url)
 		m_client = client;
 	}
 
+	m_usingSharedTextures = (!CfxIsWine() && nuiSharedResourcesEnabled);
+
 	CefWindowInfo info;
 	info.SetAsWindowless(NULL);
-	info.shared_texture_enabled = (!CfxIsWine() && nuiSharedResourcesEnabled);
+	info.shared_texture_enabled = m_usingSharedTextures;
+	// External frame calls are handled in NUIVsync, for DUI/Vulkan NUIWindow::BeginFrame
+	info.external_begin_frame_enabled = true;
 	info.bounds.x = 0;
 	info.bounds.y = 0;
 	info.bounds.width = m_width;
@@ -383,7 +180,7 @@ void NUIWindow::Initialize(CefString url)
 
 	CefBrowserHost::CreateBrowser(info, m_client, url, settings, {}, rc);
 
-	if (!info.shared_texture_enabled)
+	if (!m_usingSharedTextures)
 	{
 		m_renderBuffer = new char[4 * m_roundedWidth * m_roundedHeight];
 	}
@@ -402,7 +199,8 @@ void NUIWindow::InitializeRenderBacking()
 		m_nuiTexture = g_nuiGi->CreateTextureBacking(m_width, m_height, nui::GITextureFormat::ARGB);
 	}
 
-	if (!m_rawBlit)
+#ifdef GTA_FIVE
+	if (!m_isPrimary)
 	{
 		D3D11_TEXTURE2D_DESC tgtDesc = CD3D11_TEXTURE2D_DESC(DXGI_FORMAT_B8G8R8A8_UNORM, m_width, m_height, 1, 1, D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE);
 
@@ -419,7 +217,7 @@ void NUIWindow::InitializeRenderBacking()
 			deviceStuff->rawDevice->CreateRenderTargetView(m_swapTexture.Get(), &rtDesc, &m_swapRtv);
 		}
 	}
-
+#endif
 }
 
 void NUIWindow::AddDirtyRect(const CefRect& rect)
@@ -439,90 +237,6 @@ CefBrowser* NUIWindow::GetBrowser()
 
 extern void NUI_AcceptTexture(uint64_t handle);
 
-void NUIWindow::UpdateSharedResource(void* sharedHandle, uint64_t syncKey, const CefRenderHandler::RectList& rects, CefRenderHandler::PaintElementType type)
-{
-	if (!sharedHandle)
-	{
-		return;
-	}
-
-	if (!m_rawBlit && type != CefRenderHandler::PaintElementType::PET_VIEW)
-	{
-		return;
-	}
-
-	if (!m_nuiTexture.GetRef())
-	{
-		// hope we'll resize soon
-		return;
-	}
-
-	HANDLE parentHandle = (void*)sharedHandle;
-	m_syncKey = syncKey;
-	
-	{
-		if (sharedHandle != m_lastParentHandle[type])
-		{
-			m_lastParentHandle[type] = parentHandle;
-
-			auto& texRef = (type == CefRenderHandler::PaintElementType::PET_VIEW) ? m_nuiTexture : m_popupTexture;
-
-			int w, h;
-
-			if (type == CefRenderHandler::PaintElementType::PET_VIEW)
-			{
-				w = m_width;
-				h = m_height;
-			}
-			else
-			{
-				w = m_popupRect.width;
-				h = m_popupRect.height;
-			}
-
-			if (!m_rawBlit)
-			{
-				auto oldRef = m_parentTextures[type];
-
-				auto fakeTexRef = g_nuiGi->CreateTextureFromShareHandle(parentHandle, w, h);
-				SetParentTexture(type, fakeTexRef);
-				m_swapSrv = nullptr;
-			}
-			else
-			{
-				std::lock_guard<std::shared_mutex> _(m_textureMutex);
-
-				texRef = g_nuiGi->CreateTextureFromShareHandle(parentHandle, w, h);
-				SetParentTexture(type, texRef);
-			}
-
-			NUI_AcceptTexture((uint64_t)parentHandle);
-		}
-	}
-
-	for (auto& rect : rects)
-	{
-		int x = rect.x;
-		int y = rect.y;
-		int width = rect.width;
-		int height = rect.height;
-
-		RECT newRect;
-		newRect.left = x;
-		newRect.right = x + width;
-		newRect.top = GetHeight() - y - height;
-		newRect.bottom = GetHeight() - y;
-		//newRect.top = y;
-		//newRect.bottom = y + height;
-		
-		RECT oldRect = m_lastDirtyRect;
-
-		UnionRect(&m_lastDirtyRect, &newRect, &oldRect);
-	}
-
-	MarkRenderBufferDirty();
-}
-
 #include <d3d11_1.h>
 #include <mmsystem.h>
 
@@ -531,8 +245,32 @@ void NUIWindow::TouchMessage()
 	m_lastMessageTime = timeGetTime();
 }
 
+void NUIWindow::SendBeginFrame()
+{
+	auto browser = GetBrowser();
+	if (!browser)
+	{
+		return;
+	}
+
+	auto host = browser->GetHost();
+	if (host)
+	{
+		host->SendExternalBeginFrame();
+	}
+}
+
 void NUIWindow::UpdateFrame()
 {
+	if (
+#ifdef IS_RDR3
+	!g_nuiGi->IsUsingD3D12() ||
+#endif
+	GetPaintType() != NUIPaintTypePostRender)
+	{
+		SendBeginFrame();
+	}
+
 	if (m_client)
 	{
 		auto browser = ((NUIClient*)m_client.get())->GetBrowser();
@@ -561,7 +299,7 @@ void NUIWindow::UpdateFrame()
 		return;
 	}
 
-	if (m_rawBlit)
+	if (m_isPrimary)
 	{		
 		int resX, resY;
 		g_nuiGi->GetGameResolution(&resX, &resY);
@@ -636,16 +374,17 @@ void NUIWindow::UpdateFrame()
 
 	if (texture.GetRef())
 	{
-		if (!m_rawBlit)
+#ifdef GTA_FIVE
+		if (!m_isPrimary)
 		{
+			struct
+			{
+				void* vtbl;
+				ID3D11Device* rawDevice;
+			}* deviceStuff = (decltype(deviceStuff))g_nuiGi->GetD3D11Device();
+
 			if (!m_swapSrv)
 			{
-				struct
-				{
-					void* vtbl;
-					ID3D11Device* rawDevice;
-				}* deviceStuff = (decltype(deviceStuff))g_nuiGi->GetD3D11Device();
-
 				auto nativeTexture = GetParentTexture(CefRenderHandler::PaintElementType::PET_VIEW)->GetNativeTexture();
 
 				if (nativeTexture)
@@ -695,14 +434,14 @@ void NUIWindow::UpdateFrame()
 							D3D11_BLEND_DESC bd = CD3D11_BLEND_DESC(CD3D11_DEFAULT());
 							g_nuiGi->GetD3D11Device()->CreateBlendState(&bd, &bs);
 
-							g_nuiGi->GetD3D11Device()->CreateVertexShader(quadVS, sizeof(quadVS), nullptr, &vs);
-							g_nuiGi->GetD3D11Device()->CreatePixelShader(quadPS, sizeof(quadPS), nullptr, &ps);
+							g_nuiGi->GetD3D11Device()->CreateVertexShader(fx::shaders::quadVS, sizeof(fx::shaders::quadVS), nullptr, &vs);
+							g_nuiGi->GetD3D11Device()->CreatePixelShader(fx::shaders::quadPS, sizeof(fx::shaders::quadPS), nullptr, &ps);
 						});
 
 						Microsoft::WRL::ComPtr<ID3DUserDefinedAnnotation> pPerf;
 						deviceContext->QueryInterface(IID_PPV_ARGS(&pPerf));
 
-						pPerf->BeginEvent(L"DRAWSHIT");
+						pPerf->BeginEvent(L"DrawDUI");
 
 						ID3D11RenderTargetView* oldRtv = nullptr;
 						ID3D11DepthStencilView* oldDsv = nullptr;
@@ -822,6 +561,7 @@ void NUIWindow::UpdateFrame()
 				}
 			}
 		}
+#endif
 	}
 	else if (m_renderBuffer)
 	{
@@ -873,12 +613,10 @@ void NUIWindow::UpdateFrame()
 
 							for (int y = rect.y; y < (rect.y + rect.height); y++)
 							{
-								int dy = height - y - 1;
-
 								int* src = &((int*)(m_renderBuffer))[(y * m_roundedWidth) + rect.x];
-								int* dest = &((int*)(pBits))[(dy * (pitch / 4)) + rect.x];
+								int* dest = &((int*)(pBits))[(y * (pitch / 4)) + rect.x];
 
-								memcpy(dest, src, (rect.width * 4));
+								memcpy(dest, src, (static_cast<size_t>(rect.width) * 4));
 							}
 						}
 					}
@@ -909,9 +647,10 @@ void NUIWindow::HandlePopupShow(bool show)
 {
 	if (!show)
 	{
-		if (m_parentTextures[CefRenderHandler::PaintElementType::PET_POPUP].GetRef())
+		auto popupTex = GetParentTexture(CefRenderHandler::PaintElementType::PET_POPUP);
+		if (popupTex.GetRef())
 		{
-			m_parentTextures[CefRenderHandler::PaintElementType::PET_POPUP] = nullptr;
+			popupTex = nullptr;	
 
 			std::lock_guard<std::shared_mutex> _(m_textureMutex);
 			m_popupTexture = nullptr;
@@ -920,6 +659,159 @@ void NUIWindow::HandlePopupShow(bool show)
 }
 
 extern void TranslateWindowRect(const fwRefContainer<NUIWindow>& window, CRect* rect);
+
+// A non-lockframe alternative for UpdateSharedResource is provided to serve 2 purposes.
+// 
+// 1) Be able to quickly enable FiveM/RedM to use a newer CEF version that might not have lockframe patch added yet.
+// 2) be able to isolate potential rendering issues to either the Lockframe patch or CEF's OSR implementation.
+// 
+// It is advised against using the original OSR OnAcceleratedPaint handler for anything other then the two use cases above.
+// as it is not production ready and will not be improved upon, it is purely there for validation.	
+#ifdef CEF_OSR_LOCK_FRAME
+void NUIWindow::UpdateSharedResource(CefRenderHandler::PaintElementType type)
+#else
+void NUIWindow::UpdateSharedResource(void* sharedHandle, const CefRenderHandler::RectList& dirtyRects, CefRenderHandler::PaintElementType type)
+#endif
+{
+	// mpMenu may start queuing up frames before the game has had change to begin rendering.
+	// CEF/Chromium has a limit of inflight frames and as we are responsible for releasing frames.
+	// in some cases we can execeed the max limit leading to frames being flushed and putting the renderer into a weird state.
+	if (!nui::g_hasFirstRender)
+	{
+		return;
+	}
+
+	// PET_POPUP is not currently supported in DUI.
+	if (!IsPrimary() && type == PET_POPUP)
+	{
+		return;
+	}
+
+	auto& texRef = type == PET_VIEW ? m_nuiTexture : m_popupTexture;
+	if (!texRef.GetRef())
+	{
+		return;
+	}
+
+#ifdef CEF_OSR_LOCK_FRAME
+	auto frame = this->LockFrame(type);
+	if (!frame || !frame->shared_handle)
+	{
+		return;
+	}
+
+	auto sharedHandle = frame->shared_handle;
+	auto dirtyRects = frame->dirty_rects;
+#endif
+
+	if (sharedHandle == m_lastParentHandle[type])
+	{
+		// The frame contents haven't changed yet, so don't invalidate us just yet.
+		return;
+	}
+
+	int w = type == PET_VIEW ? m_width : m_popupRect.width;
+	int h = type == PET_VIEW ? m_height : m_popupRect.height;
+
+	m_lastParentHandle[type] = sharedHandle;
+	{
+		std::unique_lock<std::shared_mutex> textureLock(m_textureMutex, std::defer_lock);
+		if (IsPrimary())
+		{
+			textureLock.lock();
+		}
+
+		if (!m_sharedResourceTexturesCreated[type])
+		{
+			m_sharedResourceTexturesCreated[type] = true;
+
+			// DUI's originally used to never set its texRef.
+			// However this has become unavoidable with the new rendering.
+			texRef = g_nuiGi->CreateTextureFromShareHandle(sharedHandle, w, h);
+			SetParentTexture(type, texRef);
+#ifdef GTA_FIVE
+			m_swapSrv = nullptr;
+#endif
+			NUI_AcceptTexture((uint64_t)sharedHandle);
+		}
+		else
+		{
+			auto self = this;
+			auto type_ = type;
+			uint64_t handle = (uint64_t)sharedHandle;
+			uint32_t frameSeq = ++m_frameSequence[type];
+
+			// Lets not allow NUIWindow to get freed up if we are in the middle of rendering.
+			// Fixes a crash when switching between frames (e.g. root -> mpMenu, mpMenu -> root);
+			AddRef();
+			g_nuiGi->UpdateTexture(sharedHandle, texRef, nullptr, 1, w, h, [frameSeq, type_, self, handle]()
+			{
+				// Don't release frame if theres other updates queued up right after this one
+				// otherwise we run the risk of potentially releasing the handle currently used.
+#ifdef CEF_OSR_LOCK_FRAME
+				if (frameSeq >= self->m_frameSequence[type_].load())
+				{
+					self->ReleaseFrame(type_);
+				}
+#endif
+
+#ifdef GTA_FIVE
+				if (!self->IsPrimary())
+				{
+					self->m_swapSrv = nullptr;
+				}
+#endif
+				NUI_AcceptTexture(handle);
+				self->Release();
+			});
+		}
+	}
+
+#ifdef CEF_OSR_LOCK_FRAME
+	if (frame->dirty_rect_count == 10 || frame->dirty_rect_count == 0)
+	{
+		RECT newRect{};
+		newRect.left = 0;
+		newRect.right = 0;
+		newRect.top = GetHeight();
+		newRect.bottom = GetHeight();
+
+		RECT oldRect = m_lastDirtyRect;
+		UnionRect(&m_lastDirtyRect, &newRect, &oldRect);
+	}
+	else
+	{
+		for (int i = 0; i < frame->dirty_rect_count; i++)
+		{
+			cef_rect_t rect = frame->dirty_rects[i];
+
+			RECT newRect{};
+			newRect.left = rect.x;
+			newRect.right = rect.x + rect.width;
+			newRect.top = GetHeight() - rect.y - rect.height;
+			newRect.bottom = GetHeight() - rect.y;
+
+			RECT oldRect = m_lastDirtyRect;
+			UnionRect(&m_lastDirtyRect, &newRect, &oldRect);
+		}
+	}
+#else
+	for (const auto& rect : dirtyRects)
+	{
+		RECT newRect{
+			rect.x,
+			GetHeight() - rect.y - rect.height,
+			rect.x + rect.width,
+			GetHeight() - rect.y
+		};
+
+		RECT oldRect = m_lastDirtyRect;
+		UnionRect(&m_lastDirtyRect, &newRect, &oldRect);
+	}
+
+	MarkRenderBufferDirty();
+#endif
+}
 
 CefRect NUIWindow::GetPopupRect()
 {
@@ -953,11 +845,6 @@ void NUIWindow::SetPopupRect(const CefRect& rect)
 void NUIWindow::SetPaintType(NUIPaintType type)
 {
 	m_paintType = type;
-}
-
-void NUIWindow::Invalidate()
-{
-	((NUIClient*)m_client.get())->GetBrowser()->GetHost()->Invalidate(PET_VIEW);
 }
 
 bool NUIWindow::IsFixedSizeWindow() const
