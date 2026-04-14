@@ -212,8 +212,6 @@ public:
 	}
 
 	void UpdateSharedResource(CefRenderHandler::PaintElementType type);
-#else
-	void UpdateSharedResource(void* sharedHandle, const CefRenderHandler::RectList& rects, CefRenderHandler::PaintElementType type);
 #endif
 
 

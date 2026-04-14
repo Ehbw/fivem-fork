@@ -739,7 +739,7 @@ void GtaNuiInterface::UpdateTexture(HANDLE shareHandle, fwRefContainer<GITexture
 		return;
 	}
 
-	WRL::ComPtr<ID3D11Texture2D> cefTexture = nullptr;
+	ID3D11Texture2D* cefTexture = nullptr;
 	auto hr = device1->OpenSharedResource1(shareHandle, IID_PPV_ARGS(&cefTexture));
 	if (FAILED(hr))
 	{
@@ -747,7 +747,21 @@ void GtaNuiInterface::UpdateTexture(HANDLE shareHandle, fwRefContainer<GITexture
 		return;
 	}
 
-	g_earlyOnRenderQueue.emplace([device1, cefTexture, texture, cb]()
+	struct
+	{
+		void* vtbl;
+		ID3D11Device* rawDevice;
+	}* gameDevice = (decltype(gameDevice))::GetD3D11Device();
+
+	ID3D11ShaderResourceView* cefSrv = nullptr;
+	hr = gameDevice->rawDevice->CreateShaderResourceView(cefTexture, nullptr, &cefSrv);
+	if (FAILED(hr))
+	{
+		trace("Failed to create shaderResourceView for NUI update 0x%x\n", hr);
+		return;
+	}
+
+	g_earlyOnRenderQueue.emplace([cefTexture, cefSrv, texture, cb]()
 	{
 		if (!cefTexture)
 		{
@@ -780,16 +794,8 @@ void GtaNuiInterface::UpdateTexture(HANDLE shareHandle, fwRefContainer<GITexture
 			texRef->srv = nullptr;
 		}
 
-		texRef->texture = cefTexture.Get();
-		texRef->texture->AddRef();
-
-		struct
-		{
-			void* vtbl;
-			ID3D11Device* rawDevice;
-		}* gameDevice = (decltype(gameDevice))::GetD3D11Device();
-
-		gameDevice->rawDevice->CreateShaderResourceView(texRef->texture, nullptr, &texRef->srv);
+		texRef->texture = cefTexture;
+		texRef->srv = cefSrv;
 
 		// so we can properly signal ReleaseFrame
 		if (cb)
