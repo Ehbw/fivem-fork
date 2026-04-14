@@ -183,6 +183,8 @@ public:
 
 	virtual fwRefContainer<GITexture> CreateTextureFromShareHandle(HANDLE shareHandle) override
 	{
+		// TODO: This doesn't even get called???? why?????????
+		trace("CreateTextureFromShareHandle\n");
 		m_lastShareHandle = shareHandle;
 
 		auto texture = new FrontendNuiTexture([this, shareHandle](FrontendNuiTexture* self)
@@ -198,6 +200,7 @@ public:
 
 			if (FAILED(hr))
 			{
+				trace("CreateTextureFromShareHandle: Failed to open share handle hresult: %x\n", hr);
 				return bgfx::TextureHandle{bgfx::kInvalidHandle};
 			}
 
@@ -227,9 +230,39 @@ public:
 		return texture;
 	}
 
-	virtual void UpdateTexture(HANDLE shareHandle, fwRefContainer<GITexture> texture, cef_rect_t* dirtyRects, int dirtyRectCount, int width, int height, std::function<void()> cb = nullptr) override
+	virtual void UpdateTexture(HANDLE shareHandle, fwRefContainer<GITexture> texture, cef_rect_t* dirtyRects, int dirtyRectCount, int width, int height, nui::GameInterface::UpdateTextureCB cb = nullptr) override
 	{
-		// TODO: FxDK support
+		// TODO: this seems right, will it work? probably not. FxDK doesn't want to work on a local build though
+		trace("update texture\n");
+		WRL::ComPtr<ID3D11Texture2D> sharedTexture;
+		HRESULT hr = GetD3D11Device1()->OpenSharedResource1(shareHandle, __uuidof(ID3D11Texture2D), (void**)sharedTexture.GetAddressOf());
+
+		if (FAILED(hr))
+		{
+			if (cb)
+			{
+				cb(nullptr);
+			}
+			return;
+		}
+
+		auto nuiTexture = static_cast<FrontendNuiTexture*>(texture.GetRef());
+		if (!nuiTexture)
+		{
+			if (cb)
+			{
+				cb(nullptr);
+			}
+			return;
+		}
+
+        auto bgfxHandle = nuiTexture->GetTexture();
+		nuiTexture->native = sharedTexture;
+		bgfx::overrideInternal(bgfxHandle, (uintptr_t)sharedTexture.Get());
+		if (cb)
+		{
+			cb(nullptr);
+		}
 	}
 
 	virtual void SetTexture(fwRefContainer<GITexture> texture, bool pm = false) override

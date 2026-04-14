@@ -62,7 +62,7 @@ public:
 
 	virtual fwRefContainer<GITexture> CreateTextureFromShareHandle(HANDLE shareHandle, int width, int height) override;
 
-	virtual void UpdateTexture(HANDLE shareHandle, fwRefContainer<GITexture> texture, cef_rect_t* dirtyRects, int dirtyRectCount, int width, int height, std::function<void()> cb = nullptr) override;
+	virtual void UpdateTexture(HANDLE shareHandle, fwRefContainer<GITexture> texture, cef_rect_t* dirtyRects, int dirtyRectCount, int width, int height, std::function<void(void*)> cb = nullptr) override;
 
 	virtual void SetTexture(fwRefContainer<GITexture> texture, bool pm) override;
 
@@ -730,7 +730,7 @@ fwRefContainer<GITexture> GtaNuiInterface::CreateTextureFromShareHandle(HANDLE s
 	return new GtaNuiTexture(nullptr);
 }
 
-void GtaNuiInterface::UpdateTexture(HANDLE shareHandle, fwRefContainer<GITexture> texture, cef_rect_t* dirtyRects, int dirtyRectCount, int width, int height, std::function<void()> cb)
+void GtaNuiInterface::UpdateTexture(HANDLE shareHandle, fwRefContainer<GITexture> texture, cef_rect_t* dirtyRects, int dirtyRectCount, int width, int height, std::function<void(void*)> cb)
 {
 #ifdef GTA_FIVE
 	auto device1 = GetD3D11Device1();
@@ -753,7 +753,7 @@ void GtaNuiInterface::UpdateTexture(HANDLE shareHandle, fwRefContainer<GITexture
 		ID3D11Device* rawDevice;
 	}* gameDevice = (decltype(gameDevice))::GetD3D11Device();
 
-	ID3D11ShaderResourceView* cefSrv = nullptr;
+	WRL::ComPtr<ID3D11ShaderResourceView> cefSrv = nullptr;
 	hr = gameDevice->rawDevice->CreateShaderResourceView(cefTexture, nullptr, &cefSrv);
 	if (FAILED(hr))
 	{
@@ -767,7 +767,7 @@ void GtaNuiInterface::UpdateTexture(HANDLE shareHandle, fwRefContainer<GITexture
 		{
 			if (cb)
 			{
-				cb();
+				cb(nullptr);
 			}
 			return;
 		}
@@ -777,7 +777,7 @@ void GtaNuiInterface::UpdateTexture(HANDLE shareHandle, fwRefContainer<GITexture
 		{
 			if (cb)
 			{
-				cb();
+				cb(nullptr);
 			}
 			return;
 		}
@@ -795,12 +795,15 @@ void GtaNuiInterface::UpdateTexture(HANDLE shareHandle, fwRefContainer<GITexture
 		}
 
 		texRef->texture = cefTexture;
-		texRef->srv = cefSrv;
+
+		texRef->srv = cefSrv.Get();
+		texRef->srv->AddRef();
 
 		// so we can properly signal ReleaseFrame
 		if (cb)
 		{
-			cb();
+			// The idea with passing the SRV is to not have to re-create the same SRV for DUI
+			cb(cefSrv.Get());
 		}
 	});
 #elif defined(IS_RDR3)
@@ -811,6 +814,10 @@ void GtaNuiInterface::UpdateTexture(HANDLE shareHandle, fwRefContainer<GITexture
 		auto texRef = (rage::sga::TextureD3D12*)texture->GetHostTexture();
 		if (!texRef)
 		{
+			if (cb)
+			{
+				cb(nullptr);
+			}
 			return;
 		}
 
@@ -839,7 +846,7 @@ void GtaNuiInterface::UpdateTexture(HANDLE shareHandle, fwRefContainer<GITexture
 
 				if (cb)
 				{
-					cb();
+					cb(nullptr);
 				}
 			});
 		}
@@ -849,6 +856,10 @@ void GtaNuiInterface::UpdateTexture(HANDLE shareHandle, fwRefContainer<GITexture
 		auto texRef = (rage::sga::TextureVK*)texture->GetHostTexture();
 		if (!texRef)
 		{
+			if (cb)
+			{
+				cb(nullptr);
+			}
 			return;
 		}
 
@@ -861,6 +872,10 @@ void GtaNuiInterface::UpdateTexture(HANDLE shareHandle, fwRefContainer<GITexture
 		if (image == VK_NULL_HANDLE || deviceMemory == VK_NULL_HANDLE)
 		{
 			trace("Failed to create image from vulkan shared handle\n");
+			if (cb)
+			{
+				cb(nullptr);
+			}
 			return;
 		}
 
@@ -881,7 +896,7 @@ void GtaNuiInterface::UpdateTexture(HANDLE shareHandle, fwRefContainer<GITexture
 
 			if (cb)
 			{
-				cb();
+				cb(nullptr);
 			}
 
 			g_earlyOnRenderQueue.emplace([oldImage, oldMemory]()
