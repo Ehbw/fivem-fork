@@ -660,18 +660,7 @@ void NUIWindow::HandlePopupShow(bool show)
 
 extern void TranslateWindowRect(const fwRefContainer<NUIWindow>& window, CRect* rect);
 
-// A non-lockframe alternative for UpdateSharedResource is provided to serve 2 purposes.
-// 
-// 1) Be able to quickly enable FiveM/RedM to use a newer CEF version that might not have lockframe patch added yet.
-// 2) be able to isolate potential rendering issues to either the Lockframe patch or CEF's OSR implementation.
-// 
-// It is advised against using the original OSR OnAcceleratedPaint handler for anything other then the two use cases above.
-// as it is not production ready and will not be improved upon, it is purely there for validation.	
-#ifdef CEF_OSR_LOCK_FRAME
 void NUIWindow::UpdateSharedResource(CefRenderHandler::PaintElementType type)
-#else
-void NUIWindow::UpdateSharedResource(void* sharedHandle, const CefRenderHandler::RectList& dirtyRects, CefRenderHandler::PaintElementType type)
-#endif
 {
 	// mpMenu may start queuing up frames before the game has had change to begin rendering.
 	// CEF/Chromium has a limit of inflight frames and as we are responsible for releasing frames.
@@ -693,7 +682,6 @@ void NUIWindow::UpdateSharedResource(void* sharedHandle, const CefRenderHandler:
 		return;
 	}
 
-#ifdef CEF_OSR_LOCK_FRAME
 	auto frame = this->LockFrame(type);
 	if (!frame || !frame->shared_handle)
 	{
@@ -702,7 +690,6 @@ void NUIWindow::UpdateSharedResource(void* sharedHandle, const CefRenderHandler:
 
 	auto sharedHandle = frame->shared_handle;
 	auto dirtyRects = frame->dirty_rects;
-#endif
 
 	if (sharedHandle == m_lastParentHandle[type])
 	{
@@ -730,9 +717,14 @@ void NUIWindow::UpdateSharedResource(void* sharedHandle, const CefRenderHandler:
 			texRef = g_nuiGi->CreateTextureFromShareHandle(sharedHandle, w, h);
 			SetParentTexture(type, texRef);
 #ifdef GTA_FIVE
-			m_swapSrv = nullptr;
+			if (!IsPrimary())
+			{
+				m_swapSrv = nullptr;
+			}
 #endif
 			NUI_AcceptTexture((uint64_t)sharedHandle);
+			// Calling ReleaseFrame moves the current frame to be cleared on the next ReleaseFrame call.
+			ReleaseFrame(type);
 		}
 		else
 		{
@@ -748,12 +740,10 @@ void NUIWindow::UpdateSharedResource(void* sharedHandle, const CefRenderHandler:
 			{
 				// Don't release frame if theres other updates queued up right after this one
 				// otherwise we run the risk of potentially releasing the handle currently used.
-#ifdef CEF_OSR_LOCK_FRAME
 				if (frameSeq >= self->m_frameSequence[type_].load())
 				{
 					self->ReleaseFrame(type_);
 				}
-#endif
 
 #ifdef GTA_FIVE
 				if (!self->IsPrimary())
@@ -767,17 +757,12 @@ void NUIWindow::UpdateSharedResource(void* sharedHandle, const CefRenderHandler:
 		}
 	}
 
-#ifdef CEF_OSR_LOCK_FRAME
 	if (frame->dirty_rect_count == 10 || frame->dirty_rect_count == 0)
 	{
-		RECT newRect{};
-		newRect.left = 0;
-		newRect.right = 0;
-		newRect.top = GetHeight();
-		newRect.bottom = GetHeight();
-
-		RECT oldRect = m_lastDirtyRect;
-		UnionRect(&m_lastDirtyRect, &newRect, &oldRect);
+		m_lastDirtyRect.left = 0;
+		m_lastDirtyRect.top = 0;
+		m_lastDirtyRect.right = GetWidth();
+		m_lastDirtyRect.bottom = GetHeight();
 	}
 	else
 	{
@@ -795,22 +780,7 @@ void NUIWindow::UpdateSharedResource(void* sharedHandle, const CefRenderHandler:
 			UnionRect(&m_lastDirtyRect, &newRect, &oldRect);
 		}
 	}
-#else
-	for (const auto& rect : dirtyRects)
-	{
-		RECT newRect{
-			rect.x,
-			GetHeight() - rect.y - rect.height,
-			rect.x + rect.width,
-			GetHeight() - rect.y
-		};
-
-		RECT oldRect = m_lastDirtyRect;
-		UnionRect(&m_lastDirtyRect, &newRect, &oldRect);
-	}
-
 	MarkRenderBufferDirty();
-#endif
 }
 
 CefRect NUIWindow::GetPopupRect()
