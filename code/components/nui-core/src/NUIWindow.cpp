@@ -390,7 +390,7 @@ void NUIWindow::UpdateFrame()
 				}* deviceStuff = (decltype(deviceStuff))g_nuiGi->GetD3D11Device();
 
 
-				if (!m_swapSrv || m_hasRecreatedTexture)
+				if (!m_swapSrv)
 				{
 					auto nativeTexture = GetParentTexture(CefRenderHandler::PaintElementType::PET_VIEW)->GetNativeTexture();
 
@@ -400,8 +400,6 @@ void NUIWindow::UpdateFrame()
 						deviceStuff->rawDevice->CreateShaderResourceView((ID3D11Resource*)nativeTexture, nullptr, &newSrv);
 						m_swapSrv = newSrv;
 					}
-
-					m_hasRecreatedTexture = false;
 				}
 			}
 
@@ -705,6 +703,11 @@ void NUIWindow::UpdateSharedResource(CefRenderHandler::PaintElementType type)
 
 	if (sharedHandle == m_lastParentHandle[type])
 	{
+		if (!IsPrimary())
+		{
+			trace("no new update yet\n");
+		}
+
 		// The frame contents haven't changed yet, so don't invalidate us just yet.
 		return;
 	}
@@ -729,7 +732,7 @@ void NUIWindow::UpdateSharedResource(CefRenderHandler::PaintElementType type)
 				auto faketexRef = g_nuiGi->CreateTextureFromShareHandle(sharedHandle, w, h);
 				SetParentTexture(type, faketexRef);
 #ifdef GTA_FIVE
-				m_hasRecreatedTexture = true;
+				m_swapSrv = nullptr;
 #endif
 			}
 			else
@@ -741,6 +744,10 @@ void NUIWindow::UpdateSharedResource(CefRenderHandler::PaintElementType type)
 			NUI_AcceptTexture((uint64_t)sharedHandle);
 			// Calling ReleaseFrame moves the current frame to be cleared on the next ReleaseFrame call.
 			// Still not confident this works as intended, its 3am though and i suspect this is causing flickering somehow.
+			// 
+			// Unless I'm blind, which is a strong possiblity, this appeared to be causing the flickering
+			// Not calling this here *should* (hopefully) not have any servere reprecussions at the very worse the release is a frame behind.
+			// Would be nice to figure out why this was causing the flickering
 			//ReleaseFrame(type);
 		}
 		else
@@ -753,12 +760,15 @@ void NUIWindow::UpdateSharedResource(CefRenderHandler::PaintElementType type)
 			// Lets not allow NUIWindow to get freed up if we are in the middle of rendering.
 			// Fixes a crash when switching between frames (e.g. root -> mpMenu, mpMenu -> root);
 			AddRef();
-			g_nuiGi->UpdateTexture(sharedHandle, texRef, nullptr, 1, w, h, [frameSeq, type_, self, handle]()
+			g_nuiGi->UpdateTexture(sharedHandle, texRef, nullptr, 1, w, h, [frameSeq, type_, self, handle](void* srv)
 			{
 #ifdef GTA_FIVE
 				if (!self->IsPrimary())
 				{
-					self->m_hasRecreatedTexture = true;
+					if (srv)
+					{
+						self->m_swapSrv = static_cast<ID3D11ShaderResourceView*>(srv);
+					}
 				}
 #endif
 				// Don't release frame if theres other updates queued up right after this one
