@@ -86,6 +86,8 @@ private:
 	Microsoft::WRL::ComPtr<ID3D11RenderTargetView> m_swapRtv;
 
 	Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> m_swapSrv;
+
+	bool m_hasRecreatedTexture;
 #endif
 
 	HANDLE m_lastParentHandle[kMaxPaintElements];

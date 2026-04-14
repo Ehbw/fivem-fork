@@ -216,6 +216,10 @@ void NUIWindow::InitializeRenderBacking()
 			D3D11_RENDER_TARGET_VIEW_DESC rtDesc = CD3D11_RENDER_TARGET_VIEW_DESC(m_swapTexture.Get(), D3D11_RTV_DIMENSION_TEXTURE2D);
 			deviceStuff->rawDevice->CreateRenderTargetView(m_swapTexture.Get(), &rtDesc, &m_swapRtv);
 		}
+		else
+		{
+			trace("Fialed to create m_swapTexture\n");
+		}
 	}
 #endif
 }
@@ -331,9 +335,10 @@ void NUIWindow::UpdateFrame()
 			{
 				if (!m_nuiTexture.GetRef())
 				{
-					std::unique_lock _(m_textureMutex);
-					m_nuiTexture = g_nuiGi->CreateTextureBacking(m_width, m_height, nui::GITextureFormat::ARGB);
+					InitializeRenderBacking();
 				}
+
+				memset(m_sharedResourceTexturesCreated, 0, sizeof(m_sharedResourceTexturesCreated));
 
 				auto client = ((NUIClient*)m_client.get());
 				auto browser = client->GetBrowser();
@@ -377,19 +382,26 @@ void NUIWindow::UpdateFrame()
 #ifdef GTA_FIVE
 		if (!m_isPrimary)
 		{
-			struct
 			{
-				void* vtbl;
-				ID3D11Device* rawDevice;
-			}* deviceStuff = (decltype(deviceStuff))g_nuiGi->GetD3D11Device();
-
-			if (!m_swapSrv)
-			{
-				auto nativeTexture = GetParentTexture(CefRenderHandler::PaintElementType::PET_VIEW)->GetNativeTexture();
-
-				if (nativeTexture)
+				struct
 				{
-					deviceStuff->rawDevice->CreateShaderResourceView((ID3D11Resource*)nativeTexture, nullptr, &m_swapSrv);
+					void* vtbl;
+					ID3D11Device* rawDevice;
+				}* deviceStuff = (decltype(deviceStuff))g_nuiGi->GetD3D11Device();
+
+
+				if (!m_swapSrv || m_hasRecreatedTexture)
+				{
+					auto nativeTexture = GetParentTexture(CefRenderHandler::PaintElementType::PET_VIEW)->GetNativeTexture();
+
+					if (nativeTexture)
+					{
+						Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> newSrv;
+						deviceStuff->rawDevice->CreateShaderResourceView((ID3D11Resource*)nativeTexture, nullptr, &newSrv);
+						m_swapSrv = newSrv;
+					}
+
+					m_hasRecreatedTexture = false;
 				}
 			}
 
@@ -712,19 +724,24 @@ void NUIWindow::UpdateSharedResource(CefRenderHandler::PaintElementType type)
 		{
 			m_sharedResourceTexturesCreated[type] = true;
 
-			// DUI's originally used to never set its texRef.
-			// However this has become unavoidable with the new rendering.
-			texRef = g_nuiGi->CreateTextureFromShareHandle(sharedHandle, w, h);
-			SetParentTexture(type, texRef);
-#ifdef GTA_FIVE
 			if (!IsPrimary())
 			{
-				m_swapSrv = nullptr;
-			}
+				auto faketexRef = g_nuiGi->CreateTextureFromShareHandle(sharedHandle, w, h);
+				SetParentTexture(type, faketexRef);
+#ifdef GTA_FIVE
+				m_hasRecreatedTexture = true;
 #endif
+			}
+			else
+			{
+				texRef = g_nuiGi->CreateTextureFromShareHandle(sharedHandle, w, h);
+				SetParentTexture(type, texRef);
+			}
+
 			NUI_AcceptTexture((uint64_t)sharedHandle);
 			// Calling ReleaseFrame moves the current frame to be cleared on the next ReleaseFrame call.
-			ReleaseFrame(type);
+			// Still not confident this works as intended, its 3am though and i suspect this is causing flickering somehow.
+			//ReleaseFrame(type);
 		}
 		else
 		{
@@ -738,19 +755,18 @@ void NUIWindow::UpdateSharedResource(CefRenderHandler::PaintElementType type)
 			AddRef();
 			g_nuiGi->UpdateTexture(sharedHandle, texRef, nullptr, 1, w, h, [frameSeq, type_, self, handle]()
 			{
+#ifdef GTA_FIVE
+				if (!self->IsPrimary())
+				{
+					self->m_hasRecreatedTexture = true;
+				}
+#endif
 				// Don't release frame if theres other updates queued up right after this one
 				// otherwise we run the risk of potentially releasing the handle currently used.
 				if (frameSeq >= self->m_frameSequence[type_].load())
 				{
 					self->ReleaseFrame(type_);
 				}
-
-#ifdef GTA_FIVE
-				if (!self->IsPrimary())
-				{
-					self->m_swapSrv = nullptr;
-				}
-#endif
 				NUI_AcceptTexture(handle);
 				self->Release();
 			});
