@@ -211,14 +211,16 @@ void NUIWindow::InitializeRenderBacking()
 			ID3D11Device* rawDevice;
 		}* deviceStuff = (decltype(deviceStuff))d3d;
 
-		if (SUCCEEDED(deviceStuff->rawDevice->CreateTexture2D(&tgtDesc, nullptr, &m_swapTexture)))
+		auto hr = deviceStuff->rawDevice->CreateTexture2D(&tgtDesc, nullptr, &m_swapTexture);
+		if (SUCCEEDED(hr))
 		{
 			D3D11_RENDER_TARGET_VIEW_DESC rtDesc = CD3D11_RENDER_TARGET_VIEW_DESC(m_swapTexture.Get(), D3D11_RTV_DIMENSION_TEXTURE2D);
 			deviceStuff->rawDevice->CreateRenderTargetView(m_swapTexture.Get(), &rtDesc, &m_swapRtv);
 		}
 		else
 		{
-			trace("Fialed to create m_swapTexture\n");
+			trace("failed to create m_swapTexture, height: %i, width: %i, error: 0x%x\n", m_width, m_height, hr);
+			m_swapTexture = nullptr;
 		}
 	}
 #endif
