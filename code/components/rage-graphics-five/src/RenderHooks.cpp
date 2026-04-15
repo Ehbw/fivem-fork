@@ -809,6 +809,192 @@ bool WrapVideoModeChange(VideoModeInfo* info)
 	return success;
 }
 
+#pragma region shaders
+const BYTE quadPS[] =
+{
+	 68,  88,  66,  67, 189,  87,
+	  5, 130, 168, 148, 229, 231,
+	171,  37, 224,   4, 165,  41,
+	 28,  80,   1,   0,   0,   0,
+	 84,   1,   0,   0,   3,   0,
+	  0,   0,  44,   0,   0,   0,
+	132,   0,   0,   0, 184,   0,
+	  0,   0,  73,  83,  71,  78,
+	 80,   0,   0,   0,   2,   0,
+	  0,   0,   8,   0,   0,   0,
+	 56,   0,   0,   0,   0,   0,
+	  0,   0,   1,   0,   0,   0,
+	  3,   0,   0,   0,   0,   0,
+	  0,   0,  15,   0,   0,   0,
+	 68,   0,   0,   0,   0,   0,
+	  0,   0,   0,   0,   0,   0,
+	  3,   0,   0,   0,   1,   0,
+	  0,   0,   3,   3,   0,   0,
+	 83,  86,  95,  80,  79,  83,
+	 73,  84,  73,  79,  78,   0,
+	 84,  69,  88,  67,  79,  79,
+	 82,  68,   0, 171, 171, 171,
+	 79,  83,  71,  78,  44,   0,
+	  0,   0,   1,   0,   0,   0,
+	  8,   0,   0,   0,  32,   0,
+	  0,   0,   0,   0,   0,   0,
+	  0,   0,   0,   0,   3,   0,
+	  0,   0,   0,   0,   0,   0,
+	 15,   0,   0,   0,  83,  86,
+	 95,  84,  65,  82,  71,  69,
+	 84,   0, 171, 171,  83,  72,
+	 68,  82, 148,   0,   0,   0,
+	 64,   0,   0,   0,  37,   0,
+	  0,   0,  90,   0,   0,   3,
+	  0,  96,  16,   0,   0,   0,
+	  0,   0,  88,  24,   0,   4,
+	  0, 112,  16,   0,   0,   0,
+	  0,   0,  85,  85,   0,   0,
+	 98,  16,   0,   3,  50,  16,
+	 16,   0,   1,   0,   0,   0,
+	101,   0,   0,   3, 242,  32,
+	 16,   0,   0,   0,   0,   0,
+	104,   0,   0,   2,   1,   0,
+	  0,   0,  69,   0,   0,   9,
+	242,   0,  16,   0,   0,   0,
+	  0,   0,  70,  16,  16,   0,
+	  1,   0,   0,   0,  70, 126,
+	 16,   0,   0,   0,   0,   0,
+	  0,  96,  16,   0,   0,   0,
+	  0,   0,  54,   0,   0,   5,
+	114,  32,  16,   0,   0,   0,
+	  0,   0,  70,   2,  16,   0,
+	  0,   0,   0,   0,  54,   0,
+	  0,   5, 130,  32,  16,   0,
+	  0,   0,   0,   0,   1,  64,
+	  0,   0,   0,   0, 128,  63,
+	 62,   0,   0,   1
+};
+const BYTE quadVS[] =
+{
+	68,  88,  66,  67, 203, 141,
+	78, 146,   5, 246, 239, 246,
+	166,  36, 242, 232,  80,   1,
+	231, 115,   1,   0,   0,   0,
+	208,   2,   0,   0,   5,   0,
+	0,   0,  52,   0,   0,   0,
+	128,   0,   0,   0, 180,   0,
+	0,   0,  12,   1,   0,   0,
+	84,   2,   0,   0,  82,  68,
+	69,  70,  68,   0,   0,   0,
+	0,   0,   0,   0,   0,   0,
+	0,   0,   0,   0,   0,   0,
+	28,   0,   0,   0,   0,   4,
+	254, 255,   0,   1,   0,   0,
+	28,   0,   0,   0,  77, 105,
+	99, 114, 111, 115, 111, 102,
+	116,  32,  40,  82,  41,  32,
+	72,  76,  83,  76,  32,  83,
+	104,  97, 100, 101, 114,  32,
+	67, 111, 109, 112, 105, 108,
+	101, 114,  32,  49,  48,  46,
+	49,   0,  73,  83,  71,  78,
+	44,   0,   0,   0,   1,   0,
+	0,   0,   8,   0,   0,   0,
+	32,   0,   0,   0,   0,   0,
+	0,   0,   6,   0,   0,   0,
+	1,   0,   0,   0,   0,   0,
+	0,   0,   1,   1,   0,   0,
+	83,  86,  95,  86,  69,  82,
+	84,  69,  88,  73,  68,   0,
+	79,  83,  71,  78,  80,   0,
+	0,   0,   2,   0,   0,   0,
+	8,   0,   0,   0,  56,   0,
+	0,   0,   0,   0,   0,   0,
+	1,   0,   0,   0,   3,   0,
+	0,   0,   0,   0,   0,   0,
+	15,   0,   0,   0,  68,   0,
+	0,   0,   0,   0,   0,   0,
+	0,   0,   0,   0,   3,   0,
+	0,   0,   1,   0,   0,   0,
+	3,  12,   0,   0,  83,  86,
+	95,  80,  79,  83,  73,  84,
+	73,  79,  78,   0,  84,  69,
+	88,  67,  79,  79,  82,  68,
+	0, 171, 171, 171,  83,  72,
+	68,  82,  64,   1,   0,   0,
+	64,   0,   1,   0,  80,   0,
+	0,   0,  96,   0,   0,   4,
+	18,  16,  16,   0,   0,   0,
+	0,   0,   6,   0,   0,   0,
+	103,   0,   0,   4, 242,  32,
+	16,   0,   0,   0,   0,   0,
+	1,   0,   0,   0, 101,   0,
+	0,   3,  50,  32,  16,   0,
+	1,   0,   0,   0, 104,   0,
+	0,   2,   2,   0,   0,   0,
+	54,   0,   0,   8, 194,  32,
+	16,   0,   0,   0,   0,   0,
+	2,  64,   0,   0,   0,   0,
+	0,   0,   0,   0,   0,   0,
+	0,   0,   0,   0,   0,   0,
+	128,  63,   1,   0,   0,   7,
+	18,   0,  16,   0,   0,   0,
+	0,   0,  10,  16,  16,   0,
+	0,   0,   0,   0,   1,  64,
+	0,   0,   1,   0,   0,   0,
+	85,   0,   0,   7, 130,   0,
+	16,   0,   0,   0,   0,   0,
+	10,  16,  16,   0,   0,   0,
+	0,   0,   1,  64,   0,   0,
+	1,   0,   0,   0,  86,   0,
+	0,   5,  50,   0,  16,   0,
+	0,   0,   0,   0, 198,   0,
+	16,   0,   0,   0,   0,   0,
+	0,   0,   0,  10,  50,   0,
+	16,   0,   1,   0,   0,   0,
+	70,   0,  16,   0,   0,   0,
+	0,   0,   2,  64,   0,   0,
+	0,   0,   0, 191,   0,   0,
+	0, 191,   0,   0,   0,   0,
+	0,   0,   0,   0,   0,   0,
+	0,   8,  66,   0,  16,   0,
+	0,   0,   0,   0,  26,   0,
+	16, 128,  65,   0,   0,   0,
+	0,   0,   0,   0,   1,  64,
+	0,   0,   0,   0, 128,  63,
+	54,   0,   0,   5,  50,  32,
+	16,   0,   1,   0,   0,   0,
+	134,   0,  16,   0,   0,   0,
+	0,   0,   0,   0,   0,   7,
+	18,  32,  16,   0,   0,   0,
+	0,   0,  10,   0,  16,   0,
+	1,   0,   0,   0,  10,   0,
+	16,   0,   1,   0,   0,   0,
+	56,   0,   0,   7,  34,  32,
+	16,   0,   0,   0,   0,   0,
+	26,   0,  16,   0,   1,   0,
+	0,   0,   1,  64,   0,   0,
+	0,   0,   0, 192,  62,   0,
+	0,   1,  83,  84,  65,  84,
+	116,   0,   0,   0,  10,   0,
+	0,   0,   2,   0,   0,   0,
+	0,   0,   0,   0,   3,   0,
+	0,   0,   4,   0,   0,   0,
+	0,   0,   0,   0,   2,   0,
+	0,   0,   1,   0,   0,   0,
+	0,   0,   0,   0,   0,   0,
+	0,   0,   0,   0,   0,   0,
+	0,   0,   0,   0,   0,   0,
+	0,   0,   0,   0,   0,   0,
+	0,   0,   0,   0,   0,   0,
+	0,   0,   0,   0,   0,   0,
+	0,   0,   0,   0,   0,   0,
+	0,   0,   2,   0,   0,   0,
+	0,   0,   0,   0,   1,   0,
+	0,   0,   0,   0,   0,   0,
+	0,   0,   0,   0,   0,   0,
+	0,   0,   0,   0,   0,   0,
+	0,   0,   0,   0,   0,   0,
+	0,   0,   0,   0,   0,   0
+};
+#pragma endregion
+
 struct GameRenderData
 {
 	HANDLE handle = NULL;
@@ -848,6 +1034,7 @@ static auto GetInvariantD3D11DeviceContext()
 
 	return realDeviceContext;
 }
+
 void RenderBufferToBuffer(ID3D11RenderTargetView* rtv, int width = 0, int height = 0)
 {
 	static auto didCallCrashometry = ([]()
@@ -857,101 +1044,189 @@ void RenderBufferToBuffer(ID3D11RenderTargetView* rtv, int width = 0, int height
 		return true;
 	})();
 
+	// CopyResource can't be used as we need to flip the texture before giving it to CEF/NUI
+	// We do want to preserve as much as we can to make the copy and then restore.
+	// Because of the Draw call we need to have a staging tex and rtv as otherwise we can deliver unfinished frames to CEF
+	// Causing flickering/uncompleted textures being used by NUI
 	D3D11_TEXTURE2D_DESC resDesc = { 0 };
 	auto backBuf = GetBackbuf();
-
-	if (backBuf)
+	if (!backBuf || !backBuf->texture || !backBuf->m_srv2)
 	{
-		if (backBuf->texture)
-		{
-			((ID3D11Texture2D*)backBuf->texture)->GetDesc(&resDesc);
-		}
+		trace("Failed to get backbuffer\n");
+		return;
 	}
 
-	if (backBuf)
+    auto realDevice = GetInvariantD3D11Device();
+	auto realDeviceContext = GetInvariantD3D11DeviceContext();
+	if (!realDevice || !realDeviceContext)
 	{
-		WRL::ComPtr<IUnknown> realSrvUnk;
-		WRL::ComPtr<ID3D11ShaderResourceView> realSrv;
+		trace("Failed to get real device and context\n");
+		return;
+	}
 
-		backBuf->m_srv2->QueryInterface(IID_PPV_ARGS(&realSrvUnk));
-		realSrvUnk.As(&realSrv);
+	// inits
+	static WRL::ComPtr<ID3D11BlendState> bs;
+	static WRL::ComPtr<ID3D11SamplerState> ss;
+	static WRL::ComPtr<ID3D11VertexShader> vs;
+	static WRL::ComPtr<ID3D11PixelShader> ps;
+	static WRL::ComPtr<ID3D11RasterizerState> rs;
+	static WRL::ComPtr<ID3D11DepthStencilState> dss;
 
-		auto realDevice = GetInvariantD3D11Device();
-		auto realDeviceContext = GetInvariantD3D11DeviceContext();
-		if (!realDevice)
+	static std::once_flag of;
+	std::call_once(of, [&realDevice]()
+	{
+		D3D11_SAMPLER_DESC sd = CD3D11_SAMPLER_DESC(CD3D11_DEFAULT());
+		sd.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR;
+		sd.AddressU = D3D11_TEXTURE_ADDRESS_CLAMP;
+		sd.AddressV = D3D11_TEXTURE_ADDRESS_CLAMP;
+		if (FAILED(realDevice->CreateSamplerState(&sd, &ss)))
 		{
 			return;
 		}
 
-		auto m_width = resDesc.Width;
-		auto m_height = resDesc.Height;
-
-		WRL::ComPtr<ID3DUserDefinedAnnotation> pPerf = NULL;
-		realDeviceContext->QueryInterface(IID_PPV_ARGS(&pPerf));
-
-		if (pPerf)
-		{
-			pPerf->BeginEvent(L"DrawRenderTexture");
-		}
-
-		WRL::ComPtr<ID3D11Resource> srcRes;
-		backBuf->m_srv2->GetResource(srcRes.GetAddressOf());
-		if (!srcRes)
+		D3D11_BLEND_DESC bd = CD3D11_BLEND_DESC(CD3D11_DEFAULT());
+		bd.RenderTarget[0].BlendEnable = FALSE;
+		if (FAILED(realDevice->CreateBlendState(&bd, &bs)))
 		{
 			return;
 		}
 
-		WRL::ComPtr<ID3D11Texture2D> srcTex;
-		if (FAILED(srcRes.As(&srcTex)))
+		CD3D11_RASTERIZER_DESC rd(D3D11_FILL_SOLID, D3D11_CULL_NONE,
+		FALSE, 0, 0.f, 0.f, FALSE, FALSE, FALSE, FALSE);
+		if (FAILED(realDevice->CreateRasterizerState(&rd, &rs)))
 		{
-			trace("failed to get srcRes\n");
 			return;
 		}
 
-		WRL::ComPtr<ID3D11Resource> dstRes;
-		rtv->GetResource(&dstRes);
-		if (!dstRes)
+		CD3D11_DEPTH_STENCIL_DESC dsd(FALSE, D3D11_DEPTH_WRITE_MASK_ZERO,
+		D3D11_COMPARISON_ALWAYS, FALSE, 0, 0,
+		D3D11_STENCIL_OP_KEEP, D3D11_STENCIL_OP_KEEP, D3D11_STENCIL_OP_KEEP, D3D11_COMPARISON_ALWAYS,
+		D3D11_STENCIL_OP_KEEP, D3D11_STENCIL_OP_KEEP, D3D11_STENCIL_OP_KEEP, D3D11_COMPARISON_ALWAYS);
+		if (FAILED(realDevice->CreateDepthStencilState(&dsd, &dss)))
 		{
-			trace("failed to get dstRes\n");
 			return;
 		}
 
-		WRL::ComPtr<ID3D11Texture2D> dstTex;
-		if (FAILED(dstRes.As(&dstTex)))
+		if (FAILED(realDevice->CreateVertexShader(quadVS, sizeof(quadVS), nullptr, &vs)))
 		{
-			trace("failed to get dstTex\n");
 			return;
 		}
 
-		D3D11_TEXTURE2D_DESC srcDesc, dstDesc;
-		srcTex->GetDesc(&srcDesc);
-		dstTex->GetDesc(&dstDesc);
-
-		if (srcDesc.Width != dstDesc.Width || srcDesc.Height != dstDesc.Height || srcDesc.Format != dstDesc.Format)
+		if (FAILED(realDevice->CreatePixelShader(quadPS, sizeof(quadPS), nullptr, &ps)))
 		{
-			trace("Differing texture desc data\n");
 			return;
 		}
+	});
 
-		realDeviceContext->CopyResource(dstTex.Get(), srcTex.Get());
+	WRL::ComPtr<IUnknown> realSrvUnk;
+	WRL::ComPtr<ID3D11ShaderResourceView> realSrv;
 
-		static ID3D11Query* copyQuery = nullptr;
-		if (!copyQuery)
-		{
-			D3D11_QUERY_DESC qd{};
-			qd.Query = D3D11_QUERY_EVENT;
-			realDevice->CreateQuery(&qd, &copyQuery);
-		}
+	backBuf->m_srv2->QueryInterface(IID_PPV_ARGS(&realSrvUnk));
+	if (FAILED(realSrvUnk.As(&realSrv)) || !realSrv)
+	{
+		trace("Failed to get SRV from backbuffer\n");
+		return;
+	}
 
-		if (copyQuery)
-		{
-			realDeviceContext->End(copyQuery);
-		}
+    D3D11_TEXTURE2D_DESC srcDesc = {};
+	((ID3D11Texture2D*)backBuf->texture)->GetDesc(&srcDesc);
+	UINT vpWidth = width ? (UINT)width : srcDesc.Width;
+	UINT vpHeight = height ? (UINT)height : srcDesc.Height;
 
-		if (pPerf)
-		{
-			pPerf->EndEvent();
-		}
+    struct SavedState
+	{
+		WRL::ComPtr<ID3D11RenderTargetView> rtv;
+		WRL::ComPtr<ID3D11DepthStencilView> dsv;
+		WRL::ComPtr<ID3D11BlendState> bs;
+		WRL::ComPtr<ID3D11RasterizerState> rs;
+		WRL::ComPtr<ID3D11DepthStencilState> dss;
+		WRL::ComPtr<ID3D11PixelShader> ps;
+		WRL::ComPtr<ID3D11VertexShader> vs;
+		WRL::ComPtr<ID3D11SamplerState> psSampler;
+		WRL::ComPtr<ID3D11ShaderResourceView> psSrv;
+		WRL::ComPtr<ID3D11Buffer> vsCb;
+		WRL::ComPtr<ID3D11Buffer> psCb;
+		WRL::ComPtr<ID3D11InputLayout> layout;
+		D3D11_VIEWPORT vp = {};
+		UINT numVPs = 1;
+		D3D11_PRIMITIVE_TOPOLOGY topo = {};
+		FLOAT blendFactor[4] = {};
+		UINT sampleMask = 0;
+		UINT stencilRef = 0;
+	} saved;
+
+	auto& ctx = realDeviceContext;
+
+	ctx->OMGetRenderTargets(1, &saved.rtv, &saved.dsv);
+	ctx->OMGetBlendState(&saved.bs, saved.blendFactor, &saved.sampleMask);
+	ctx->OMGetDepthStencilState(&saved.dss, &saved.stencilRef);
+	ctx->RSGetState(&saved.rs);
+	ctx->RSGetViewports(&saved.numVPs, &saved.vp);
+	ctx->PSGetShader(&saved.ps, nullptr, nullptr);
+	ctx->PSGetSamplers(0, 1, &saved.psSampler);
+	ctx->PSGetShaderResources(0, 1, &saved.psSrv);
+	ctx->VSGetShader(&saved.vs, nullptr, nullptr);
+	ctx->VSGetConstantBuffers(0, 1, &saved.vsCb);
+	ctx->PSGetConstantBuffers(0, 1, &saved.psCb);
+	ctx->IAGetPrimitiveTopology(&saved.topo);
+	ctx->IAGetInputLayout(&saved.layout);
+
+	WRL::ComPtr<ID3DUserDefinedAnnotation> pPerf;
+	ctx->QueryInterface(IID_PPV_ARGS(&pPerf));
+	if (pPerf)
+	{
+		pPerf->BeginEvent(L"DrawRenderTexture");
+	}
+
+	CD3D11_VIEWPORT vp(0.f, 0.f, (float)vpWidth, (float)vpHeight);
+	ctx->RSSetViewports(1, &vp);
+	ctx->RSSetState(rs.Get());
+
+	ctx->OMSetRenderTargets(1, &rtv, nullptr);
+	ctx->OMSetBlendState(bs.Get(), nullptr, 0xffffffff);
+	ctx->OMSetDepthStencilState(dss.Get(), 0);
+
+	ctx->VSSetShader(vs.Get(), nullptr, 0);
+	ctx->PSSetShader(ps.Get(), nullptr, 0);
+
+	ID3D11SamplerState* samplers[] = { ss.Get() };
+	ctx->PSSetSamplers(0, 1, samplers);
+
+	ID3D11ShaderResourceView* srvs[] = { realSrv.Get() };
+	ctx->PSSetShaderResources(0, 1, srvs);
+
+	ctx->IASetInputLayout(nullptr);
+	ctx->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);
+
+	if (!width && !height)
+	{
+		FLOAT blank[] = { 0.f, 0.f, 0.f, 1.f };
+		ctx->ClearRenderTargetView(rtv, blank);
+	}
+
+	ctx->Draw(4, 0);
+
+	// restore time
+	ctx->OMSetRenderTargets(1, saved.rtv.GetAddressOf(), saved.dsv.Get());
+	ctx->OMSetBlendState(saved.bs.Get(), saved.blendFactor, saved.sampleMask);
+	ctx->OMSetDepthStencilState(saved.dss.Get(), saved.stencilRef);
+	ctx->RSSetState(saved.rs.Get());
+	ctx->RSSetViewports(saved.numVPs, &saved.vp);
+	ctx->VSSetShader(saved.vs.Get(), nullptr, 0);
+	ctx->PSSetShader(saved.ps.Get(), nullptr, 0);
+	ctx->PSSetSamplers(0, 1, saved.psSampler.GetAddressOf());
+	ctx->PSSetShaderResources(0, 1, saved.psSrv.GetAddressOf());
+
+	ID3D11Buffer* nullCb = nullptr;
+	ctx->VSSetConstantBuffers(0, 1, &nullCb);
+	ctx->PSSetConstantBuffers(0, 1, &nullCb);
+
+	ctx->IASetPrimitiveTopology(saved.topo);
+	ctx->IASetInputLayout(saved.layout.Get());
+
+	if (pPerf)
+	{
+		pPerf->EndEvent();
 	}
 }
 
@@ -1155,7 +1430,7 @@ void CaptureBufferOutput()
 		texDesc.Usage = D3D11_USAGE_DEFAULT;
 		texDesc.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET;
 		texDesc.CPUAccessFlags = 0;
-		texDesc.MiscFlags = D3D11_RESOURCE_MISC_SHARED;
+		texDesc.MiscFlags = 0;
 
 		WRL::ComPtr<ID3D11Device> device = GetInvariantD3D11Device();
 		if (!device)
@@ -1164,6 +1439,10 @@ void CaptureBufferOutput()
 		}
 
 		WRL::ComPtr<ID3D11Texture2D> d3dTex;
+
+		auto shareDesc = texDesc;
+		shareDesc.MiscFlags = D3D11_RESOURCE_MISC_SHARED;
+
 		HRESULT hr = device->CreateTexture2D(&texDesc, nullptr, &d3dTex);
 		if (FAILED(hr))
 		{
