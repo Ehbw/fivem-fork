@@ -180,6 +180,12 @@ static InitFunction initFunction([] ()
 				return;
 			}
 
+			if (width <= 0 || height <= 0 || width > D3D11_REQ_TEXTURE2D_U_OR_V_DIMENSION || height > D3D11_REQ_TEXTURE2D_U_OR_V_DIMENSION)
+			{
+				trace("Invalid resolution passed to CREATE_DUI %dx%d\n", width, height);
+				return;
+			}
+
 			auto url = CleanURL(urlArg);
 			fx::Resource* resource = reinterpret_cast<fx::Resource*>(runtime->GetParentObject());
 
