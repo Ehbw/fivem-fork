@@ -16,6 +16,9 @@
 
 #include <CrossBuildRuntime.h>
 
+#include <ShellScalingApi.h>
+#pragma comment(lib, "Shcore.lib")
+
 extern OsrImeHandlerWin* g_imeHandler;
 extern OsrDragHandlerWin g_dragHandler;
 
@@ -46,16 +49,24 @@ CComPtr<DropTargetWin> NUIRenderHandler::GetDropTarget()
 
 void NUIRenderHandler::GetViewRect(CefRefPtr<CefBrowser> browser, CefRect& rect)
 {
-	if (m_owner->GetWindowValid())
-	{
-		NUIWindow* window = m_owner->GetWindow();
-		rect.Set(0, 0, window->GetWidth(), window->GetHeight());
-	}
-	else
-	{
-		// this function *must* succeed, default to 1280x720
-		rect.Set(0, 0, 1280, 720);
-	}
+	// TODO: Fully implement scaling support.
+#if 0
+    UINT dpiX, dpiY;
+	HMONITOR monitor = MonitorFromPoint({ 0, 0 }, MONITOR_DEFAULTTOPRIMARY);
+	GetDpiForMonitor(monitor, MDT_EFFECTIVE_DPI, &dpiX, &dpiY);
+
+	// https://learn.microsoft.com/en-us/windows/win32/hidpi/high-dpi-desktop-application-development-on-windows
+	const float kDPIScale = 96.0f;
+	float scale = dpiX / kDPIScale;
+#else
+	float scale = 1.0f;
+#endif
+
+	NUIWindow* window = m_owner->GetWindowValid() ? m_owner->GetWindow() : nullptr;
+	int width = window ? window->GetWidth() : 1280;
+	int height = window ? window->GetHeight() : 720;
+
+	rect.Set(0, 0, width / scale, height / scale);
 }
 
 void NUIRenderHandler::OnImeCompositionRangeChanged(CefRefPtr<CefBrowser> browser, const CefRange& selected_range, const RectList& character_bounds)
@@ -307,6 +318,39 @@ void NUIRenderHandler::OnAcceleratedPaint(CefRefPtr<CefBrowser> browser, PaintEl
 #endif
 	}
 }
+
+// TODO: NUI should take into consider window scaling support. This code below does it but is incomplete
+// input such as mouse movements needs to also take this into account, which it currently doesnt.
+#if 0
+bool NUIRenderHandler::GetScreenInfo(CefRefPtr<CefBrowser> browser, CefScreenInfo& screen_info)
+{
+	UINT dpiX, dpiY;
+	HMONITOR monitor = MonitorFromPoint({ 0, 0 }, MONITOR_DEFAULTTOPRIMARY);
+	GetDpiForMonitor(monitor, MDT_EFFECTIVE_DPI, &dpiX, &dpiY);
+    
+	// https://learn.microsoft.com/en-us/windows/win32/hidpi/high-dpi-desktop-application-development-on-windows
+	const float kDPIScale = 96.0f;
+	float scale = dpiX / kDPIScale;
+
+    int physicalWidth = GetSystemMetrics(SM_CXSCREEN);
+	int physicalHeight = GetSystemMetrics(SM_CYSCREEN);
+
+    screen_info.device_scale_factor = scale;
+	//screen_info.depth = 24;
+	//screen_info.depth_per_component = 8;
+	//screen_info.is_monochrome = false;
+	screen_info.rect = { 0, 0, (int)(physicalWidth / scale), (int)(physicalHeight / scale) };
+	screen_info.available_rect = screen_info.rect;
+	return true;
+}
+
+bool NUIRenderHandler::GetScreenPoint(CefRefPtr<CefBrowser> browser, int viewX, int viewY, int& screenX, int& screenY)
+{
+	screenX = viewX;
+	screenY = viewY;
+	return true;
+}
+#endif
 
 CefBrowserHost::DragOperationsMask NUIRenderHandler::OnDragEnter(
 	CefRefPtr<CefDragData> drag_data,

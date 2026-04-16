@@ -46,6 +46,12 @@ protected:
 		CefRenderHandler::DragOperation operation) override;
 
 	virtual void OnAcceleratedPaint(CefRefPtr<CefBrowser> browser, PaintElementType type, const RectList& dirtyRects, const CefAcceleratedPaintInfo& info) override;
+	
+#if 0
+    virtual bool GetScreenInfo(CefRefPtr<CefBrowser> browser, CefScreenInfo& screen_info) override;
+
+	virtual bool GetScreenPoint(CefRefPtr<CefBrowser> browser, int viewX, int viewY, int& screenX, int& screenY) override;
+#endif
 private:
 	void PaintView(const RectList& dirtyRects, const void* buffer, int width, int height);
 
