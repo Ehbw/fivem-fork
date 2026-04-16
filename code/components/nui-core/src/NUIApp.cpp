@@ -202,7 +202,24 @@ void NUIApp::OnBeforeCommandLineProcessing(const CefString& process_type, CefRef
 		command_line->AppendSwitch("in-process-gpu");
 	}
 
-	command_line->AppendSwitch("enable-experimental-web-platform-features");
+	// It's not right to have this enabled and enable *all* experimental features
+	// Rather any experimental feature should be added on a case-by-case 
+	//command_line->AppendSwitch("enable-experimental-web-platform-features");
+
+	// These experimental features are currently broken as of writing (April 2026, M144 build)
+	// While we are also disabling web platform features, it's worth keeping a list of ones that **are** broken and why
+	// 
+	// WidthAndHeightAsPresentationAttributesOnNestedSvg:
+	// Breaks SVG rendering in popular resources, see https://issues.chromium.org/issues/449170647 for chromium issue
+	// 
+	// SelectionAndFocusedVisiblePositionMatch
+	// Private issue report claims that this is responsible for causing UI freezes. This might be causing some cases of UI freezes
+	// but there's no public info, but better to keep here until
+	// a) the issue is made public
+	// b) this flag is removed or moved to stable.
+	//
+	command_line->AppendSwitchWithValue("disable-blink-features", "WidthAndHeightAsPresentationAttributesOnNestedSvg, SelectionAndFocusedVisiblePositionMatch");
+
 	command_line->AppendSwitch("ignore-gpu-blocklist");
 	command_line->AppendSwitch("disable-direct-composition");
 	command_line->AppendSwitch("disable-gpu-driver-bug-workarounds");
