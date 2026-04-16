@@ -694,22 +694,24 @@ void NUIWindow::UpdateSharedResource(CefRenderHandler::PaintElementType type)
 		return;
 	}
 
+	if (m_inflightFrames >= kDesignLimitMaxFrames)
+	{
+		trace("frame pool is exhuasted\n");
+		return;
+	}
+
 	auto frame = this->LockFrame(type);
 	if (!frame || !frame->shared_handle)
 	{
 		return;
 	}
 
+	m_inflightFrames++;
 	auto sharedHandle = frame->shared_handle;
 	auto dirtyRects = frame->dirty_rects;
 
 	if (sharedHandle == m_lastParentHandle[type])
 	{
-		if (!IsPrimary())
-		{
-			trace("no new update yet\n");
-		}
-
 		// The frame contents haven't changed yet, so don't invalidate us just yet.
 		return;
 	}
@@ -751,6 +753,7 @@ void NUIWindow::UpdateSharedResource(CefRenderHandler::PaintElementType type)
 			// Not calling this here *should* (hopefully) not have any servere reprecussions at the very worse the release is a frame behind.
 			// Would be nice to figure out why this was causing the flickering
 			//ReleaseFrame(type);
+			m_inflightFrames--;
 		}
 		else
 		{
@@ -780,6 +783,7 @@ void NUIWindow::UpdateSharedResource(CefRenderHandler::PaintElementType type)
 					self->ReleaseFrame(type_);
 				}
 				NUI_AcceptTexture(handle);
+				self->m_inflightFrames--;
 				self->Release();
 			});
 		}
