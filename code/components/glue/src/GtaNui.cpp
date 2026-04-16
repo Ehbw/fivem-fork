@@ -736,6 +736,10 @@ void GtaNuiInterface::UpdateTexture(HANDLE shareHandle, fwRefContainer<GITexture
 	auto device1 = GetD3D11Device1();
 	if (!device1)
 	{	
+		if (cb)
+		{
+			cb(nullptr);
+		}
 		return;
 	}
 
@@ -744,6 +748,10 @@ void GtaNuiInterface::UpdateTexture(HANDLE shareHandle, fwRefContainer<GITexture
 	if (FAILED(hr))
 	{
 		trace("Failed to open shared resource for NUI Update 0x%x\n", hr);
+		if (cb)
+		{
+			cb(nullptr);
+		}
 		return;
 	}
 
@@ -758,30 +766,35 @@ void GtaNuiInterface::UpdateTexture(HANDLE shareHandle, fwRefContainer<GITexture
 	if (FAILED(hr))
 	{
 		trace("Failed to create shaderResourceView for NUI update 0x%x\n", hr);
+		if (cb)
+		{
+			cb(nullptr);
+		}
 		return;
 	}
 
-	g_earlyOnRenderQueue.emplace([cefTexture, cefSrv, texture, cb]()
+	if (!cefTexture)
 	{
-		if (!cefTexture)
+		if (cb)
 		{
-			if (cb)
-			{
-				cb(nullptr);
-			}
-			return;
+			cb(nullptr);
 		}
+		return;
+	}
 
+	auto texRef = (rage::grcTexture*)texture->GetHostTexture();
+	if (!texRef)
+	{
+		if (cb)
+		{
+			cb(nullptr);
+		}
+		return;
+	}
+
+	g_onRenderQueue.emplace([cefTexture, cefSrv, texture, cb]()
+	{
 		auto texRef = (rage::grcTexture*)texture->GetHostTexture();
-		if (!texRef)
-		{
-			if (cb)
-			{
-				cb(nullptr);
-			}
-			return;
-		}
-
 		if (texRef->texture)
 		{
 			texRef->texture->Release();

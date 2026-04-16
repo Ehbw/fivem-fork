@@ -97,6 +97,13 @@ private:
 	bool m_sharedResourceTexturesCreated[kMaxPaintElements];
 
 	std::atomic<uint32_t> m_frameSequence[kMaxPaintElements];
+
+	// Keep in sync with, but leave one frame as if the in-flight frame pool is full Chromium could reallocate all textures
+	// leading to flickering/artifacting
+	// chromium/components/viz/service/frame_sinks/video_capture/frame_sink_video_capturer_impl.h
+	static constexpr int kDesignLimitMaxFrames = 10 - 1;
+
+	std::atomic<int> m_inflightFrames;
 public:
 	inline int GetWidth() const { return m_width; }
 	inline int GetHeight() const { return m_height; }
