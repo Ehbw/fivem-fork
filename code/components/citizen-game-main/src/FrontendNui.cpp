@@ -181,16 +181,21 @@ public:
 		});
 	}
 
-	virtual fwRefContainer<GITexture> CreateTextureFromShareHandle(HANDLE shareHandle) override
+	virtual fwRefContainer<GITexture> CreateTextureFromShareHandle(HANDLE shareHandle, std::function<void()> cb = nullptr) override
 	{
 		// TODO: This doesn't even get called???? why?????????
 		trace("CreateTextureFromShareHandle\n");
 		m_lastShareHandle = shareHandle;
 
-		auto texture = new FrontendNuiTexture([this, shareHandle](FrontendNuiTexture* self)
+		auto texture = new FrontendNuiTexture([this, cb, shareHandle](FrontendNuiTexture* self)
 		{
 			if (shareHandle != m_lastShareHandle)
 			{
+				if (cb)
+				{
+					cb();
+				}
+
 				return bgfx::TextureHandle{ bgfx::kInvalidHandle };
 			}
 
@@ -200,6 +205,10 @@ public:
 
 			if (FAILED(hr))
 			{
+				if (cb)
+				{
+					cb();
+				}
 				trace("CreateTextureFromShareHandle: Failed to open share handle hresult: %x\n", hr);
 				return bgfx::TextureHandle{bgfx::kInvalidHandle};
 			}

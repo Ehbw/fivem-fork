@@ -162,9 +162,9 @@ namespace nui
 
 		virtual fwRefContainer<GITexture> CreateTextureBacking(int width, int height, GITextureFormat format) = 0;
 
-		virtual fwRefContainer<GITexture> CreateTextureFromShareHandle(HANDLE shareHandle) = 0;
+		virtual fwRefContainer<GITexture> CreateTextureFromShareHandle(HANDLE shareHandle, std::function<void()> cb = nullptr) = 0;
 
-		virtual fwRefContainer<GITexture> CreateTextureFromShareHandle(HANDLE shareHandle, int width, int height)
+		virtual fwRefContainer<GITexture> CreateTextureFromShareHandle(HANDLE shareHandle, int width, int height, std::function<void()> cb = nullptr)
 		{
 			return CreateTextureFromShareHandle(shareHandle);
 		}

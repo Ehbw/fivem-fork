@@ -691,12 +691,7 @@ void NUIWindow::UpdateSharedResource(CefRenderHandler::PaintElementType type)
 	auto& texRef = type == PET_VIEW ? m_nuiTexture : m_popupTexture;
 	if (!texRef.GetRef())
 	{
-		return;
-	}
-
-	if (m_inflightFrames >= kDesignLimitMaxFrames)
-	{
-		trace("frame pool is exhuasted\n");
+		trace("m_nuiTexture not ready\n");
 		return;
 	}
 
@@ -706,9 +701,8 @@ void NUIWindow::UpdateSharedResource(CefRenderHandler::PaintElementType type)
 		return;
 	}
 
-	m_inflightFrames++;
 	auto sharedHandle = frame->shared_handle;
-	auto dirtyRects = frame->dirty_rects;
+	auto frameSequence = frame->frame_seq - 1;
 
 	if (sharedHandle == m_lastParentHandle[type])
 	{
@@ -733,7 +727,10 @@ void NUIWindow::UpdateSharedResource(CefRenderHandler::PaintElementType type)
 
 			if (!IsPrimary())
 			{
-				auto faketexRef = g_nuiGi->CreateTextureFromShareHandle(sharedHandle, w, h);
+				auto faketexRef = g_nuiGi->CreateTextureFromShareHandle(sharedHandle, w, h, [this, type, frameSequence]()
+				{
+					ReleaseFrame(type, frameSequence);
+				});
 				SetParentTexture(type, faketexRef);
 #ifdef GTA_FIVE
 				m_swapSrv = nullptr;
@@ -741,77 +738,38 @@ void NUIWindow::UpdateSharedResource(CefRenderHandler::PaintElementType type)
 			}
 			else
 			{
-				texRef = g_nuiGi->CreateTextureFromShareHandle(sharedHandle, w, h);
+				texRef = g_nuiGi->CreateTextureFromShareHandle(sharedHandle, w, h, [this, type, frameSequence]()
+				{
+					ReleaseFrame(type, frameSequence);
+				});
 				SetParentTexture(type, texRef);
 			}
 
 			NUI_AcceptTexture((uint64_t)sharedHandle);
-			// Calling ReleaseFrame moves the current frame to be cleared on the next ReleaseFrame call.
-			// Still not confident this works as intended, its 3am though and i suspect this is causing flickering somehow.
-			// 
-			// Unless I'm blind, which is a strong possiblity, this appeared to be causing the flickering
-			// Not calling this here *should* (hopefully) not have any servere reprecussions at the very worse the release is a frame behind.
-			// Would be nice to figure out why this was causing the flickering
-			//ReleaseFrame(type);
-			m_inflightFrames--;
 		}
 		else
 		{
-			auto self = this;
-			auto type_ = type;
-			uint64_t handle = (uint64_t)sharedHandle;
-			uint32_t frameSeq = ++m_frameSequence[type];
-
 			// Lets not allow NUIWindow to get freed up if we are in the middle of rendering.
 			// Fixes a crash when switching between frames (e.g. root -> mpMenu, mpMenu -> root);
 			AddRef();
-			g_nuiGi->UpdateTexture(sharedHandle, texRef, nullptr, 1, w, h, [frameSeq, type_, self, handle](void* srv)
+			g_nuiGi->UpdateTexture(sharedHandle, texRef, nullptr, 1, w, h, [frameSequence, this, type, sharedHandle](void* srv)
 			{
 #ifdef GTA_FIVE
-				if (!self->IsPrimary())
+				if (!IsPrimary())
 				{
 					if (srv)
 					{
-						self->m_swapSrv = static_cast<ID3D11ShaderResourceView*>(srv);
+						m_swapSrv = static_cast<ID3D11ShaderResourceView*>(srv);
 					}
 				}
 #endif
-				// Don't release frame if theres other updates queued up right after this one
-				// otherwise we run the risk of potentially releasing the handle currently used.
-				if (frameSeq >= self->m_frameSequence[type_].load())
-				{
-					self->ReleaseFrame(type_);
-				}
-				NUI_AcceptTexture(handle);
-				self->m_inflightFrames--;
-				self->Release();
+				ReleaseFrame(type, frameSequence);
+				NUI_AcceptTexture((uint64_t)sharedHandle);
+				Release();
 			});
 		}
 	}
 
-	if (frame->dirty_rect_count == 10 || frame->dirty_rect_count == 0)
-	{
-		m_lastDirtyRect.left = 0;
-		m_lastDirtyRect.top = 0;
-		m_lastDirtyRect.right = GetWidth();
-		m_lastDirtyRect.bottom = GetHeight();
-	}
-	else
-	{
-		for (int i = 0; i < frame->dirty_rect_count; i++)
-		{
-			cef_rect_t rect = frame->dirty_rects[i];
-
-			RECT newRect{};
-			newRect.left = rect.x;
-			newRect.right = rect.x + rect.width;
-			newRect.top = GetHeight() - rect.y - rect.height;
-			newRect.bottom = GetHeight() - rect.y;
-
-			RECT oldRect = m_lastDirtyRect;
-			UnionRect(&m_lastDirtyRect, &newRect, &oldRect);
-		}
-	}
 	MarkRenderBufferDirty();
 }
 
