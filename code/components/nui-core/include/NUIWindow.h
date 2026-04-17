@@ -209,11 +209,11 @@ public:
 		return nullptr;
 	}
 
-	inline bool ReleaseFrame(cef_paint_element_type_t type)
+	inline bool ReleaseFrame(cef_paint_element_type_t type, int sequence_id)
 	{
 		if (GetBrowser() && GetBrowser()->GetHost())
 		{
-			return GetBrowser()->GetHost()->ReleaseFrame(type);
+			return GetBrowser()->GetHost()->ReleaseFrame(type, sequence_id);
 		}
 		return false;
 	}

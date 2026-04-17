@@ -53,14 +53,14 @@ public:
 
 	virtual fwRefContainer<GITexture> CreateTextureBacking(int width, int height, GITextureFormat format) override;
 
-	virtual fwRefContainer<GITexture> CreateTextureFromShareHandle(HANDLE shareHandle) override
+	virtual fwRefContainer<GITexture> CreateTextureFromShareHandle(HANDLE shareHandle, std::function<void()> cb = nullptr) override
 	{
 		assert(!"don't do that on vulkan games");
 
 		return nullptr;
 	}
 
-	virtual fwRefContainer<GITexture> CreateTextureFromShareHandle(HANDLE shareHandle, int width, int height) override;
+	virtual fwRefContainer<GITexture> CreateTextureFromShareHandle(HANDLE shareHandle, int width, int height, std::function<void()> cb = nullptr) override;
 
 	virtual void UpdateTexture(HANDLE shareHandle, fwRefContainer<GITexture> texture, cef_rect_t* dirtyRects, int dirtyRectCount, int width, int height, std::function<void(void*)> cb = nullptr) override;
 
@@ -565,7 +565,7 @@ return new GtaNuiTexture([width, height](GtaNuiTexture*)
 #include <VulkanHelper.h>
 #endif
 
-fwRefContainer<GITexture> GtaNuiInterface::CreateTextureFromShareHandle(HANDLE shareHandle, int width, int height)
+fwRefContainer<GITexture> GtaNuiInterface::CreateTextureFromShareHandle(HANDLE shareHandle, int width, int height, std::function<void()> cb)
 {
 #ifndef GTA_NY
 	rage::sysMemAllocator::UpdateAllocatorValue();
@@ -575,6 +575,10 @@ fwRefContainer<GITexture> GtaNuiInterface::CreateTextureFromShareHandle(HANDLE s
 	WRL::ComPtr<ID3D11Device1> device = GetD3D11Device1();
 	if (!device)
 	{
+		if (cb)
+		{
+			cb();
+		}
 		return new GtaNuiTexture(nullptr);
 	}
 
@@ -582,7 +586,7 @@ fwRefContainer<GITexture> GtaNuiInterface::CreateTextureFromShareHandle(HANDLE s
 	WRL::ComPtr<ID3D11Texture2D> resource;
 	if (SUCCEEDED(device->OpenSharedResource1(shareHandle, IID_PPV_ARGS(&resource))) || !resource)
 	{
-		return new GtaNuiTexture([this, device, resource](GtaNuiTexture* texture)
+		return new GtaNuiTexture([this, device, resource, cb](GtaNuiTexture* texture)
 		{
 			D3D11_TEXTURE2D_DESC desc;
 			resource->GetDesc(&desc);
@@ -627,6 +631,10 @@ fwRefContainer<GITexture> GtaNuiInterface::CreateTextureFromShareHandle(HANDLE s
 			texture->MarkOverriddenSRV();
 			texture->MarkOverriddenTexture();
 
+			if (cb)
+			{
+				cb();
+			}
 			return texRef;
 		});
 	}
