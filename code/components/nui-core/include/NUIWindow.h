@@ -63,6 +63,7 @@ private:
 	unsigned long m_dirtyFlag;
 
 	bool m_usingSharedTextures;
+	bool m_usingExternalFrame;
 	RECT m_lastDirtyRect;
 	std::shared_mutex m_renderBufferLock;
 	char* m_renderBuffer;

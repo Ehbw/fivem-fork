@@ -147,6 +147,9 @@ void NUIClient::OnLoadEnd(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> fra
 	auto name = frame->GetName();
 	TriggerLoadEnd((url == "nui://game/ui/root.html") ? "__root" : name);
 
+	// Reset zoom level in case it ever got zoomed in/out
+	browser->GetHost()->SetZoomLevel(0.0);
+
 	if (auto parent = frame->GetParent(); parent && parent->IsMain())
 	{
 		frame->ExecuteJavaScript(R"(
