@@ -124,6 +124,9 @@ void NUIWindow::Initialize(CefString url)
 	static bool nuiSharedResourcesEnabled = true;
 	static ConVar<bool> nuiSharedResources("nui_useSharedResources", ConVar_Archive, true, &nuiSharedResourcesEnabled);
 
+	static bool nuiExternalFramebegin = true;
+	static ConVar<bool> nuiExternalFrame("nui_useExternalFrame", ConVar_Archive, true, &nuiExternalFramebegin);
+
 	if (m_renderBuffer)
 	{
 		delete[] m_renderBuffer;
@@ -144,12 +147,12 @@ void NUIWindow::Initialize(CefString url)
 	}
 
 	m_usingSharedTextures = (!CfxIsWine() && nuiSharedResourcesEnabled);
-
+	m_usingExternalFrame = nuiExternalFramebegin;
 	CefWindowInfo info;
 	info.SetAsWindowless(NULL);
 	info.shared_texture_enabled = m_usingSharedTextures;
 	// External frame calls are handled in NUIVsync, for DUI/Vulkan NUIWindow::BeginFrame
-	info.external_begin_frame_enabled = true;
+	info.external_begin_frame_enabled = m_usingExternalFrame;
 	info.bounds.x = 0;
 	info.bounds.y = 0;
 	info.bounds.width = m_width;
@@ -157,6 +160,7 @@ void NUIWindow::Initialize(CefString url)
 
 	CefBrowserSettings settings;
 	settings.javascript_close_windows = STATE_DISABLED;
+	// NOTE: CEF will only use this is external_begin_frame_enabled is false.
 	settings.windowless_frame_rate = 240;
 	CefString(&settings.default_encoding).FromString("utf-8");
 
@@ -260,7 +264,7 @@ void NUIWindow::SendBeginFrame()
 	}
 
 	auto host = browser->GetHost();
-	if (host)
+	if (host && m_usingExternalFrame)
 	{
 		host->SendExternalBeginFrame();
 	}
@@ -725,12 +729,16 @@ void NUIWindow::UpdateSharedResource(CefRenderHandler::PaintElementType type)
 		{
 			m_sharedResourceTexturesCreated[type] = true;
 
+			AddRef();
+			auto cb = [this, type, frameSequence]()
+			{
+				ReleaseFrame(type, frameSequence);
+				Release();
+			};
+
 			if (!IsPrimary())
 			{
-				auto faketexRef = g_nuiGi->CreateTextureFromShareHandle(sharedHandle, w, h, [this, type, frameSequence]()
-				{
-					ReleaseFrame(type, frameSequence);
-				});
+				auto faketexRef = g_nuiGi->CreateTextureFromShareHandle(sharedHandle, w, h, cb);
 				SetParentTexture(type, faketexRef);
 #ifdef GTA_FIVE
 				m_swapSrv = nullptr;
@@ -738,10 +746,7 @@ void NUIWindow::UpdateSharedResource(CefRenderHandler::PaintElementType type)
 			}
 			else
 			{
-				texRef = g_nuiGi->CreateTextureFromShareHandle(sharedHandle, w, h, [this, type, frameSequence]()
-				{
-					ReleaseFrame(type, frameSequence);
-				});
+				texRef = g_nuiGi->CreateTextureFromShareHandle(sharedHandle, w, h, cb);
 				SetParentTexture(type, texRef);
 			}
 
@@ -749,18 +754,13 @@ void NUIWindow::UpdateSharedResource(CefRenderHandler::PaintElementType type)
 		}
 		else
 		{
-			// Lets not allow NUIWindow to get freed up if we are in the middle of rendering.
-			// Fixes a crash when switching between frames (e.g. root -> mpMenu, mpMenu -> root);
 			AddRef();
 			g_nuiGi->UpdateTexture(sharedHandle, texRef, nullptr, 1, w, h, [frameSequence, this, type, sharedHandle](void* srv)
 			{
 #ifdef GTA_FIVE
-				if (!IsPrimary())
+				if (!IsPrimary() && srv)
 				{
-					if (srv)
-					{
-						m_swapSrv = static_cast<ID3D11ShaderResourceView*>(srv);
-					}
+					m_swapSrv = static_cast<ID3D11ShaderResourceView*>(srv);
 				}
 #endif
 				ReleaseFrame(type, frameSequence);
