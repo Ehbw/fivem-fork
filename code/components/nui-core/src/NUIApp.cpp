@@ -69,50 +69,19 @@ void NUIApp::OnContextCreated(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame>
 	{
 		frame->ExecuteJavaScript(fmt::sprintf(g_epoxyScript, frame->GetName().ToString()), "nui://epoxy", 0);
 	}
+	frame->ExecuteJavaScript(g_gameViewScript, "nui://game-view-wrapper", 0);
 
-	if (!IsWindows10OrGreater())
-	{
-		ULONG langs = 0;
-		ULONG langSize = 0;
-		GetUserPreferredUILanguages(MUI_LANGUAGE_NAME, &langs, NULL, &langSize);
 
-		std::vector<wchar_t> uiLangs(langSize);
-		if (GetUserPreferredUILanguages(MUI_LANGUAGE_NAME, &langs, uiLangs.data(), &langSize))
-		{
-			std::vector<std::wstring_view> langList;
-			wchar_t* ptr = &uiLangs[0];
-
-			for (ULONG i = 0; i < langs; i++)
-			{
-				auto len = wcslen(ptr);
-				langList.emplace_back(ptr, len);
-
-				ptr += len + 1;
-			}
-
-			auto languages = CefV8Value::CreateArray(int(langList.size()));
-
-			for (size_t i = 0; i < langList.size(); i++)
-			{
-				languages->SetValue(int(i), CefV8Value::CreateString(CefString{ (char16_t*)langList[i].data(), langList[i].length(), true }));
-			}
-
-			window->SetValue("nuiSystemLanguages", languages, V8_PROPERTY_ATTRIBUTE_READONLY);
-		}
-	}
-	else
 	{
 		winrt::init_apartment();
 
 		std::vector<std::wstring> langList;
-
 		for (const auto& lang : GlobalizationPreferences::Languages())
 		{
 			langList.push_back(std::wstring{ lang });
 		}
 
 		auto languages = CefV8Value::CreateArray(int(langList.size()));
-
 		for (size_t i = 0; i < langList.size(); i++)
 		{
 			languages->SetValue(int(i), CefV8Value::CreateString(CefString{ (char16_t*)langList[i].data(), langList[i].length(), true }));
@@ -207,7 +176,7 @@ void NUIApp::OnBeforeCommandLineProcessing(const CefString& process_type, CefRef
 	//command_line->AppendSwitch("enable-experimental-web-platform-features");
 
 	// These experimental features are currently broken as of writing (April 2026, M144 build)
-	// While we are also disabling web platform features, it's worth keeping a list of ones that **are** broken and why
+	// While we are also disabling web platform features, it's worth keeping a list of ones that **are** broken, why and their impact on NUI
 	// 
 	// WidthAndHeightAsPresentationAttributesOnNestedSvg:
 	// Breaks SVG rendering in popular resources, see https://issues.chromium.org/issues/449170647 for chromium issue
@@ -237,6 +206,9 @@ void NUIApp::OnBeforeCommandLineProcessing(const CefString& process_type, CefRef
 #else
 	command_line->AppendSwitch("disable-gpu-vsync");
 #endif
+
+	// Don't allow accidental zooming in on a trackpad
+	command_line->AppendSwitch("disable-pinch");
 
 	command_line->AppendSwitch("disable-gpu-process-crash-limit");
 

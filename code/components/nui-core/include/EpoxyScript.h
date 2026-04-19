@@ -2,6 +2,14 @@
 
 #include <string>
 
+
+///
+/// "epoxy" is a set of compatability scripts intended to maintain backwards compatability for behaviour/functions/features 
+/// that have changed as a result of an newer CEF Version. These scripts are split up into two categorys
+/// 1) Changes that only effect "main" iframes (e.g. NUI iframes)
+/// 2) Changes that should effect all iframes (e.g. NUI iframes that have iframes within them)
+/// 
+
 ///
 /// "epoxy" provides backwards compatability for behaviour/functions/features that have changed as a result of a newer CEF/Chromium version
 /// Currently consisting of:
@@ -40,7 +48,9 @@ window.addEventListener("blur", (event) => {
 });
 
 window.parent.postMessage({ type: "frameLoaded", frameName: GetParentResourceName() }, "*");
+)";
 
+static std::string g_gameViewScript = R"(
 if (typeof CfxGameViewRenderer === 'undefined') {
 
 
@@ -303,6 +313,81 @@ CreateCanvasRenderer: function(canvas)
       resizeObserver.disconnect();
     });
 }
+};
+
+// Account for DX -> GL coordinate conversion.
+const targetComparsion = new Float32Array([
+    0, 0,
+    1, 0,
+	0, 1,
+    1, 1,
+]);
+
+const newArrayData = new Float32Array([
+    0, 1,
+    1, 1,
+    0, 0,
+    1, 0,
+]);
+
+const originalBufferData = WebGLRenderingContext.prototype.bufferData;
+WebGLRenderingContext.prototype.bufferData = function(target, data, usage) {
+    if (!(data instanceof Float32Array) || target != 0x8892 /*ARRAY_BUFFER*/ || usage != 0x88E4 /*STATIC_DRAW*/)
+    {
+		return originalBufferData.call(this, target, data, usage);
+	}
+
+    const areBuffersEqual = (data) => {
+        if (data.length != targetComparsion.length)
+        {
+           return false;
+        }
+
+		for (let i = 0; i < data.length; i++)
+        {            
+            if (data[i] != targetComparsion[i]) 
+            {
+              return false;
+            }
+		}
+
+		return true;
+    }
+
+	if (areBuffersEqual(data))
+    {
+		return originalBufferData.call(this, target, newArrayData, usage);
+    }
+	
+	return originalBufferData.call(this, target, data, usage);
+}
+
+const originalReadPixels = WebGLRenderingContext.prototype.readPixels;
+WebGLRenderingContext.prototype.readPixels = function(x, y, width, height, format, type, pixels) {
+    const result = originalReadPixels.apply(this, x, y, width, height, format, type, pixels);
+
+    // screenshot-basic/three.js game-view compatability.
+    if (x != 0 || y != 0 || width != window.innerWidth || height != window.innerHeight || format != 6408/*GL_RGBA*/
+        || type != 5121/*GL_UNSIGNED_BYTE*/ || pixels.length != (width * height * 4 /*RGBA*/))
+    {
+       return result;
+    }
+
+    const framebuffer = this.getParameter(this.FRAMEBUFFER_BINDING);
+    if (framebuffer) {
+        const rowSize = width * 4;
+        const tempRow = new Uint8Array(rowSize);
+        for (let row = 0; row < Math.floor(height / 2); row++) {
+            const topOffset = row * rowSize;
+            const bottomOffset = (height - 1 - row) * rowSize;
+
+            tempRow.set(pixels.subarray(topOffset, topOffset + rowSize));
+            pixels.copyWithin(topOffset, bottomOffset, bottomOffset + rowSize);
+            pixels.set(tempRow, bottomOffset);
+        }
+    }
+
+    return result;
 };
 }
 )";
