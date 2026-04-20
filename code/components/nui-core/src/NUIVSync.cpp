@@ -119,8 +119,6 @@ static InitFunction postInitFunction([]()
 		return;
 	}
 
-	static std::atomic<int64_t> lastVsync;
-
 	static auto vsyncThread = std::thread([&]()
 	{
 		SetThreadName(-1, "[NUI] vSync update");
@@ -199,28 +197,8 @@ static InitFunction postInitFunction([]()
 			}
 
 			auto vsyncTime = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::high_resolution_clock::now().time_since_epoch());
-			lastVsync = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
 			OnVSync(vsyncTime, std::chrono::duration_cast<std::chrono::microseconds>(interval));
 		}
 	});
-
-
-	// This is temporary just to be verbose if somehow the vSync update is somehow getting stuck and causing no more frames to be delivered.
-	// This will be worked in the future to handle reviving the thread updates/renderers
-	std::thread([]()
-	{
-		SetThreadName(-1, "[NUI] Render Watchdog");
-		while (true)
-		{
-			Sleep(1000);
-			auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count() - lastVsync.load();
-			if (elapsed > 500)
-			{
-				trace("NUI Render thread is stalled. Forcing vSync update\n");
-				OnVSync(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()), std::chrono::microseconds(int64_t(1000000.0 / 60)));
-			}
-		}
-
-	}).detach();
 },
 INT32_MAX);

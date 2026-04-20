@@ -45,7 +45,7 @@ public:
 	NUIWindow(bool primary, int width, int height, const std::string& windowContext);
 
 private:
-	// Tied to CefRenderHandler::PaintElementType
+	// Tied to CefRenderHandler::PaintElementType/cef_paint_element_type_t
 	static constexpr int kMaxPaintElements = 2;
 
 	std::string m_windowContext;
@@ -54,7 +54,7 @@ private:
 	int m_width;
 	int m_height;
 
-	int m_roundedWidth;
+	int m_roundedWidth;	
 	int m_roundedHeight;
 
 	uint32_t m_lastFrameTime;
@@ -96,15 +96,6 @@ private:
 	std::shared_mutex m_textureMutex;
 
 	bool m_sharedResourceTexturesCreated[kMaxPaintElements];
-
-	std::atomic<uint32_t> m_frameSequence[kMaxPaintElements];
-
-	// Keep in sync with, but leave one frame as if the in-flight frame pool is full Chromium could reallocate all textures
-	// leading to flickering/artifacting
-	// chromium/components/viz/service/frame_sinks/video_capture/frame_sink_video_capturer_impl.h
-	static constexpr int kDesignLimitMaxFrames = 10 - 1;
-
-	std::atomic<int> m_inflightFrames;
 public:
 	inline int GetWidth() const { return m_width; }
 	inline int GetHeight() const { return m_height; }
