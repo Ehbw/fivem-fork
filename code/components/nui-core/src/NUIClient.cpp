@@ -731,6 +731,24 @@ bool NUIClient::OnOpenURLFromTab(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFra
 	return false;
 }
 
+#include "include/cef_command_ids.h"
+
+bool NUIClient::OnChromeCommand(CefRefPtr<CefBrowser> browser, int command_id, cef_window_open_disposition_t disposition)
+{
+	switch (command_id)
+	{
+		// These commands can always stay blocked as we don't use them.
+		case IDC_DEV_TOOLS:
+		case IDC_DEV_TOOLS_CONSOLE:
+		case IDC_DEV_TOOLS_INSPECT:
+		case IDC_DEV_TOOLS_TOGGLE:
+		case IDC_DEVELOPER_MENU:
+			return true;
+		default:
+			return false;
+	}
+}
+
 void NUIClient::OnBeforeClose(CefRefPtr<CefBrowser> browser)
 {
 	m_browser = nullptr;

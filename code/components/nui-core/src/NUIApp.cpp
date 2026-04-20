@@ -245,11 +245,6 @@ bool NUIApp::OnProcessMessageReceived(CefRefPtr<CefBrowser> browser, CefRefPtr<C
 	return success;
 }
 
-CefRefPtr<CefRenderProcessHandler> NUIApp::GetRenderProcessHandler()
-{
-	return this;
-}
-
 bool NUIApp::Execute(const CefString& name, CefRefPtr<CefV8Value> object, const CefV8ValueList& arguments, CefRefPtr<CefV8Value>& retval, CefString& exception)
 {
 	auto handler = m_v8Handlers.find(name);

@@ -313,8 +313,6 @@ void NUIRenderHandler::OnAcceleratedPaint(CefRefPtr<CefBrowser> browser, PaintEl
 	{
 #ifdef CEF_OSR_LOCK_FRAME
 		m_owner->GetWindow()->UpdateSharedResource(type);
-#else
-		m_owner->GetWindow()->UpdateSharedResource(info.shared_texture_handle, dirtyRects, type);
 #endif
 	}
 }
