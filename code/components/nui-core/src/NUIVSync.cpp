@@ -10,8 +10,10 @@
 #include <wrl.h>
 
 #include <chrono>
+#include <CoreConsole.h>
 
 #include <CefOverlay.h>
+
 
 ///
 /// Handle external frame updates inline with vsync (through WaitForVBlank)
@@ -109,14 +111,23 @@ static InitFunction postInitFunction([]()
 		return;
 	}
 
-	std::thread([]()
+	static bool nuiExternalFramebegin = true;
+	static ConVar<bool> nuiExternalFrame("nui_useExternalFrame", ConVar_Archive, true, &nuiExternalFramebegin);
+
+	if (!nuiExternalFramebegin)
+	{
+		return;
+	}
+
+	static std::atomic<int64_t> lastVsync;
+
+	static auto vsyncThread = std::thread([&]()
 	{
 		SetThreadName(-1, "[NUI] vSync update");
 		SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_ABOVE_NORMAL);
-
 		HMONITOR primaryMonitor = nullptr;
 		WRL::ComPtr<IDXGIOutput> primaryOutput;
-		std::chrono::microseconds interval (int64_t(1000000.0 / 60));
+		std::chrono::microseconds interval(int64_t(1000000.0 / 60));
 		constexpr const auto kVBlankIntervalThreshold = std::chrono::milliseconds(1);
 
 		auto getDevice = []()
@@ -188,8 +199,28 @@ static InitFunction postInitFunction([]()
 			}
 
 			auto vsyncTime = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::high_resolution_clock::now().time_since_epoch());
+			lastVsync = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
 			OnVSync(vsyncTime, std::chrono::duration_cast<std::chrono::microseconds>(interval));
 		}
+	});
+
+
+	// This is temporary just to be verbose if somehow the vSync update is somehow getting stuck and causing no more frames to be delivered.
+	// This will be worked in the future to handle reviving the thread updates/renderers
+	std::thread([]()
+	{
+		SetThreadName(-1, "[NUI] Render Watchdog");
+		while (true)
+		{
+			Sleep(1000);
+			auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count() - lastVsync.load();
+			if (elapsed > 500)
+			{
+				trace("NUI Render thread is stalled. Forcing vSync update\n");
+				OnVSync(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()), std::chrono::microseconds(int64_t(1000000.0 / 60)));
+			}
+		}
+
 	}).detach();
 },
 INT32_MAX);

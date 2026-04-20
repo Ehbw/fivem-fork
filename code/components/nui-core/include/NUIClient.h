@@ -33,7 +33,8 @@ class NUIClient : public CefClient,
 	public CefPermissionHandler,
 #endif
 	public CefRequestHandler,
-	public CefResourceRequestHandler
+	public CefResourceRequestHandler,
+	public CefCommandHandler
 {
 private:
 	NUIWindow* m_window;
@@ -125,6 +126,11 @@ protected:
 	}
 	
 	virtual CefRefPtr<CefRequestHandler> GetRequestHandler() override
+	{
+		return this;
+	}
+
+	virtual CefRefPtr<CefCommandHandler> GetCommandHandler() override
 	{
 		return this;
 	}
@@ -262,6 +268,9 @@ protected:
 protected:
 	// CefRequestHandler
 	virtual bool OnOpenURLFromTab(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, const CefString& target_url, CefRequestHandler::WindowOpenDisposition target_disposition, bool user_gesture) override;
+protected:
+	// CefCommandHandler
+	virtual bool OnChromeCommand(CefRefPtr<CefBrowser> browser,	int command_id, cef_window_open_disposition_t disposition) override;
 
 	// CefResourceRequestHandler
 	virtual CefRefPtr<CefResourceHandler> GetResourceHandler(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, CefRefPtr<CefRequest> request) override;
