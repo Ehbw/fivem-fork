@@ -193,6 +193,9 @@ static InitFunction initFunction([] ()
 			
 			m_autogenHandle = fmt::sprintf("nui_resource_%d", nuiWindowIdx);
 
+			m_width = width;
+			m_height = height;
+
 			nui::CreateNUIWindow(m_autogenHandle, width, height, url);
 
 			nuiWindows.insert({ m_autogenHandle, this });
@@ -258,6 +261,11 @@ static InitFunction initFunction([] ()
 		void InjectMouseMove(int x, int y)
 		{
 			auto browser = nui::GetNUIWindowBrowser(m_autogenHandle);
+
+			if (x < 0 || y < 0 || x > m_width || y > m_height)
+			{
+				return;
+			}
 
 			m_mouseX = x;
 			m_mouseY = y;
@@ -338,6 +346,9 @@ static InitFunction initFunction([] ()
 	private:
 		int m_mouseX;
 		int m_mouseY;
+
+		int m_width;
+		int m_height;
 
 		std::string m_autogenHandle;
 	};
