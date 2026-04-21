@@ -196,10 +196,10 @@ class CfxGameViewRenderer {
     const texBuff = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, texBuff);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
-		0, 0,
-		1, 0,
 		0, 1,
 		1, 1,
+		0, 0,
+		1, 0,
     ]), gl.STATIC_DRAW);
 
     return { vertexBuff, texBuff };
