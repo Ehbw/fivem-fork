@@ -95,15 +95,6 @@ registerFrameFunction(function(msg, frameName, frameUrl)
 		frame.src = frameUrl;
 		frame.tabIndex = -1;
 
-		if (frameName === 'loadingScreen')
-		{
-			nuiHandoverData = handoverBlob || {};
-			nuiHandoverData.serverAddress = serverAddress;
-			SendEpoxyMessage(frameName, "setHandoverData", {
-				handoverData: nuiHandoverData
-			});
-		}
-
 		citFrames[frameName] = frame;
 		zStack.push(frameName);
 
@@ -129,6 +120,12 @@ registerFrameFunction(function(msg, frameName, frameUrl)
 		frame.addEventListener('load', function() {
 		    frame.style.visibility = 'visible';
         });
+
+		if (frameName === 'loadingScreen')
+		{
+			frame.contentWindow.nuiHandoverData = handoverBlob || {};
+			frame.contentWindow.nuiHandoverData.serverAddress = serverAddress;
+		}
 	}
 	else if (msg == "destroyFrame")
 	{
