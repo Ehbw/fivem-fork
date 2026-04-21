@@ -51,8 +51,8 @@ window.parent.postMessage({ type: "frameLoaded", frameName: GetParentResourceNam
 )";
 
 static std::string g_gameViewScript = R"(
-if (typeof CfxGameViewRenderer === 'undefined') {
-
+if (typeof window.__cfx_game_view === 'undefined') {
+window.__cfx_game_view = true;
 
 // Replace type="application/x-cfx-game-view" with improved canvas painting
 class CfxGameViewRenderer {
@@ -331,8 +331,8 @@ const newArrayData = new Float32Array([
 ]);
 
 const originalBufferData = WebGLRenderingContext.prototype.bufferData;
-WebGLRenderingContext.prototype.bufferData = function(target, data, usage) {
-    if (!(data instanceof Float32Array) || target != 0x8892 /*ARRAY_BUFFER*/ || usage != 0x88E4 /*STATIC_DRAW*/)
+const patchedBufferData = function(target, data, usage) {
+    if (!(data && data.constructor && data.constructor.name == "Float32Array") || target != 0x8892 /*ARRAY_BUFFER*/ || usage != 0x88E4 /*STATIC_DRAW*/)
     {
 		return originalBufferData.call(this, target, data, usage);
 	}
@@ -358,9 +358,10 @@ WebGLRenderingContext.prototype.bufferData = function(target, data, usage) {
     {
 		return originalBufferData.call(this, target, newArrayData, usage);
     }
-	
+
 	return originalBufferData.call(this, target, data, usage);
 }
+WebGLRenderingContext.prototype.bufferData = patchedBufferData;
 
 const originalReadPixels = WebGLRenderingContext.prototype.readPixels;
 WebGLRenderingContext.prototype.readPixels = function(x, y, width, height, format, type, pixels) {
@@ -389,5 +390,37 @@ WebGLRenderingContext.prototype.readPixels = function(x, y, width, height, forma
 
     return result;
 };
+
+const originalGetContext = HTMLCanvasElement.prototype.getContext;
+HTMLCanvasElement.prototype.getContext = function(type, attrs) {
+    const gl = originalGetContext.call(this, type, attrs);
+    if (gl && (type === 'webgl' || type === 'experimental-webgl')) {
+        const originalBufferData = gl.bufferData.bind(gl);
+        gl.bufferData = patchedBufferData;
+    }
+    return gl;
+};
+
+// Provide backwards compatability for 'application/x-cfx-game-view' mime type.
+// Originally implemented through the now removed PepperPlugins.
+document.addEventListener('DOMContentLoaded', () => {
+	const __cfx_game_view_observer = new MutationObserver(() => {
+		const node = document.querySelector(
+			'[type="application/x-cfx-game-view"]'
+		);
+
+		if (node) {
+		  __cfx_game_view.ReplaceGameView(node, __cfx_game_view.CreateCanvasRenderer);
+		}
+	});
+
+	__cfx_game_view_observer.observe(document.documentElement, {
+		childList: true,
+		subtree: true
+	});
+
+	// Replace all legacy canvas's at startup.
+	__cfx_game_view.FindLegacyGameView(__cfx_game_view.CreateCanvasRenderer);
+});
 }
 )";

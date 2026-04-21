@@ -69,8 +69,8 @@ void NUIApp::OnContextCreated(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame>
 	{
 		frame->ExecuteJavaScript(fmt::sprintf(g_epoxyScript, frame->GetName().ToString()), "nui://epoxy", 0);
 	}
-	frame->ExecuteJavaScript(g_gameViewScript, "nui://game-view-wrapper", 0);
 
+	frame->ExecuteJavaScript(g_gameViewScript, "nui://game-view-wrapper", 0);
 
 	{
 		winrt::init_apartment();
