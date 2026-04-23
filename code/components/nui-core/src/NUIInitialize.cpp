@@ -68,19 +68,33 @@ struct GameRenderData
 	int height;
 	bool requested;
 
+#ifdef GTA_FIVE
+	// For backwards compatability. The flipped texture is slower more prone to flickering/stuttering.
+	bool requestedFlipped;
+	HANDLE flippedHandle;
+#endif
+
 	GameRenderData()
 		: requested(false), handle(NULL), width(0), height(0)
+#ifdef GTA_FIVE
+		  ,requestedFlipped(false), flippedHandle(NULL)
+#endif
 	{
 
 	}
 };
 
 static GLuint g_curGlTexture;
+
+#ifdef GTA_FIVE
+static std::set<GLuint> g_flippedBackBufferTextures;
+#endif
 static std::set<GLuint> g_backBufferTextures;
 
-static void BindGameRenderHandle();
-
 static std::map<GLuint, EGLSurface> g_pbuffers;
+
+static void BindGameRenderHandle(bool flipTexture);
+
 
 static void (*g_origglDeleteTextures)(GLsizei n, const GLuint* textures);
 
@@ -90,6 +104,9 @@ static void glDeleteTexturesHook(GLsizei n, const GLuint* textures)
 	{
 		GLuint texture = textures[i];
 		g_backBufferTextures.erase(texture);
+#ifdef GTA_FIVE
+		g_flippedBackBufferTextures.erase(texture);
+#endif
 
 		if (g_pbuffers.find(texture) != g_pbuffers.end())
 		{
@@ -119,13 +136,23 @@ static void glBindTextureHook(GLenum target, GLuint texture)
 	if (handleData->handle != lastBackbufHandle)
 	{
 		lastBackbufHandle = handleData->handle;
-			
+
+#ifdef GTA_FIVE
+		for (auto textureId : g_flippedBackBufferTextures)
+		{
+			g_curGlTexture = textureId;
+
+			g_origglBindTexture(GL_TEXTURE_2D, textureId);
+			BindGameRenderHandle(true);
+		}
+#endif
+	
 		for (auto textureId : g_backBufferTextures)
 		{
 			g_curGlTexture = textureId;
 
 			g_origglBindTexture(GL_TEXTURE_2D, textureId);
-			BindGameRenderHandle();
+			BindGameRenderHandle(false);
 		}
 	}
 
@@ -197,7 +224,7 @@ EGLConfig ChooseCompatibleConfig()
 	return nullptr;
 }
 
-static void BindGameRenderHandle()
+static void BindGameRenderHandle(bool flipTexture = true)
 {
 	static auto _eglGetCurrentDisplay = (decltype(&eglGetCurrentDisplay))(GetProcAddress(GetModuleHandle(L"libEGL.dll"), "eglGetCurrentDisplay"));
 	static auto _eglDestroySurface = (decltype(&eglDestroySurface))(GetProcAddress(GetModuleHandle(L"libEGL.dll"), "eglDestroySurface"));
@@ -213,7 +240,11 @@ static void BindGameRenderHandle()
 	static HostSharedData<GameRenderData> handleData(launch::IsSDK() ? "CfxGameRenderHandleFxDK" : "CfxGameRenderHandle");
 
 	// not existent yet, but we will retry this later on
-	if (!handleData->handle)
+	if (!handleData->handle
+#ifdef GTA_FIVE
+		|| !handleData->flippedHandle
+#endif
+	)
 	{
 		return;
 	}
@@ -236,7 +267,7 @@ static void BindGameRenderHandle()
 	EGLSurface pbuffer = _eglCreatePbufferFromClientBuffer(
 	m_display,
 	EGL_D3D_TEXTURE_2D_SHARE_HANDLE_ANGLE,
-	(EGLClientBuffer)handleData->handle,
+	(EGLClientBuffer)(flipTexture ? handleData->flippedHandle : handleData->handle),
 	config,
 	pbuffer_attributes);
 
@@ -250,7 +281,9 @@ static void BindGameRenderHandle()
 	g_pbuffers.insert({ g_curGlTexture, pbuffer });
 
 	handleData->requested = true;
-
+#ifdef GTA_FIVE
+	handleData->requestedFlipped = flipTexture;
+#endif
 	_eglBindTexImage(m_display, pbuffer, EGL_BACK_BUFFER);
 }
 
@@ -261,6 +294,14 @@ static void glTexParameterfHook(GLenum target, GLenum pname, GLfloat param)
 	// 'secret' activation sequence
 	static std::map<GLuint, int> stages;
 	int& stage = stages[g_curGlTexture];
+
+	// New texParameterf sequence in order to bind a more efficient version of the game render texture.
+	if (target == GL_TEXTURE_2D && pname == GL_TEXTURE_WRAP_T && param == 0x47d87380)
+	{
+		BindGameRenderHandle(false);
+		g_backBufferTextures.insert(g_curGlTexture);
+		return;
+	}
 
 	if (target == GL_TEXTURE_2D && pname == GL_TEXTURE_WRAP_T)
 	{
@@ -307,7 +348,7 @@ static void glTexParameterfHook(GLenum target, GLenum pname, GLfloat param)
 		stage = 0;
 
 		BindGameRenderHandle();
-		g_backBufferTextures.insert(g_curGlTexture);
+		g_flippedBackBufferTextures.insert(g_curGlTexture);
 	}
 	else if (stage <= 1)
 	{

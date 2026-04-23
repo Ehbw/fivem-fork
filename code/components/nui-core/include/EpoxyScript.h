@@ -54,6 +54,13 @@ static std::string g_gameViewScript = R"(
 if (typeof window.__cfx_game_view === 'undefined') {
 window.__cfx_game_view = true;
 
+Object.defineProperty(WebGLRenderingContext.prototype, 'CFX_BIND_GAME_VIEW', {
+    value: 0x47d87380,
+    writable: false,
+    enumerable: true,
+    configurable: false
+});
+
 // Replace type="application/x-cfx-game-view" with improved canvas painting
 class CfxGameViewRenderer {
   #gl;
@@ -172,10 +179,8 @@ class CfxGameViewRenderer {
     gl.texParameterf(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
     gl.texParameterf(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
 
-    // Magic hook sequence
-    gl.texParameterf(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-    gl.texParameterf(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.MIRRORED_REPEAT);
-    gl.texParameterf(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
+	// Bind game render to gl
+    gl.texParameterf(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CFX_BIND_GAME_VIEW);
 
     // Reset
     gl.texParameterf(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
@@ -313,92 +318,6 @@ CreateCanvasRenderer: function(canvas)
       resizeObserver.disconnect();
     });
 }
-};
-
-// Account for DX -> GL coordinate conversion.
-const targetComparsion = new Float32Array([
-    0, 0,
-    1, 0,
-	0, 1,
-    1, 1,
-]);
-
-const newArrayData = new Float32Array([
-    0, 1,
-    1, 1,
-    0, 0,
-    1, 0,
-]);
-
-const originalBufferData = WebGLRenderingContext.prototype.bufferData;
-const patchedBufferData = function(target, data, usage) {
-    if (!(data && data.constructor && data.constructor.name == "Float32Array") || target != 0x8892 /*ARRAY_BUFFER*/ || usage != 0x88E4 /*STATIC_DRAW*/)
-    {
-		return originalBufferData.call(this, target, data, usage);
-	}
-
-    const areBuffersEqual = (data) => {
-        if (data.length != targetComparsion.length)
-        {
-           return false;
-        }
-
-		for (let i = 0; i < data.length; i++)
-        {            
-            if (data[i] != targetComparsion[i]) 
-            {
-              return false;
-            }
-		}
-
-		return true;
-    }
-
-	if (areBuffersEqual(data))
-    {
-		return originalBufferData.call(this, target, newArrayData, usage);
-    }
-
-	return originalBufferData.call(this, target, data, usage);
-}
-WebGLRenderingContext.prototype.bufferData = patchedBufferData;
-
-const originalReadPixels = WebGLRenderingContext.prototype.readPixels;
-WebGLRenderingContext.prototype.readPixels = function(x, y, width, height, format, type, pixels) {
-    const result = originalReadPixels.apply(this, x, y, width, height, format, type, pixels);
-
-    // screenshot-basic/three.js game-view compatability.
-    if (x != 0 || y != 0 || width != window.innerWidth || height != window.innerHeight || format != 6408/*GL_RGBA*/
-        || type != 5121/*GL_UNSIGNED_BYTE*/ || pixels.length != (width * height * 4 /*RGBA*/))
-    {
-       return result;
-    }
-
-    const framebuffer = this.getParameter(this.FRAMEBUFFER_BINDING);
-    if (framebuffer) {
-        const rowSize = width * 4;
-        const tempRow = new Uint8Array(rowSize);
-        for (let row = 0; row < Math.floor(height / 2); row++) {
-            const topOffset = row * rowSize;
-            const bottomOffset = (height - 1 - row) * rowSize;
-
-            tempRow.set(pixels.subarray(topOffset, topOffset + rowSize));
-            pixels.copyWithin(topOffset, bottomOffset, bottomOffset + rowSize);
-            pixels.set(tempRow, bottomOffset);
-        }
-    }
-
-    return result;
-};
-
-const originalGetContext = HTMLCanvasElement.prototype.getContext;
-HTMLCanvasElement.prototype.getContext = function(type, attrs) {
-    const gl = originalGetContext.call(this, type, attrs);
-    if (gl && (type === 'webgl' || type === 'experimental-webgl')) {
-        const originalBufferData = gl.bufferData.bind(gl);
-        gl.bufferData = patchedBufferData;
-    }
-    return gl;
 };
 
 // Provide backwards compatability for 'application/x-cfx-game-view' mime type.
