@@ -89,8 +89,6 @@ private:
 	Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> m_swapSrv;
 #endif
 
-	HANDLE m_lastParentHandle[kMaxPaintElements];
-
 	CefRect m_popupRect;
 
 	std::shared_mutex m_textureMutex;
