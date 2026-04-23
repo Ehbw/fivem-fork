@@ -47,9 +47,7 @@ NUIWindow::NUIWindow(bool rawBlit, int width, int height, const std::string& win
 	  ,m_swapTexture(nullptr), m_swapRtv(nullptr), m_swapSrv(nullptr)
 #endif
 {
-	memset(&m_lastDirtyRect, 0, sizeof(m_lastDirtyRect));
 	memset(&m_sharedResourceTexturesCreated, 0, sizeof(m_sharedResourceTexturesCreated));
-	memset(&m_lastParentHandle, 0, sizeof(m_lastParentHandle));
 
 	Instance<NUIWindowManager>::Get()->AddWindow(this);
 }
@@ -417,15 +415,7 @@ void NUIWindow::UpdateFrame()
 					ID3D11DeviceContext* deviceContext = g_nuiGi->GetD3D11DeviceContext();
 					assert(deviceContext);
 
-					D3D11_BOX box = CD3D11_BOX(m_lastDirtyRect.left,
-											   m_lastDirtyRect.top,
-											   0,
-											   m_lastDirtyRect.right,
-											   m_lastDirtyRect.bottom,
-											   1);
-
 					ID3D11Resource* nativeTexture = nullptr;
-
 					if (auto texture = GetTexture(); texture.GetRef())
 					{
 						nativeTexture = (ID3D11Resource*)texture->GetNativeTexture();
@@ -572,8 +562,6 @@ void NUIWindow::UpdateFrame()
 
 						pPerf->EndEvent();
 					}
-
-					memset(&m_lastDirtyRect, 0, sizeof(m_lastDirtyRect));
 				}
 			}
 		}
@@ -708,16 +696,9 @@ void NUIWindow::UpdateSharedResource(CefRenderHandler::PaintElementType type)
 	auto sharedHandle = frame->shared_handle;
 	auto frameSequence = frame->frame_seq - 1;
 
-	if (sharedHandle == m_lastParentHandle[type])
-	{
-		// The frame contents haven't changed yet, so don't invalidate us just yet.
-		return;
-	}
-
 	int w = type == PET_VIEW ? m_width : m_popupRect.width;
 	int h = type == PET_VIEW ? m_height : m_popupRect.height;
 
-	m_lastParentHandle[type] = sharedHandle;
 	{
 		std::unique_lock<std::shared_mutex> textureLock(m_textureMutex, std::defer_lock);
 		if (IsPrimary())
