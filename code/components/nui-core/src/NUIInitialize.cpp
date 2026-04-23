@@ -267,7 +267,11 @@ static void BindGameRenderHandle(bool flipTexture = true)
 	EGLSurface pbuffer = _eglCreatePbufferFromClientBuffer(
 	m_display,
 	EGL_D3D_TEXTURE_2D_SHARE_HANDLE_ANGLE,
+#if GTA_FIVE
 	(EGLClientBuffer)(flipTexture ? handleData->flippedHandle : handleData->handle),
+#else
+	(EGLClientBuffer)handleData->handle,
+#endif
 	config,
 	pbuffer_attributes);
 
@@ -303,6 +307,7 @@ static void glTexParameterfHook(GLenum target, GLenum pname, GLfloat param)
 		return;
 	}
 
+#if GTA_FIVE
 	if (target == GL_TEXTURE_2D && pname == GL_TEXTURE_WRAP_T)
 	{
 		switch (stage)
@@ -354,6 +359,9 @@ static void glTexParameterfHook(GLenum target, GLenum pname, GLfloat param)
 	{
 		g_origglTexParameterf(target, pname, param);
 	}
+#else
+	g_origglTexParameterf(target, pname, param);
+#endif
 }
 
 static HRESULT(*g_origD3D11CreateDevice)(_In_opt_ IDXGIAdapter* pAdapter, D3D_DRIVER_TYPE DriverType, HMODULE Software, UINT Flags, _In_reads_opt_(FeatureLevels) CONST D3D_FEATURE_LEVEL* pFeatureLevels, UINT FeatureLevels, UINT SDKVersion, _COM_Outptr_opt_ ID3D11Device** ppDevice, _Out_opt_ D3D_FEATURE_LEVEL* pFeatureLevel, _COM_Outptr_opt_ ID3D11DeviceContext** ppImmediateContext);
