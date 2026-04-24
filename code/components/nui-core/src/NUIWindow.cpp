@@ -731,7 +731,7 @@ void NUIWindow::UpdateSharedResource(CefRenderHandler::PaintElementType type)
 				SetParentTexture(type, texRef);
 			}
 
-			NUI_AcceptTexture((uint64_t)sharedHandle);
+			//NUI_AcceptTexture((uint64_t)sharedHandle);
 		}
 		else
 		{
@@ -745,7 +745,7 @@ void NUIWindow::UpdateSharedResource(CefRenderHandler::PaintElementType type)
 				}
 #endif
 				ReleaseFrame(type, frameSequence);
-				NUI_AcceptTexture((uint64_t)sharedHandle);
+				//NUI_AcceptTexture((uint64_t)sharedHandle);
 				Release();
 			});
 		}
