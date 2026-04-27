@@ -62,7 +62,7 @@ public:
 
 	virtual fwRefContainer<GITexture> CreateTextureFromShareHandle(HANDLE shareHandle, int width, int height, std::function<void()> cb = nullptr) override;
 
-	virtual void UpdateTexture(HANDLE shareHandle, fwRefContainer<GITexture> texture, cef_rect_t* dirtyRects, int dirtyRectCount, int width, int height, std::function<void(void*)> cb = nullptr) override;
+	virtual void UpdateTexture(HANDLE shareHandle, fwRefContainer<GITexture> texture, cef_rect_t* dirtyRects, int dirtyRectCount, int width, int height, nui::GameInterface::UpdateTextureCB cb = nullptr) override;
 
 	virtual void SetTexture(fwRefContainer<GITexture> texture, bool pm) override;
 
@@ -738,7 +738,7 @@ fwRefContainer<GITexture> GtaNuiInterface::CreateTextureFromShareHandle(HANDLE s
 	return new GtaNuiTexture(nullptr);
 }
 
-void GtaNuiInterface::UpdateTexture(HANDLE shareHandle, fwRefContainer<GITexture> texture, cef_rect_t* dirtyRects, int dirtyRectCount, int width, int height, std::function<void(void*)> cb)
+void GtaNuiInterface::UpdateTexture(HANDLE shareHandle, fwRefContainer<GITexture> texture, cef_rect_t* dirtyRects, int dirtyRectCount, int width, int height, nui::GameInterface::UpdateTextureCB cb)
 {
 #ifdef GTA_FIVE
 	auto device1 = GetD3D11Device1();
@@ -802,6 +802,17 @@ void GtaNuiInterface::UpdateTexture(HANDLE shareHandle, fwRefContainer<GITexture
 
 	g_onRenderQueue.emplace([cefTexture, cefSrv, texture, cb]()
 	{
+		// so we can properly signal ReleaseFrame
+		if (cb)
+		{
+			// The idea with passing the SRV is to not have to re-create the same SRV for DUI
+			if (cb(cefSrv.Get()))
+			{
+				// This update is the only reference left of the window so updating the texture is pointless.
+				return;
+			}
+		}
+
 		auto texRef = (rage::grcTexture*)texture->GetHostTexture();
 		if (texRef->texture)
 		{
@@ -819,13 +830,6 @@ void GtaNuiInterface::UpdateTexture(HANDLE shareHandle, fwRefContainer<GITexture
 
 		texRef->srv = cefSrv.Get();
 		texRef->srv->AddRef();
-
-		// so we can properly signal ReleaseFrame
-		if (cb)
-		{
-			// The idea with passing the SRV is to not have to re-create the same SRV for DUI
-			cb(cefSrv.Get());
-		}
 	});
 #elif defined(IS_RDR3)
 	if (GetCurrentGraphicsAPI() == GraphicsAPI::D3D12)

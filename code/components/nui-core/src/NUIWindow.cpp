@@ -683,13 +683,17 @@ void NUIWindow::UpdateSharedResource(CefRenderHandler::PaintElementType type)
 	auto& texRef = type == PET_VIEW ? m_nuiTexture : m_popupTexture;
 	if (!texRef.GetRef())
 	{
-		trace("m_nuiTexture not ready\n");
 		return;
 	}
 
 	auto frame = this->LockFrame(type);
 	if (!frame || !frame->shared_handle)
 	{
+		if (frame)
+		{
+			this->ReleaseFrame(type, frame->frame_seq);
+			return;
+		}
 		return;
 	}
 
@@ -730,23 +734,20 @@ void NUIWindow::UpdateSharedResource(CefRenderHandler::PaintElementType type)
 				texRef = g_nuiGi->CreateTextureFromShareHandle(sharedHandle, w, h, cb);
 				SetParentTexture(type, texRef);
 			}
-
-			//NUI_AcceptTexture((uint64_t)sharedHandle);
 		}
 		else
 		{
 			AddRef();
 			g_nuiGi->UpdateTexture(sharedHandle, texRef, nullptr, 1, w, h, [frameSequence, this, type, sharedHandle](void* srv)
 			{
+				ReleaseFrame(type, frameSequence);
 #ifdef GTA_FIVE
 				if (!IsPrimary() && srv)
 				{
 					m_swapSrv = static_cast<ID3D11ShaderResourceView*>(srv);
 				}
 #endif
-				ReleaseFrame(type, frameSequence);
-				//NUI_AcceptTexture((uint64_t)sharedHandle);
-				Release();
+				return Release();
 			});
 		}
 	}
