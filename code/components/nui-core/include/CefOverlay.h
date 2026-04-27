@@ -169,7 +169,7 @@ namespace nui
 			return CreateTextureFromShareHandle(shareHandle);
 		}
 
-		using UpdateTextureCB = std::function<void(void* duiSrv)>;
+		using UpdateTextureCB = std::function<bool(void* duiSrv)>;
 
 		virtual void UpdateTexture(HANDLE shareHandle, fwRefContainer<GITexture> texture, cef_rect_t* dirtyRects, int dirtyRectCount, int width, int height, UpdateTextureCB cb = nullptr) = 0;
 
