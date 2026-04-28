@@ -773,7 +773,6 @@ void GtaNuiInterface::UpdateTexture(HANDLE shareHandle, fwRefContainer<GITexture
 	hr = gameDevice->rawDevice->CreateShaderResourceView(cefTexture, nullptr, &cefSrv);
 	if (FAILED(hr))
 	{
-		trace("Failed to create shaderResourceView for NUI update 0x%x\n", hr);
 		if (cb)
 		{
 			cb(nullptr);
@@ -802,13 +801,12 @@ void GtaNuiInterface::UpdateTexture(HANDLE shareHandle, fwRefContainer<GITexture
 
 	g_onRenderQueue.emplace([cefTexture, cefSrv, texture, cb]()
 	{
-		// so we can properly signal ReleaseFrame
 		if (cb)
 		{
-			// The idea with passing the SRV is to not have to re-create the same SRV for DUI
+			// Pass SRV to be used for DUI (if applicable)
 			if (cb(cefSrv.Get()))
 			{
-				// This update is the only reference left of the window so updating the texture is pointless.
+				cefTexture->Release();
 				return;
 			}
 		}
