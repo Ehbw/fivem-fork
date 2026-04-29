@@ -45,7 +45,7 @@ protected:
 	void UpdateDragCursor(CefRefPtr<CefBrowser> browser,
 		CefRenderHandler::DragOperation operation) override;
 
-	virtual void OnAcceleratedPaint(CefRefPtr<CefBrowser> browser, PaintElementType type, const RectList& dirtyRects, const CefAcceleratedPaintInfo& info) override;
+	virtual void OnFrameCaptured(CefRefPtr<CefBrowser> browser, PaintElementType type) override;
 	
 #if 0
     virtual bool GetScreenInfo(CefRefPtr<CefBrowser> browser, CefScreenInfo& screen_info) override;

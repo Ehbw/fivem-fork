@@ -307,13 +307,11 @@ void NUIRenderHandler::UpdateDragCursor(CefRefPtr<CefBrowser> browser,
 	m_currentDragOp = operation;
 }
 
-void NUIRenderHandler::OnAcceleratedPaint(CefRefPtr<CefBrowser> browser, PaintElementType type, const RectList& dirtyRects, const CefAcceleratedPaintInfo& info)
+void NUIRenderHandler::OnFrameCaptured(CefRefPtr<CefBrowser> browser, PaintElementType type)
 {
 	if (m_owner->GetWindowValid())
 	{
-#ifdef CEF_OSR_LOCK_FRAME
 		m_owner->GetWindow()->UpdateSharedResource(type);
-#endif
 	}
 }
 
