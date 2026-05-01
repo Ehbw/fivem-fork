@@ -118,14 +118,12 @@ registerFrameFunction(function(msg, frameName, frameUrl)
 		}
                 
 		frame.addEventListener('load', function() {
+			if (frameName === 'loadingScreen') {
+				frame.contentWindow.nuiHandoverData = handoverBlob || {};
+				frame.contentWindow.nuiHandoverData.serverAddress = serverAddress;
+			}
 		    frame.style.visibility = 'visible';
         });
-
-		if (frameName === 'loadingScreen')
-		{
-			frame.contentWindow.nuiHandoverData = handoverBlob || {};
-			frame.contentWindow.nuiHandoverData.serverAddress = serverAddress;
-		}
 	}
 	else if (msg == "destroyFrame")
 	{
