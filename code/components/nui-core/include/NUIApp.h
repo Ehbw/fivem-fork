@@ -57,11 +57,9 @@ protected:
 protected:
 	virtual void OnContextInitialized() override;
 private:
-	std::map<std::string, TProcessMessageHandler> m_processMessageHandlers;
+	std::vector<std::pair<CefString, TProcessMessageHandler>> m_processMessageHandlers;
 
-	std::map<std::string, TV8Handler> m_v8Handlers;
-
-	std::map<int64_t, CefRefPtr<CefV8Value>> m_origEventListeners;
+	std::vector<std::pair<std::string, TV8Handler>> m_v8Handlers;
 
 	std::vector<TContextReleaseHandler> m_v8ReleaseHandlers;
 
