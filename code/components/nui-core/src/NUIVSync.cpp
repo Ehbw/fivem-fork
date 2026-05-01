@@ -111,8 +111,8 @@ static InitFunction postInitFunction([]()
 		return;
 	}
 
-	static bool nuiExternalFramebegin = true;
-	static ConVar<bool> nuiExternalFrame("nui_useExternalFrame", ConVar_Archive, true, &nuiExternalFramebegin);
+	static bool nuiExternalFramebegin = false;
+	static ConVar<bool> nuiExternalFrame("nui_useExternalFrame", ConVar_Archive, false, &nuiExternalFramebegin);
 
 	if (!nuiExternalFramebegin)
 	{
