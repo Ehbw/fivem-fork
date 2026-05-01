@@ -125,6 +125,19 @@ static auto roundUp(int x, int y)
 	return x + (y - (x % y));
 }
 
+static int GetPrimaryMonitorRefreshRate()
+{
+	DEVMODE devMode = {};
+	devMode.dmSize = sizeof(DEVMODE);
+
+	if (EnumDisplaySettings(nullptr, ENUM_CURRENT_SETTINGS, &devMode))
+	{
+		return devMode.dmDisplayFrequency;
+	}
+
+	return 240;
+}
+
 void NUIWindow::Initialize(CefString url)
 {
 	static bool nuiSharedResourcesEnabled = true;
@@ -165,8 +178,7 @@ void NUIWindow::Initialize(CefString url)
 
 	CefBrowserSettings settings;
 	settings.javascript_close_windows = STATE_DISABLED;
-	// NOTE: CEF will only use this is external_begin_frame_enabled is false.
-	settings.windowless_frame_rate = 240;
+	settings.windowless_frame_rate = GetPrimaryMonitorRefreshRate();
 	CefString(&settings.default_encoding).FromString("utf-8");
 
 	CefRefPtr<CefRequestContext> rc;
