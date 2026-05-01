@@ -143,9 +143,6 @@ void NUIWindow::Initialize(CefString url)
 	static bool nuiSharedResourcesEnabled = true;
 	static ConVar<bool> nuiSharedResources("nui_useSharedResources", ConVar_Archive, true, &nuiSharedResourcesEnabled);
 
-	static bool nuiExternalFramebegin = false;
-	static ConVar<bool> nuiExternalFrame("nui_useExternalFrame", ConVar_Archive, false, &nuiExternalFramebegin);
-
 	if (m_renderBuffer)
 	{
 		delete[] m_renderBuffer;
@@ -166,11 +163,9 @@ void NUIWindow::Initialize(CefString url)
 	}
 
 	m_usingSharedTextures = (!CfxIsWine() && nuiSharedResourcesEnabled);
-	m_usingExternalFrame = nuiExternalFramebegin;
 	CefWindowInfo info;
 	info.SetAsWindowless(NULL);
 	info.shared_texture_enabled = m_usingSharedTextures;
-	info.external_begin_frame_enabled = IsPrimary() && m_usingExternalFrame;
 	info.bounds.x = 0;
 	info.bounds.y = 0;
 	info.bounds.width = m_width;
@@ -272,32 +267,8 @@ void NUIWindow::TouchMessage()
 	m_lastMessageTime = timeGetTime();
 }
 
-void NUIWindow::SendBeginFrame()
-{
-	auto browser = GetBrowser();
-	if (!browser)
-	{
-		return;
-	}
-
-	auto host = browser->GetHost();
-	if (host && m_usingExternalFrame)
-	{
-		host->SendExternalBeginFrame();
-	}
-}
-
 void NUIWindow::UpdateFrame()
 {
-	if (
-#ifdef IS_RDR3
-	!g_nuiGi->IsUsingD3D12() ||
-#endif
-	GetPaintType() != NUIPaintTypePostRender)
-	{
-		SendBeginFrame();
-	}
-
 	if (m_client)
 	{
 		auto browser = ((NUIClient*)m_client.get())->GetBrowser();
@@ -323,6 +294,7 @@ void NUIWindow::UpdateFrame()
 
 	if (!GetTexture().GetRef())
 	{
+		trace("no texture reference\n");
 		return;
 	}
 
@@ -339,6 +311,7 @@ void NUIWindow::UpdateFrame()
 
 		if (m_width != resX || m_height != resY)
 		{
+			trace("old width %i, new width %i, old height %i, new height %i\n", m_width, resX, m_height, resY);
 			m_width = resX;
 			m_height = resY;
 
@@ -369,12 +342,14 @@ void NUIWindow::UpdateFrame()
 				if (browser)
 				{
 					browser->GetHost()->WasResized();
+					browser->GetHost()->NotifyScreenInfoChanged();
 				}
 				else
 				{
 					client->OnClientCreated.Connect([this](NUIClient* client)
 					{
 						client->GetBrowser()->GetHost()->WasResized();
+						client->GetBrowser()->GetHost()->NotifyScreenInfoChanged();
 					});
 				}
 			}
