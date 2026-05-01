@@ -66,16 +66,24 @@ NUIWindow::~NUIWindow()
 		nuiClient->SetWindowValid(false);
 		nuiClient->ClearWindow();
 
-		std::unique_lock _(nuiClient->GetWindowLock());
-		if (nuiClient->GetBrowser() && nuiClient->GetBrowser()->GetHost())
+		CefRefPtr<CefBrowser> browser;
+		{
+			std::unique_lock _(nuiClient->GetWindowLock());
+			if (nuiClient->GetBrowser() && nuiClient->GetBrowser()->GetHost())
+			{
+				browser = nuiClient->GetBrowser();
+			}
+		}
+
+		if (browser)
 		{
 			if (!CefCurrentlyOn(TID_UI))
 			{
-				CefPostTask(TID_UI, base::BindOnce(&::CloseBrowser, scoped_refptr(nuiClient->GetBrowser())));
+				CefPostTask(TID_UI, base::BindOnce(&::CloseBrowser, scoped_refptr(browser)));
 			}
 			else
 			{
-				nuiClient->GetBrowser()->GetHost()->CloseBrowser(true);
+				browser->GetHost()->CloseBrowser(true);
 			}
 		}
 	}
@@ -122,8 +130,8 @@ void NUIWindow::Initialize(CefString url)
 	static bool nuiSharedResourcesEnabled = true;
 	static ConVar<bool> nuiSharedResources("nui_useSharedResources", ConVar_Archive, true, &nuiSharedResourcesEnabled);
 
-	static bool nuiExternalFramebegin = true;
-	static ConVar<bool> nuiExternalFrame("nui_useExternalFrame", ConVar_Archive, true, &nuiExternalFramebegin);
+	static bool nuiExternalFramebegin = false;
+	static ConVar<bool> nuiExternalFrame("nui_useExternalFrame", ConVar_Archive, false, &nuiExternalFramebegin);
 
 	if (m_renderBuffer)
 	{
@@ -149,8 +157,7 @@ void NUIWindow::Initialize(CefString url)
 	CefWindowInfo info;
 	info.SetAsWindowless(NULL);
 	info.shared_texture_enabled = m_usingSharedTextures;
-	// External frame calls are handled in NUIVsync, for DUI/Vulkan NUIWindow::BeginFrame
-	info.external_begin_frame_enabled = m_usingExternalFrame;
+	info.external_begin_frame_enabled = IsPrimary() && m_usingExternalFrame;
 	info.bounds.x = 0;
 	info.bounds.y = 0;
 	info.bounds.width = m_width;
