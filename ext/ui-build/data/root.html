@@ -88,10 +88,17 @@ registerFrameFunction(function(msg, frameName, frameUrl)
 		const frame = document.createElement('iframe');
 		frame.name = frameName;
 		frame.style.visibility = 'hidden';
-		// focus-without-user-activation to maintain backwards compatability with 'autofocus' fields used in resources like chat.
-		// autoplay & encrypted-media to maintain backwards compatability with 'autoplay' and for certain media types
-		frame.allow = 'microphone *; camera *; focus-without-user-activation; autoplay; encrypted-media';
-		frame.sandbox = 'allow-forms allow-modals allow-scripts allow-same-origin allow-presentation';
+		if (frameName == "loadingscreen") 
+		{
+			frame.allow = "autoplay; encrypted-media"
+		}
+		else
+		{
+			// focus-without-user-activation to maintain backwards compatability with 'autofocus' fields used in resources like chat.
+			// autoplay & encrypted-media to maintain backwards compatability with 'autoplay' and for certain media types
+			frame.allow = 'microphone *; camera *; focus-without-user-activation; autoplay; encrypted-media';
+		}
+		frame.sandbox = 'allow-forms allow-modals allow-scripts allow-presentation';
 		frame.src = frameUrl;
 		frame.tabIndex = -1;
 
