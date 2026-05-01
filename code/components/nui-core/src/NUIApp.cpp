@@ -202,7 +202,7 @@ void NUIApp::OnBeforeCommandLineProcessing(const CefString& process_type, CefRef
 	command_line->AppendSwitch("disable-extensions");
 	command_line->AppendSwitch("disable-spell-checking");
 #if !GTA_NY
-	command_line->AppendSwitch("enable-gpu-rasterization");
+	command_line->AppendSwitch("enable-gpu-rasterization");	
 #else
 	command_line->AppendSwitch("disable-gpu-vsync");
 #endif
@@ -230,9 +230,13 @@ void NUIApp::OnBeforeCommandLineProcessing(const CefString& process_type, CefRef
 
 bool NUIApp::OnProcessMessageReceived(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, CefProcessId source_process, CefRefPtr<CefProcessMessage> message)
 {
-	auto handler = m_processMessageHandlers.find(message->GetName());
-	bool success = false;
+	auto handler = std::find_if(m_processMessageHandlers.begin(), m_processMessageHandlers.end(),
+	[&](const auto& p)
+	{
+		return p.first == message->GetName();
+	});
 
+	bool success = false;
 	if (handler != m_processMessageHandlers.end())
 	{
 		success = handler->second(browser, message);
@@ -247,13 +251,16 @@ bool NUIApp::OnProcessMessageReceived(CefRefPtr<CefBrowser> browser, CefRefPtr<C
 
 bool NUIApp::Execute(const CefString& name, CefRefPtr<CefV8Value> object, const CefV8ValueList& arguments, CefRefPtr<CefV8Value>& retval, CefString& exception)
 {
-	auto handler = m_v8Handlers.find(name);
-	bool success = false;
+	auto handler = std::find_if(m_v8Handlers.begin(), m_v8Handlers.end(),
+	[&](const auto& p)
+	{
+		return p.first == name.ToString();
+	});
 
+	bool success = false;
 	if (handler != m_v8Handlers.end())
 	{
 		retval = handler->second(arguments, exception);
-
 		success = true;
 	}
 	else
@@ -266,12 +273,22 @@ bool NUIApp::Execute(const CefString& name, CefRefPtr<CefV8Value> object, const 
 
 void NUIApp::AddProcessMessageHandler(std::string key, TProcessMessageHandler handler)
 {
-	m_processMessageHandlers[key] = handler;
+	auto it = std::lower_bound(m_processMessageHandlers.begin(), m_processMessageHandlers.end(), key,
+	[](const auto& p, const auto& k)
+	{
+		return p.first < k;
+	});
+	m_processMessageHandlers.insert(it, { std::move(key), std::move(handler) });
 }
 
 void NUIApp::AddV8Handler(std::string key, TV8Handler handler)
 {
-	m_v8Handlers[key] = handler;
+	auto it = std::lower_bound(m_v8Handlers.begin(), m_v8Handlers.end(), key,
+	[](const auto& p, const auto& k)
+	{
+		return p.first < k;
+	});
+	m_v8Handlers.insert(it, { std::move(key), std::move(handler) });
 }
 
 void NUIApp::AddContextReleaseHandler(TContextReleaseHandler handler)
