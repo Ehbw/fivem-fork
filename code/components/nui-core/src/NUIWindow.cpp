@@ -294,7 +294,6 @@ void NUIWindow::UpdateFrame()
 
 	if (!GetTexture().GetRef())
 	{
-		trace("no texture reference\n");
 		return;
 	}
 
@@ -311,7 +310,6 @@ void NUIWindow::UpdateFrame()
 
 		if (m_width != resX || m_height != resY)
 		{
-			trace("old width %i, new width %i, old height %i, new height %i\n", m_width, resX, m_height, resY);
 			m_width = resX;
 			m_height = resY;
 
@@ -748,6 +746,7 @@ void NUIWindow::UpdateSharedResource(CefRenderHandler::PaintElementType type)
 
 	MarkRenderBufferDirty();
 }
+
 
 CefRect NUIWindow::GetPopupRect()
 {
