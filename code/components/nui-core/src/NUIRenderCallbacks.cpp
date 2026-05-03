@@ -20,7 +20,6 @@ extern bool g_shouldHideCursor;
 extern POINT g_cursorPos;
 
 extern fwRefContainer<nui::GITexture> g_cursorTexture;
-extern fwEvent<std::chrono::microseconds, std::chrono::microseconds> OnVSync;
 
 HCURSOR g_defaultCursor;
 extern HCURSOR InitDefaultCursor();
@@ -29,19 +28,6 @@ extern void TranslateWindowRect(const fwRefContainer<NUIWindow>& window, CRect* 
 
 static HookFunction initFunction([] ()
 {
-	OnVSync.Connect([](std::chrono::microseconds, std::chrono::microseconds)
-	{
-		Instance<NUIWindowManager>::Get()->ForAllWindows([=](fwRefContainer<NUIWindow> window)
-		{
-			if (window->GetPaintType() != NUIPaintTypePostRender)
-			{
-				return;
-			}
-
-			window->SendBeginFrame();
-		});
-	});
-
 	g_nuiGi->OnRender.Connect([]()
 	{
 		static auto initCursor = ([]()
