@@ -584,60 +584,68 @@ fwRefContainer<GITexture> GtaNuiInterface::CreateTextureFromShareHandle(HANDLE s
 
 
 	WRL::ComPtr<ID3D11Texture2D> resource;
-	if (SUCCEEDED(device->OpenSharedResource1(shareHandle, IID_PPV_ARGS(&resource))) || !resource)
+	auto hr = device->OpenSharedResource1(shareHandle, IID_PPV_ARGS(&resource));
+	if (FAILED(hr) || !resource)
 	{
-		return new GtaNuiTexture([this, device, resource, cb](GtaNuiTexture* texture)
+		trace("Failed to open shared resource for NUI texture creation 0x%x\n", hr);
+		if (cb)
 		{
-			D3D11_TEXTURE2D_DESC desc;
-			resource->GetDesc(&desc);
-
-			struct
-			{
-				void* vtbl;
-				ID3D11Device* rawDevice;
-			}* deviceStuff = (decltype(deviceStuff))GetD3D11Device();
-
-			rage::grcManualTextureDef textureDef;
-			memset(&textureDef, 0, sizeof(textureDef));
-			textureDef.isStaging = 1;
-			textureDef.usage = 1;
-			textureDef.arraySize = 1;
-
-			auto texRef = rage::grcTextureFactory::getInstance()->createManualTexture(desc.Width, desc.Height, 2 /* maps to BGRA DXGI format */, nullptr, true, &textureDef);
-
-			if (texRef)
-			{
-				if (texRef->texture)
-				{
-#ifdef GTA_FIVE
-					rage::grcResourceCache::GetInstance()->QueueDelete(texRef->texture);
-					rage::grcResourceCache::GetInstance()->FlushQueue();
-#else
-					texRef->texture->Release();
-#endif
-					texRef->texture = NULL;
-				}
-
-				resource.CopyTo(&texRef->texture);
-
-				if (texRef->srv)
-				{
-					texRef->srv->Release();
-				}
-
-				deviceStuff->rawDevice->CreateShaderResourceView(resource.Get(), nullptr, &texRef->srv);
-			}
-
-			texture->MarkOverriddenSRV();
-			texture->MarkOverriddenTexture();
-
-			if (cb)
-			{
-				cb();
-			}
-			return texRef;
-		});
+			cb();
+		}
+		return new GtaNuiTexture(nullptr);
 	}
+
+	return new GtaNuiTexture([this, device, resource, cb](GtaNuiTexture* texture)
+	{
+		D3D11_TEXTURE2D_DESC desc;
+		resource->GetDesc(&desc);
+
+		struct
+		{
+			void* vtbl;
+			ID3D11Device* rawDevice;
+		}* deviceStuff = (decltype(deviceStuff))GetD3D11Device();
+
+		rage::grcManualTextureDef textureDef;
+		memset(&textureDef, 0, sizeof(textureDef));
+		textureDef.isStaging = 1;
+		textureDef.usage = 1;
+		textureDef.arraySize = 1;
+
+		auto texRef = rage::grcTextureFactory::getInstance()->createManualTexture(desc.Width, desc.Height, 2 /* maps to BGRA DXGI format */, nullptr, true, &textureDef);
+
+		if (texRef)
+		{
+			if (texRef->texture)
+			{
+#ifdef GTA_FIVE
+				rage::grcResourceCache::GetInstance()->QueueDelete(texRef->texture);
+				rage::grcResourceCache::GetInstance()->FlushQueue();
+#else
+				texRef->texture->Release();
+#endif
+				texRef->texture = NULL;
+			}
+
+			resource.CopyTo(&texRef->texture);
+
+			if (texRef->srv)
+			{
+				texRef->srv->Release();
+			}
+
+			deviceStuff->rawDevice->CreateShaderResourceView(resource.Get(), nullptr, &texRef->srv);
+		}
+
+		texture->MarkOverriddenSRV();
+		texture->MarkOverriddenTexture();
+
+		if (cb)
+		{
+			cb();
+		}
+		return texRef;
+	});
 #else
 	if (GetCurrentGraphicsAPI() == GraphicsAPI::D3D12)
 	{
@@ -801,15 +809,6 @@ void GtaNuiInterface::UpdateTexture(HANDLE shareHandle, fwRefContainer<GITexture
 
 	g_onRenderQueue.emplace([cefTexture, cefSrv, texture, cb]()
 	{
-		if (cb)
-		{
-			// Pass SRV to be used for DUI (if applicable)
-			if (cb(cefSrv.Get()))
-			{
-				cefTexture->Release();
-				return;
-			}
-		}
 
 		auto texRef = (rage::grcTexture*)texture->GetHostTexture();
 		if (texRef->texture)
@@ -828,6 +827,16 @@ void GtaNuiInterface::UpdateTexture(HANDLE shareHandle, fwRefContainer<GITexture
 
 		texRef->srv = cefSrv.Get();
 		texRef->srv->AddRef();
+
+		if (cb)
+		{
+			// Pass SRV to be used for DUI (if applicable)
+			if (cb(cefSrv.Get()))
+			{
+				cefTexture->Release();
+				return;
+			}
+		}
 	});
 #elif defined(IS_RDR3)
 	if (GetCurrentGraphicsAPI() == GraphicsAPI::D3D12)
