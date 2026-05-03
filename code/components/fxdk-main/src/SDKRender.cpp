@@ -49,8 +49,11 @@ struct GameRenderData
 	int height;
 	bool requested;
 
+	bool requestedFlipped;
+	HANDLE flippedHandle;
+
 	GameRenderData()
-		: requested(false)
+		: requested(false), requestedFlipped(false)
 	{
 	}
 };
@@ -138,11 +141,12 @@ static void CreateTextures(int width, int height)
 		// error handling code
 	}
 
+	handleData->flippedHandle = sharedHandle;
 	handleData->handle = sharedHandle;
 }
 
 void InitRender()
-{
+{ 
 	// set the platform info
 	bgfx::PlatformData pd;
 	pd.nwh = NULL;
@@ -248,7 +252,6 @@ void Render()
 		rgd->mainWindowHandle = NULL;
 	}
 
-	// TODO: rgd->inited is never set to true, investigate why (seems to be a recent breakage, happens on CEF 103, 124 and 130.. maybe just broken in debug?)
 	if ((rgd->inited && !inited) || rgd->createHandles)
 	{
 		inited = true;
