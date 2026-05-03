@@ -69,7 +69,7 @@ void NUIApp::OnContextCreated(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame>
 	{
 		frame->ExecuteJavaScript(fmt::sprintf(g_epoxyScript, frame->GetName().ToString()), "nui://epoxy", 0);
 	}
-
+	                     
 	frame->ExecuteJavaScript(g_gameViewScript, "nui://game-view-wrapper", 0);
 
 	{
@@ -172,15 +172,15 @@ void NUIApp::OnBeforeCommandLineProcessing(const CefString& process_type, CefRef
 	}
 
 	// It's not right to have this enabled and enable *all* experimental features
-	// Rather any experimental feature should be added on a case-by-case 
+	// Rather any experimental feature should be added on a case-by-case
 	//command_line->AppendSwitch("enable-experimental-web-platform-features");
 
 	// These experimental features are currently broken as of writing (April 2026, M144 build)
 	// While we are also disabling web platform features, it's worth keeping a list of ones that **are** broken, why and their impact on NUI
-	// 
+	//
 	// WidthAndHeightAsPresentationAttributesOnNestedSvg:
 	// Breaks SVG rendering in popular resources, see https://issues.chromium.org/issues/449170647 for chromium issue
-	// 
+	//
 	// SelectionAndFocusedVisiblePositionMatch
 	// Private issue report claims that this is responsible for causing UI freezes. This might be causing some cases of UI freezes
 	// but there's no public info, but better to keep here until
@@ -190,7 +190,12 @@ void NUIApp::OnBeforeCommandLineProcessing(const CefString& process_type, CefRef
 	command_line->AppendSwitchWithValue("disable-blink-features", "WidthAndHeightAsPresentationAttributesOnNestedSvg, SelectionAndFocusedVisiblePositionMatch");
 
 	command_line->AppendSwitch("ignore-gpu-blocklist");
-	command_line->AppendSwitch("disable-direct-composition");
+	if (!launch::IsSDK())
+	{
+		// FxDK makes use of the Views Framework within CEF
+		// which depends on direct composition in order to draw.
+		command_line->AppendSwitch("disable-direct-composition");
+	}
 	command_line->AppendSwitch("disable-gpu-driver-bug-workarounds");
 	command_line->AppendSwitchWithValue("default-encoding", "utf-8");
 	command_line->AppendSwitchWithValue("autoplay-policy", "no-user-gesture-required");
