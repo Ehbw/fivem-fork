@@ -52,7 +52,7 @@ static std::string CleanURL(const std::string& url)
 
 static InitFunction initFunction([] ()
 {
-	static auto sendMessageToFrame = [](fx::ScriptContext& context, const char* native, auto& execFn)
+	static auto sendMessageToFrame = [](fx::ScriptContext& context, const char* native, std::function<void(std::string_view)> execFn)
 	{
 		// get the message as JSON and validate it by parsing/recreating (so we won't end up injecting malicious JS into the browser root)
 		const char* messageJson = context.GetArgument<const char*>(0);

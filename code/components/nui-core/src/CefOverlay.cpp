@@ -49,12 +49,12 @@ class FeatureStorage : private Traits
 public:
 	static constexpr auto GetStage()
 	{
-		return kStage;
+		return Traits::kStage;
 	}
 
 	static constexpr auto GetId()
 	{
-		return kId;
+		return Traits::kId;
 	}
 
 	auto& GetFeatureStateCache()
@@ -639,6 +639,7 @@ namespace nui
 	__declspec(dllexport) void SignalPoll(fwString frameName)
 	{
 		auto rootWindow = Instance<NUIWindowManager>::Get()->GetRootWindow();
-		rootWindow->SignalPoll(std::string(frameName.c_str()));
+		std::string frame = frameName.c_str();
+		rootWindow->SignalPoll(frame);
 	}
 }
