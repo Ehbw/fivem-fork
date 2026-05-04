@@ -98,7 +98,7 @@ registerFrameFunction(function(msg, frameName, frameUrl)
 			// autoplay & encrypted-media to maintain backwards compatability with 'autoplay' and for certain media types
 			frame.allow = 'microphone *; camera *; focus-without-user-activation; autoplay; encrypted-media';
 		}
-		frame.sandbox = 'allow-forms allow-modals allow-scripts allow-presentation';
+		frame.sandbox = 'allow-forms allow-modals allow-scripts allow-same-origin allow-presentation';
 		frame.src = frameUrl;
 		frame.tabIndex = -1;
 
