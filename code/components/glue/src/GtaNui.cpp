@@ -926,11 +926,6 @@ void GtaNuiInterface::UpdateTexture(HANDLE shareHandle, fwRefContainer<GITexture
 			srvDesc.arraySize = 1;
 			rage::sga::Driver_Create_ShaderResourceView(texRef, srvDesc);
 
-			if (cb)
-			{
-				cb(nullptr);
-			}
-
 			g_earlyOnRenderQueue.emplace([oldImage, oldMemory]()
 			{
 				VkDevice device = (VkDevice)GetGraphicsDriverHandle();
@@ -945,6 +940,11 @@ void GtaNuiInterface::UpdateTexture(HANDLE shareHandle, fwRefContainer<GITexture
 					vkFreeMemory(device, oldMemory, nullptr);
 				}
 			});
+
+			if (cb)
+			{
+				cb(nullptr);
+			}
 		});
 	}
 #endif
