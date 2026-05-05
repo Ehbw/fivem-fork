@@ -343,6 +343,14 @@ bool NUIClient::OnConsoleMessage(CefRefPtr<CefBrowser> browser, cef_log_severity
 		return false;
 	}
 
+	// Suppress "An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing." errors from being shown.
+	// allow-scripts and allow-same-origin is required for backwards compatability and we are aware of the risks that it may pose.
+	// The console warning has no value being shown to the end user and only serves to cause confusion/fear.
+	if (messageStr.find(L"both allow-scripts and allow-same-origin") != std::string::npos)
+	{
+		return true;
+	}
+
 	std::string channel = "nui:console";
 
 	if (sourceStr.find(L"nui://") == 0)
