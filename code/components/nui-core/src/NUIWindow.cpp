@@ -162,7 +162,7 @@ void NUIWindow::Initialize(CefString url)
 		m_client = client;
 	}
 
-	m_usingSharedTextures = (!CfxIsWine() && nuiSharedResourcesEnabled);
+	m_usingSharedTextures = nuiSharedResourcesEnabled;
 	CefWindowInfo info;
 	info.SetAsWindowless(NULL);
 	info.shared_texture_enabled = m_usingSharedTextures;
