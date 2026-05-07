@@ -26,6 +26,7 @@
 
 #include <sstream>
 #include <regex>
+#include <NUIDevtools.h>
 
 extern nui::GameInterface* g_nuiGi;
 bool shouldHaveRootWindow;
@@ -126,6 +127,7 @@ void NUIClient::OnLoadStart(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> f
 		m_loadedMainFrame = false;
 	}
 
+	browser->GetHost()->AddDevToolsMessageObserver(g_devToolsObserver);
 	if (g_audioSink)
 	{
 		browser->GetHost()->SetAudioMuted(true);
@@ -146,9 +148,6 @@ void NUIClient::OnLoadEnd(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> fra
 	auto url = frame->GetURL();
 	auto name = frame->GetName();
 	TriggerLoadEnd((url == "nui://game/ui/root.html") ? "__root" : name);
-
-	// Reset zoom level in case it ever got zoomed in/out
-	browser->GetHost()->SetZoomLevel(0.0);
 
 	if (auto parent = frame->GetParent(); parent && parent->IsMain())
 	{
@@ -732,9 +731,9 @@ bool NUIClient::OnChromeCommand(CefRefPtr<CefBrowser> browser, int command_id, c
 		case IDC_DEV_TOOLS_TOGGLE:
 		case IDC_DEVELOPER_MENU:
 			return true;
-		default:
-			return false;
-	}
+			default:
+				return false;
+		}
 }
 
 void NUIClient::OnBeforeClose(CefRefPtr<CefBrowser> browser)
