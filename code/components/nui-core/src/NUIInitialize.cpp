@@ -49,7 +49,7 @@
 #include <include/cef_version.h>
 
 #include "DeferredInitializer.h"
-#include <Error.h>
+#include <NUIDevtools.h>
 
 namespace nui
 {
@@ -1502,6 +1502,29 @@ void SwitchContext(const std::string& contextId)
 	}
 }
 
+static bool nuiEnableDevtools = true;
+static void NuiDevtoolModeChanged(internal::ConsoleVariableEntry<bool>* var)
+{
+	nuiEnableDevtools = var->GetRawValue();
+
+	if (!nuiEnableDevtools)
+	{
+		auto rootWindow = Instance<NUIWindowManager>::Get()->GetRootWindow();
+
+		if (rootWindow.GetRef())
+		{
+			auto browser = rootWindow->GetBrowser();
+
+			if (browser)
+			{
+				browser->GetHost()->CloseDevTools();
+			}
+		}
+	}
+
+	g_devToolsObserver->SetAllowed(nuiEnableDevtools);
+}
+
 void Initialize(nui::GameInterface* gi)
 {
 	g_nuiGi = gi;
@@ -1512,6 +1535,7 @@ void Initialize(nui::GameInterface* gi)
     }
 
 	static ConVar<std::string> uiUrlVar("ui_url", ConVar_UserPref, "https://nui-game-internal/ui/app/index.html");
+	static ConVar<bool> enableDevtoolVar("nui_enableDevtools", ConVar_Archive | ConVar_Replicated, true, &NuiDevtoolModeChanged);
 
 	auto deferredInitializer = DeferredInitializer::Create([]()
 	{
@@ -1626,6 +1650,12 @@ void Initialize(nui::GameInterface* gi)
 	
 	static ConsoleCommand devtoolsCmd("nui_devtools", []()
 	{
+		if (!nui::HasMainUI() && !nuiEnableDevtools)
+		{
+			trace("nui_devtools requires the 'nui_enableDevtools' replicated convar to be enabled");
+			return;
+		}
+
 		auto rootWindow = Instance<NUIWindowManager>::Get()->GetRootWindow();
 
 		if (rootWindow.GetRef())
@@ -1646,6 +1676,12 @@ void Initialize(nui::GameInterface* gi)
 
 	static ConsoleCommand devtoolsWindowCmd("nui_devtools", [](const std::string& windowName)
 	{
+		if (!nui::HasMainUI() && !nuiEnableDevtools)
+		{
+			trace("nui_devtools requires the 'nui_enableDevtools' replicated convar to be enabled");
+			return;
+		}
+
 		auto browser = nui::GetNUIWindowBrowser(windowName);
 
 		if (!browser)
