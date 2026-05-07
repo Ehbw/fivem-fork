@@ -18,7 +18,7 @@
 
 static nui::TResourceLookupFn g_resourceLookupFunc;
 
-extern const std::map<std::string_view, std::string_view, std::less<>> g_mimeTypeMap;
+extern const std::unordered_map<std::string_view, std::string_view, std::less<>> g_mimeTypeMap;
 
 namespace nui
 {
@@ -159,9 +159,7 @@ public:
 			}
 		}
 
-		handle_request = false;
-		callback->Continue();
-
+		handle_request = true;
 		return true;
 	}
 
@@ -211,6 +209,25 @@ public:
 		}
 	}
 
+#if 0
+	//TODO: Read and Open need to support Partial content for this to work.
+    virtual bool Skip(int64_t bytes_to_skip, int64_t& bytes_skipped, CefRefPtr<CefResourceSkipCallback> callback) override
+	{
+		if (file_ != vfs::Device::InvalidHandle)
+		{
+			int64_t newPos = device_->Seek(file_, bytes_to_skip, SEEK_CUR);
+			if (newPos >= 0)
+			{
+				bytes_skipped = bytes_to_skip;
+				return true;
+			}
+		}
+
+		bytes_skipped = -2;
+		return false;
+	}
+#endif
+
 	void Close()
 	{
 		if (device_.GetRef() && file_ != vfs::Device::InvalidHandle)
@@ -227,7 +244,7 @@ public:
 		Close();
 	}
 
-	virtual bool ReadResponse(void* data_out, int bytes_to_read, int& bytes_read, CefRefPtr<CefCallback> callback)
+	virtual bool Read(void* data_out, int bytes_to_read, int& bytes_read, CefRefPtr<CefResourceReadCallback> callback)
 	{
 		if (file_ != vfs::Device::InvalidHandle)
 		{
@@ -243,6 +260,7 @@ public:
 			return readMore;
 		}
 
+        bytes_read = 0;
 		return false;
 	}
 
@@ -254,9 +272,9 @@ class ForbiddenResourceHandler : public CefResourceHandler
 public:
 	IMPLEMENT_REFCOUNTING(ForbiddenResourceHandler);
 
-	virtual bool ProcessRequest(CefRefPtr<CefRequest> request, CefRefPtr<CefCallback> callback) override
+	virtual bool Open(CefRefPtr<CefRequest> request, bool& handle_request, CefRefPtr<CefCallback> callback) override
 	{
-		callback->Continue();
+		handle_request = true;
 		return true;
 	}
 
@@ -266,10 +284,9 @@ public:
 		response_length = 0;
 	}
 
-	virtual bool ReadResponse(void* data_out, int bytes_to_read, int& bytes_read, CefRefPtr<CefCallback> callback) override
+	virtual bool Read(void* data_out, int bytes_to_read, int& bytes_read, CefRefPtr<CefResourceReadCallback> callback) override
 	{
 		bytes_read = 0;
-
 		return true;
 	}
 
@@ -334,8 +351,7 @@ CefRefPtr<CefResourceHandler> NUISchemeHandlerFactory::Create(CefRefPtr<CefBrows
 OVERLAY_DECL fwEvent<const char*, CefRefPtr<CefRequest>, CefRefPtr<CefResourceHandler>&> OnSchemeCreateRequest;
 
 OVERLAY_DECL fwEvent<CefRefPtr<CefBrowser>, CefRefPtr<CefFrame>, CefRefPtr<CefRequest>, CefRefPtr<CefResourceHandler>&> OnGetResourceHandler;
-
-const std::map<std::string_view, std::string_view, std::less<>> g_mimeTypeMap{
+const std::unordered_map<std::string_view, std::string_view, std::less<>> g_mimeTypeMap{
 	{ "*3gpp", "audio/3gpp" },
 	{ "*jpm", "video/jpm" },
 	{ "*mp3", "audio/mp3" },
