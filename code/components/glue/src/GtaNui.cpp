@@ -162,7 +162,11 @@ public:
 			auto device = ::GetD3D11Device();
 			if (device)
 			{
-				device->QueryInterface(IID_PPV_ARGS(&m_d3d11Device1));
+				HRESULT hr = device->QueryInterface(IID_PPV_ARGS(&m_d3d11Device1));
+				if (FAILED(hr))
+				{
+					FatalErrorNoReport("Unable to retrieve D3D11.1 Device\n Query Failed with 0x%x, This systems GPU drivers may not support D3D11.1!", hr);
+				}
 			}
 		}
 		return m_d3d11Device1;
@@ -811,17 +815,9 @@ void GtaNuiInterface::UpdateTexture(HANDLE shareHandle, fwRefContainer<GITexture
 	{
 
 		auto texRef = (rage::grcTexture*)texture->GetHostTexture();
-		if (texRef->texture)
-		{
-			texRef->texture->Release();
-			texRef->texture = NULL;
-		}
 
-		if (texRef->srv)
-		{
-			texRef->srv->Release();
-			texRef->srv = nullptr;
-		}
+		auto oldTex = texRef->texture;
+		auto oldSrv = texRef->srv;
 
 		texRef->texture = cefTexture;
 
@@ -834,8 +830,19 @@ void GtaNuiInterface::UpdateTexture(HANDLE shareHandle, fwRefContainer<GITexture
 			if (cb(cefSrv.Get()))
 			{
 				cefTexture->Release();
-				return;
 			}
+		}
+
+		if (oldTex)
+		{
+			oldTex->Release();
+			oldTex = nullptr;
+		}
+
+		if (texRef->srv)
+		{
+			oldSrv->Release();
+			oldSrv = nullptr;
 		}
 	});
 #elif defined(IS_RDR3)
