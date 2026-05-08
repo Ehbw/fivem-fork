@@ -318,7 +318,7 @@ namespace nui
 			else
 			{
 				std::unique_lock _(g_processMessageQueueMutex);
-				g_processMessageQueue[(type != "rootCall") ? processMessage->GetArgumentList()->GetString(0) : "__root"].push_back(processMessage);
+				g_processMessageQueue[(type != "rootCall") ? argumentList->GetString(0) : "__root"].push_back(processMessage);
 			}
 		});
 
