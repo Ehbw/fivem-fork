@@ -1667,9 +1667,10 @@ void Initialize(nui::GameInterface* gi)
 				CefWindowInfo wi;
 				wi.SetAsPopup(NULL, "NUI DevTools");
 
+				CefRefPtr<NUIDevtoolsClient> client;
 				CefBrowserSettings s;
 
-				browser->GetHost()->ShowDevTools(wi, new NUIClient(nullptr), s, {});
+				browser->GetHost()->ShowDevTools(wi, client, s, {});
 			}
 		}
 	});
@@ -1694,9 +1695,10 @@ void Initialize(nui::GameInterface* gi)
 			CefWindowInfo wi;
 			wi.SetAsPopup(NULL, fmt::sprintf("NUI DevTools - %s", windowName));
 
+			CefRefPtr<NUIDevtoolsClient> client;
 			CefBrowserSettings s;
 
-			browser->GetHost()->ShowDevTools(wi, new NUIClient(nullptr), s, {});
+			browser->GetHost()->ShowDevTools(wi, client, s, {});
 		}
 		else
 		{

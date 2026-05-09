@@ -285,7 +285,14 @@ void NUIClient::OnAfterCreated(CefRefPtr<CefBrowser> browser)
 
 bool NUIClient::OnProcessMessageReceived(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, CefProcessId source_process, CefRefPtr<CefProcessMessage> message)
 {
-	auto handler = m_processMessageHandlers.find(message->GetName());
+	if (source_process != PID_RENDERER)
+	{
+		trace("Process message recieved from wrong source process\n");
+		return false;
+	}
+
+	const auto& name = message->GetName();
+	auto handler = m_processMessageHandlers.find(name);
 	bool success = false;
 
 	if (handler != m_processMessageHandlers.end())
@@ -294,7 +301,7 @@ bool NUIClient::OnProcessMessageReceived(CefRefPtr<CefBrowser> browser, CefRefPt
 	}
 	else
 	{
-		trace("Unknown NUI process message: %s\n", message->GetName().ToString().c_str());
+		trace("Unknown NUI process message: %s\n", name.ToString().c_str());
 	}
 
 	return success;
@@ -302,12 +309,6 @@ bool NUIClient::OnProcessMessageReceived(CefRefPtr<CefBrowser> browser, CefRefPt
 
 void NUIClient::OnBeforeContextMenu(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, CefRefPtr<CefContextMenuParams> params, CefRefPtr<CefMenuModel> model)
 {
-	// Don't block context menu for devtools
-	if (!frame->GetURL().ToString().find("devtools://"))
-	{
-		return;
-	}
-
 	model->Clear();
 }
 
@@ -573,7 +574,7 @@ CefRefPtr<CefResourceHandler> NUIClient::GetResourceHandler(CefRefPtr<CefBrowser
 
 void NUIClient::AddProcessMessageHandler(std::string key, TProcessMessageHandler handler)
 {
-	m_processMessageHandlers[key] = handler;
+	m_processMessageHandlers.emplace(std::move(key), std::move(handler));
 }
 
 #ifdef NUI_WITH_AUDIO_SINKS
