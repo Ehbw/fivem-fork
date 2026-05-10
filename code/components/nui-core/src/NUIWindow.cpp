@@ -679,13 +679,15 @@ void NUIWindow::UpdateSharedResource(CefRenderHandler::PaintElementType type)
 	}
 
 	auto frame = this->LockFrame(type);
-	if (!frame || !frame->shared_handle)
+
+	if (!frame)
 	{
-		if (frame)
-		{
-			this->ReleaseFrame(type, frame->frame_seq);
-			return;
-		}
+		return;
+	}
+
+	if (!frame->shared_handle)
+	{
+		this->ReleaseFrame(type, frame->frame_seq);
 		return;
 	}
 
@@ -730,7 +732,7 @@ void NUIWindow::UpdateSharedResource(CefRenderHandler::PaintElementType type)
 		else
 		{
 			AddRef();
-			g_nuiGi->UpdateTexture(sharedHandle, texRef, nullptr, 1, w, h, [frameSequence, this, type, sharedHandle](void* srv)
+			g_nuiGi->UpdateTexture(sharedHandle, texRef, nullptr, 1, w, h, [frameSequence, this, type](void* srv)
 			{
 				ReleaseFrame(type, frameSequence);
 #ifdef GTA_FIVE
@@ -743,8 +745,6 @@ void NUIWindow::UpdateSharedResource(CefRenderHandler::PaintElementType type)
 			});
 		}
 	}
-
-	MarkRenderBufferDirty();
 }
 
 
