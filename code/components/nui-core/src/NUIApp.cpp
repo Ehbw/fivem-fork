@@ -171,6 +171,38 @@ void NUIApp::OnBeforeCommandLineProcessing(const CefString& process_type, CefRef
 		command_line->AppendSwitch("in-process-gpu");
 	}
 
+	static ConVar<bool> nuiReduceCEFUsage("nui_useReducedCEF", ConVar_Archive, false);
+
+	// Newer chromium and CEF introduce a lot more features, fixes and functionality.
+	// All of these have increased overhead and CPU usage, causing older or CPU limited systems to have impacted performance on gameplay with rendering. 
+	// This serves as a *temporary* convar to see what works and doesn't work at improving the experience for lower end systems.
+	if (nuiReduceCEFUsage.GetValue())
+	{
+		// Disable checker imaging
+		command_line->AppendSwitch("disable-checker-imaging");
+
+		// V8 idle gc can impact gameplay performance on lower end systems.
+		command_line->AppendSwitch("disable-v8-idle-tasks");
+
+		// Disable background networking overhead. This may cause issues with Widevine.
+		command_line->AppendSwitch("disable-background-networking");
+		command_line->AppendSwitch("disable-component-update");
+
+		command_line->AppendSwitch("disable-background-timer-throttling");
+		command_line->AppendSwitchWithValue("gpu-rasterization-msaa-sample-count", "0");
+		command_line->AppendSwitch("disable-renderer-backgrounding");
+
+		command_line->AppendSwitch("disable-gpu-watchdog");
+		command_line->AppendSwitch("disable-histogram-customizer");
+		command_line->AppendSwitch("disable-field-trial-config");
+		command_line->AppendSwitch("disable-translate");
+
+		// Disables background thread for hang monitor.
+		// In CEF this makes CefRequestHandler::OnRenderProcessUnresponsive & CefRequestHandler::OnRenderProcessResponsive noop
+		// But these are not currently used in NUI.
+		command_line->AppendSwitch("disable-hang-monitor");
+	}
+
 	// It's not right to have this enabled and enable *all* experimental features
 	// Rather any experimental feature should be added on a case-by-case
 	//command_line->AppendSwitch("enable-experimental-web-platform-features");
@@ -190,27 +222,62 @@ void NUIApp::OnBeforeCommandLineProcessing(const CefString& process_type, CefRef
 	command_line->AppendSwitchWithValue("disable-blink-features", "WidthAndHeightAsPresentationAttributesOnNestedSvg, SelectionAndFocusedVisiblePositionMatch");
 
 	command_line->AppendSwitch("ignore-gpu-blocklist");
+	
+	// FxDK makes use of the Views Framework within CEF
+	// which depends on direct composition in order to draw.
 	if (!launch::IsSDK())
 	{
-		// FxDK makes use of the Views Framework within CEF
-		// which depends on direct composition in order to draw.
 		command_line->AppendSwitch("disable-direct-composition");
 	}
 	command_line->AppendSwitch("disable-gpu-driver-bug-workarounds");
 	command_line->AppendSwitchWithValue("default-encoding", "utf-8");
 	command_line->AppendSwitchWithValue("autoplay-policy", "no-user-gesture-required");
-	command_line->AppendSwitchWithValue("disable-features", "HardwareMediaKeyHandling");
+	command_line->AppendSwitch("enable-gpu-rasterization");
+
+	// Disable features that aren't desired in NUI.
+	command_line->AppendSwitchWithValue("disable-features", 
+		"HardwareMediaKeyHandling," // Don't let NUI hijack hardware media key handling from other processes
+		"PrintCompositor," // NUI don't need print compositor (for printing pages)
+		"AutofillServerCommunication," // NUI doesn't need autofill
+		"AutofillEnableAccountWalletStorage," // NUI also doesn't need google wallet autofill
+		"CalculateNativeWinOcclusion," // Not relevant in OSR
+		"WebUSB," // NUI contexts shouldn't have access to USB API's
+	    "WebBluetooth," // Same with WebBluetooth API's
+		"SerialAPI," // Same with SerialAPI
+		"OptimizationHints," // fetch hints for preloading don't work in NUI and make no sense being enabled
+		"OptimizationHintsFetching" // ^, should already be partially no-op in CEF. But disable it anyway
+	);
+
+	// For lower end systems with fewer cores we want to limit the amount of threads.
+	// On lower end systems in busy scenarios could lead to a negative impact on the game performance
+	{
+		constexpr int kMinRasterThreads = 1;
+		constexpr int kMaxRasterThreads = 4;
+
+		int totalCores = std::thread::hardware_concurrency();
+
+		if (totalCores < 8)
+		{
+			// For a majority of the work, Rasterisation is handled on the GPU.
+			// However according to https://www.chromium.org/developers/design-documents/chromium-graphics/how-to-get-gpu-rasterization/
+			// it can veto it self and force rasterisation work to be handled on the CPU.
+			command_line->AppendSwitchWithValue("num-raster-threads", std::to_string(std::clamp<int>(totalCores / 4, kMinRasterThreads, kMaxRasterThreads)));
+		}
+	}
+	
+	// null-route urls that we don't want in CEF (tied to chrome services)
+	command_line->AppendSwitchWithValue("connectivity-check-url", "http://0.0.0.0");
+	command_line->AppendSwitchWithValue("lso-url", "http://0.0.0.0");
+	command_line->AppendSwitchWithValue("sync-url", "http://0.0.0.0");
+
+	// "NetworkServiceInProcess2", restore M103 behaviour by handling network in process, reducing IPC overhead and CPU usage from cross process communication
+	command_line->AppendSwitchWithValue("enable-features", "NetworkServiceInProcess2");
 
 	// Disable features forced into CEF by Chrome runtime/bootstrap
 	command_line->AppendSwitch("disable-gaia-services");
 	command_line->AppendSwitch("disable-sync");
 	command_line->AppendSwitch("disable-extensions");
 	command_line->AppendSwitch("disable-spell-checking");
-#if !GTA_NY
-	command_line->AppendSwitch("enable-gpu-rasterization");	
-#else
-	command_line->AppendSwitch("disable-gpu-vsync");
-#endif
 
 	// Don't allow accidental zooming in on a trackpad
 	command_line->AppendSwitch("disable-pinch");
