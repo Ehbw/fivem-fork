@@ -166,73 +166,39 @@ void NUIApp::OnBeforeCommandLineProcessing(const CefString& process_type, CefRef
 		}
 	}
 
+	// GPU Flags
 	if (nuiUseInProcessGpu.GetValue())
 	{
+		// In process GPU also disables the GPU watchdog.
 		command_line->AppendSwitch("in-process-gpu");
 	}
-
-	static ConVar<bool> nuiReduceCEFUsage("nui_useReducedCEF", ConVar_Archive, false);
-
-	// Newer chromium and CEF introduce a lot more features, fixes and functionality.
-	// All of these have increased overhead and CPU usage, causing older or CPU limited systems to have impacted performance on gameplay with rendering. 
-	// This serves as a *temporary* convar to see what works and doesn't work at improving the experience for lower end systems.
-	if (nuiReduceCEFUsage.GetValue())
-	{
-		// Disable checker imaging
-		command_line->AppendSwitch("disable-checker-imaging");
-
-		// V8 idle gc can impact gameplay performance on lower end systems.
-		command_line->AppendSwitch("disable-v8-idle-tasks");
-
-		// Disable background networking overhead. This may cause issues with Widevine.
-		command_line->AppendSwitch("disable-background-networking");
-		command_line->AppendSwitch("disable-component-update");
-
-		command_line->AppendSwitch("disable-background-timer-throttling");
-		command_line->AppendSwitchWithValue("gpu-rasterization-msaa-sample-count", "0");
-		command_line->AppendSwitch("disable-renderer-backgrounding");
-
-		command_line->AppendSwitch("disable-gpu-watchdog");
-		command_line->AppendSwitch("disable-histogram-customizer");
-		command_line->AppendSwitch("disable-field-trial-config");
-		command_line->AppendSwitch("disable-translate");
-
-		// Disables background thread for hang monitor.
-		// In CEF this makes CefRequestHandler::OnRenderProcessUnresponsive & CefRequestHandler::OnRenderProcessResponsive noop
-		// But these are not currently used in NUI.
-		command_line->AppendSwitch("disable-hang-monitor");
-	}
-
-	// It's not right to have this enabled and enable *all* experimental features
-	// Rather any experimental feature should be added on a case-by-case
-	//command_line->AppendSwitch("enable-experimental-web-platform-features");
-
-	// These experimental features are currently broken as of writing (April 2026, M144 build)
-	// While we are also disabling web platform features, it's worth keeping a list of ones that **are** broken, why and their impact on NUI
-	//
-	// WidthAndHeightAsPresentationAttributesOnNestedSvg:
-	// Breaks SVG rendering in popular resources, see https://issues.chromium.org/issues/449170647 for chromium issue
-	//
-	// SelectionAndFocusedVisiblePositionMatch
-	// Private issue report claims that this is responsible for causing UI freezes. This might be causing some cases of UI freezes
-	// but there's no public info, but better to keep here until
-	// a) the issue is made public
-	// b) this flag is removed or moved to stable.
-	//
-	command_line->AppendSwitchWithValue("disable-blink-features", "WidthAndHeightAsPresentationAttributesOnNestedSvg, SelectionAndFocusedVisiblePositionMatch");
-
-	command_line->AppendSwitch("ignore-gpu-blocklist");
-	
 	// FxDK makes use of the Views Framework within CEF
 	// which depends on direct composition in order to draw.
 	if (!launch::IsSDK())
 	{
 		command_line->AppendSwitch("disable-direct-composition");
 	}
+	command_line->AppendSwitch("ignore-gpu-blocklist");
 	command_line->AppendSwitch("disable-gpu-driver-bug-workarounds");
-	command_line->AppendSwitchWithValue("default-encoding", "utf-8");
-	command_line->AppendSwitchWithValue("autoplay-policy", "no-user-gesture-required");
 	command_line->AppendSwitch("enable-gpu-rasterization");
+	command_line->AppendSwitch("disable-gpu-process-crash-limit");
+	// some GPUs are in the GPU blacklist as 'forcing D3D9'
+	// this just forces D3D11 anyway.
+	command_line->AppendSwitchWithValue("use-angle", "d3d11");
+	//
+
+	// It's not right to have this enabled and enable *all* experimental features
+	// Rather any experimental feature should be added on a case-by-case
+	//command_line->AppendSwitch("enable-experimental-web-platform-features");
+
+	// These experimental features are currently broken as of writing (April 2026, M144 build)
+	// While experimental web features are disabled, it's worth keeping a list of ones that **are** broken in NUI.
+	command_line->AppendSwitchWithValue("disable-blink-features", 
+		"WidthAndHeightAsPresentationAttributesOnNestedSvg,"  // Breaks SVG's with custom height/width.
+															  // see https://issues.chromium.org/issues/449170647 
+		"SelectionAndFocusedVisiblePositionMatch"			  // Known bad feature, can lead to UI/GPU process hangs
+															  // Issue details are currently private.
+	);
 
 	// Disable features that aren't desired in NUI.
 	command_line->AppendSwitchWithValue("disable-features", 
@@ -245,8 +211,13 @@ void NUIApp::OnBeforeCommandLineProcessing(const CefString& process_type, CefRef
 	    "WebBluetooth," // Same with WebBluetooth API's
 		"SerialAPI," // Same with SerialAPI
 		"OptimizationHints," // fetch hints for preloading don't work in NUI and make no sense being enabled
-		"OptimizationHintsFetching" // ^, should already be partially no-op in CEF. But disable it anyway
+		"OptimizationHintsFetching," // ^, should already be partially no-op in CEF. But disable it anyway
+		"MediaRouter," // NUI does not need anything related to presentation or casting to a TV.
+		"DialMediaRouteProvider" // ^
 	);
+
+	command_line->AppendSwitchWithValue("default-encoding", "utf-8");
+	command_line->AppendSwitchWithValue("autoplay-policy", "no-user-gesture-required");
 
 	// For lower end systems with fewer cores we want to limit the amount of threads.
 	// On lower end systems in busy scenarios could lead to a negative impact on the game performance
@@ -279,10 +250,11 @@ void NUIApp::OnBeforeCommandLineProcessing(const CefString& process_type, CefRef
 	command_line->AppendSwitch("disable-extensions");
 	command_line->AppendSwitch("disable-spell-checking");
 
+	// Block NUI from having presentation api. https://developer.mozilla.org/en-US/docs/Web/API/Presentation_API
+	command_line->AppendSwitch("disable-presentation-api");
+
 	// Don't allow accidental zooming in on a trackpad
 	command_line->AppendSwitch("disable-pinch");
-
-	command_line->AppendSwitch("disable-gpu-process-crash-limit");
 
 	// important switch to prevent users from mentioning 'why are there 50 chromes again'
 	command_line->AppendSwitch("disable-site-isolation-trials");
@@ -290,14 +262,10 @@ void NUIApp::OnBeforeCommandLineProcessing(const CefString& process_type, CefRef
 	// TODO: remove this flag in the future
 	command_line->AppendSwitch("disable-web-security");
 
-	// some GPUs are in the GPU blacklist as 'forcing D3D9'
-	// this just forces D3D11 anyway.
-	command_line->AppendSwitchWithValue("use-angle", "d3d11");
-
-	// disable accelerated video decoding, something in M91 upgrade broke this (instant hang when playing Twitter video)
-	command_line->AppendSwitch("disable-accelerated-video-decode");
-	command_line->AppendSwitch("disable-accelerated-video-encode");
-	command_line->AppendSwitch("disable-accelerated-mjpeg-decode");
+	// Disables background thread for hang monitor.
+	// In CEF this makes CefRequestHandler::OnRenderProcessUnresponsive & CefRequestHandler::OnRenderProcessResponsive noop
+	// But these are not currently used in NUI. Making hang monitor entirely useless.
+	command_line->AppendSwitch("disable-hang-monitor");
 }
 
 bool NUIApp::OnProcessMessageReceived(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, CefProcessId source_process, CefRefPtr<CefProcessMessage> message)
