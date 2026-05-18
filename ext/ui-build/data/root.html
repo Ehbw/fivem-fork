@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+ <!DOCTYPE html>
 <html>
 <head>
 <meta charset="utf-8">
@@ -94,9 +94,8 @@ registerFrameFunction(function(msg, frameName, frameUrl)
 		}
 		else
 		{
-			// focus-without-user-activation to maintain backwards compatability with 'autofocus' fields used in resources like chat.
 			// autoplay & encrypted-media to maintain backwards compatability with 'autoplay' and for certain media types
-			frame.allow = 'microphone *; camera *; focus-without-user-activation; autoplay; encrypted-media';
+			frame.allow = "microphone *; camera *; autoplay; encrypted-media; payment 'none'; geolocation 'none';";
 		}
 		frame.sandbox = 'allow-forms allow-modals allow-scripts allow-same-origin allow-presentation';
 		frame.src = frameUrl;

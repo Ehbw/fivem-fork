@@ -909,6 +909,7 @@ void GtaNuiInterface::UpdateTexture(HANDLE shareHandle, fwRefContainer<GITexture
 					oldResource->Release();
 				});
 			});
+			return;
 		}
 	}
 	else if (GetCurrentGraphicsAPI() == GraphicsAPI::Vulkan)
@@ -982,11 +983,6 @@ void GtaNuiInterface::UpdateTexture(HANDLE shareHandle, fwRefContainer<GITexture
 					vkFreeMemory(device, oldMemory, nullptr);
 				}
 			});
-
-			if (cb)
-			{
-				cb(nullptr);
-			}
 		});
 	}
 #endif
