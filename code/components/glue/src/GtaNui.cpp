@@ -657,10 +657,14 @@ fwRefContainer<GITexture> GtaNuiInterface::CreateTextureFromShareHandle(HANDLE s
 		ID3D12Resource* resource = nullptr;
 		if (FAILED(device->OpenSharedHandle(shareHandle, __uuidof(ID3D12Resource), (void**)&resource)))
 		{
+			if (cb)
+			{
+				cb();
+			}
 			return new GtaNuiTexture(nullptr);
 		}
 
-		return new GtaNuiTexture([device, resource, shareHandle](GtaNuiTexture* texture)
+		return new GtaNuiTexture([device, resource, cb](GtaNuiTexture* texture)
 		{
 			ID3D12Resource* oldTexture = nullptr;
 
@@ -692,6 +696,11 @@ fwRefContainer<GITexture> GtaNuiInterface::CreateTextureFromShareHandle(HANDLE s
 				rage::sga::Driver_Create_ShaderResourceView(texRef, srvDesc);
 			}
 
+			if (cb)
+			{
+				cb();
+			}
+
 			return (rage::grcTexture*)texRef;
 		});
 	}
@@ -703,7 +712,7 @@ fwRefContainer<GITexture> GtaNuiInterface::CreateTextureFromShareHandle(HANDLE s
 		VkDeviceMemory ImageMemory = {};
 		vk::CreateImageFromShareHandle(device, shareHandle, width, height, Image, ImageMemory, true);
 
-		return new GtaNuiTexture([shareHandle, width, height, Image, ImageMemory](GtaNuiTexture* texture)
+		return new GtaNuiTexture([shareHandle, width, height, Image, ImageMemory, cb](GtaNuiTexture* texture)
 		{
 			std::vector<uint8_t> pixelData(size_t(width) * size_t(height) * 4);
 
@@ -742,10 +751,19 @@ fwRefContainer<GITexture> GtaNuiInterface::CreateTextureFromShareHandle(HANDLE s
 				rage::sga::Driver_Create_ShaderResourceView(texRef, srvDesc);
 			}
 
+			if (cb)
+			{
+				cb();
+			}
 			return (rage::grcTexture*)texRef;
 		});
 	}
 #endif
+
+	if (cb)
+	{
+		cb();
+	}
 
 	return new GtaNuiTexture(nullptr);
 }
@@ -813,6 +831,17 @@ void GtaNuiInterface::UpdateTexture(HANDLE shareHandle, fwRefContainer<GITexture
 
 	g_onRenderQueue.emplace([cefTexture, cefSrv, texture, cb]()
 	{
+		if (cb)
+		{
+			// Pass SRV to be used for DUI (if applicable)
+			if (cb(cefSrv.Get()))
+			{
+				// cb returns true if theres only this reference left so its pointless.
+				cefTexture->Release();
+
+				return;
+			}
+		}
 
 		auto texRef = (rage::grcTexture*)texture->GetHostTexture();
 
@@ -824,22 +853,13 @@ void GtaNuiInterface::UpdateTexture(HANDLE shareHandle, fwRefContainer<GITexture
 		texRef->srv = cefSrv.Get();
 		texRef->srv->AddRef();
 
-		if (cb)
-		{
-			// Pass SRV to be used for DUI (if applicable)
-			if (cb(cefSrv.Get()))
-			{
-				cefTexture->Release();
-			}
-		}
-
 		if (oldTex)
 		{
 			oldTex->Release();
 			oldTex = nullptr;
 		}
 
-		if (texRef->srv)
+		if (oldSrv)
 		{
 			oldSrv->Release();
 			oldSrv = nullptr;
@@ -865,6 +885,12 @@ void GtaNuiInterface::UpdateTexture(HANDLE shareHandle, fwRefContainer<GITexture
 		{
 			g_onRenderQueue.emplace([resource, texRef, cb]()
 			{
+				if (cb && cb(nullptr))
+				{
+					resource->Release();
+					return;
+				}
+
 				ID3D12Resource* oldResource = texRef->resource;
 
 				texRef->resource = resource.Get();
@@ -882,11 +908,6 @@ void GtaNuiInterface::UpdateTexture(HANDLE shareHandle, fwRefContainer<GITexture
 				{
 					oldResource->Release();
 				});
-
-				if (cb)
-				{
-					cb(nullptr);
-				}
 			});
 		}
 	}
@@ -920,6 +941,22 @@ void GtaNuiInterface::UpdateTexture(HANDLE shareHandle, fwRefContainer<GITexture
 
 		g_onRenderQueue.emplace([shareHandle, width, height, image, deviceMemory, texRef, cb]()
 		{
+			VkDevice device = (VkDevice)GetGraphicsDriverHandle();
+
+			if (cb && cb(nullptr))
+			{
+				if (image)
+				{
+					vkDestroyImage(device, image, nullptr);
+				}
+
+				if (deviceMemory)
+				{
+					vkFreeMemory(device, deviceMemory, nullptr);
+				}
+				return;
+			}
+
 			VkImage oldImage = texRef->image->image;
 			VkDeviceMemory oldMemory = texRef->image->memory;
 
@@ -933,10 +970,8 @@ void GtaNuiInterface::UpdateTexture(HANDLE shareHandle, fwRefContainer<GITexture
 			srvDesc.arraySize = 1;
 			rage::sga::Driver_Create_ShaderResourceView(texRef, srvDesc);
 
-			g_earlyOnRenderQueue.emplace([oldImage, oldMemory]()
+			g_earlyOnRenderQueue.emplace([oldImage, oldMemory, device]()
 			{
-				VkDevice device = (VkDevice)GetGraphicsDriverHandle();
-
 				if (oldImage)
 				{
 					vkDestroyImage(device, oldImage, nullptr);
