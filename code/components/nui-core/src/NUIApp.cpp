@@ -213,7 +213,9 @@ void NUIApp::OnBeforeCommandLineProcessing(const CefString& process_type, CefRef
 		"OptimizationHints," // fetch hints for preloading don't work in NUI and make no sense being enabled
 		"OptimizationHintsFetching," // ^, should already be partially no-op in CEF. But disable it anyway
 		"MediaRouter," // NUI does not need anything related to presentation or casting to a TV.
-		"DialMediaRouteProvider" // ^
+		"DialMediaRouteProvider," // ^
+		"MetricsReporting,"
+		"GCMDriver"
 	);
 
 	command_line->AppendSwitchWithValue("default-encoding", "utf-8");
@@ -240,6 +242,7 @@ void NUIApp::OnBeforeCommandLineProcessing(const CefString& process_type, CefRef
 	command_line->AppendSwitchWithValue("connectivity-check-url", "http://0.0.0.0");
 	command_line->AppendSwitchWithValue("lso-url", "http://0.0.0.0");
 	command_line->AppendSwitchWithValue("sync-url", "http://0.0.0.0");
+	command_line->AppendSwitchWithValue("crash-server-url", "http://0.0.0.0");
 
 	// "NetworkServiceInProcess2", restore M103 behaviour by handling network in process, reducing IPC overhead and CPU usage from cross process communication
 	command_line->AppendSwitchWithValue("enable-features", "NetworkServiceInProcess2");
@@ -273,7 +276,7 @@ bool NUIApp::OnProcessMessageReceived(CefRefPtr<CefBrowser> browser, CefRefPtr<C
 	auto handler = std::find_if(m_processMessageHandlers.begin(), m_processMessageHandlers.end(),
 	[&](const auto& p)
 	{
-		return p.first == message->GetName();
+		return p.first == message->GetName().ToString();
 	});
 
 	bool success = false;
