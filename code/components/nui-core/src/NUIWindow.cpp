@@ -48,6 +48,7 @@ NUIWindow::NUIWindow(bool rawBlit, int width, int height, const std::string& win
 #endif
 {
 	memset(&m_sharedResourceTexturesCreated, 0, sizeof(m_sharedResourceTexturesCreated));
+	memset(&m_pendingTextureCreation, 0, sizeof(m_pendingTextureCreation));
 
 	Instance<NUIWindowManager>::Get()->AddWindow(this);
 }
@@ -333,6 +334,7 @@ void NUIWindow::UpdateFrame()
 				}
 
 				memset(m_sharedResourceTexturesCreated, 0, sizeof(m_sharedResourceTexturesCreated));
+				memset(&m_pendingTextureCreation, 0, sizeof(m_pendingTextureCreation));
 
 				auto client = ((NUIClient*)m_client.get());
 				auto browser = client->GetBrowser();
@@ -704,13 +706,14 @@ void NUIWindow::UpdateSharedResource(CefRenderHandler::PaintElementType type)
 			textureLock.lock();
 		}
 
-		if (!m_sharedResourceTexturesCreated[type])
+		if (!m_sharedResourceTexturesCreated[type] && !m_pendingTextureCreation[type])
 		{
-			m_sharedResourceTexturesCreated[type] = true;
-
+			m_pendingTextureCreation[type] = true;
 			AddRef();
 			auto cb = [this, type, frameSequence]()
 			{
+				m_sharedResourceTexturesCreated[type] = true;
+				m_pendingTextureCreation[type] = false;
 				ReleaseFrame(type, frameSequence);
 				Release();
 			};
@@ -728,6 +731,11 @@ void NUIWindow::UpdateSharedResource(CefRenderHandler::PaintElementType type)
 				texRef = g_nuiGi->CreateTextureFromShareHandle(sharedHandle, w, h, cb);
 				SetParentTexture(type, texRef);
 			}
+		}
+		else if (!m_sharedResourceTexturesCreated[type] && m_pendingTextureCreation[type])
+		{
+			// Throw out any frames that get sent while we haven't processed the first frame
+			ReleaseFrame(type, frame->frame_seq);
 		}
 		else
 		{
