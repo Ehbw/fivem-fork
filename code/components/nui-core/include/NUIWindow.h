@@ -93,6 +93,8 @@ private:
 	std::shared_mutex m_textureMutex;
 
 	bool m_sharedResourceTexturesCreated[kMaxPaintElements];
+	
+	bool m_pendingTextureCreation[kMaxPaintElements];
 public:
 	inline int GetWidth() const { return m_width; }
 	inline int GetHeight() const { return m_height; }
@@ -201,6 +203,14 @@ public:
 		if (GetBrowser() && GetBrowser()->GetHost())
 		{
 			GetBrowser()->GetHost()->ReleaseFrame(type, sequence_id);
+		}
+	}
+
+	inline void SetDisplayVSyncParameters(int64_t timebase_us, int64_t interval_us)
+	{
+		if (GetBrowser() && GetBrowser()->GetHost())
+		{
+			//GetBrowser()->GetHost()->SetDisplayVSyncParameters(timebase_us, interval_us);
 		}
 	}
 
