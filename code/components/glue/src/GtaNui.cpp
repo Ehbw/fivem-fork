@@ -185,8 +185,8 @@ public:
 static tbb::concurrent_queue<std::function<void()>> g_onRenderQueue;
 static tbb::concurrent_queue<std::function<void()>> g_earlyOnRenderQueue;
 
-#include <tbb/concurrent_hash_map.h>
-static tbb::concurrent_hash_map<void*, std::function<void()>> g_onTextureUpdate;
+static std::mutex g_onTextureUpdateMutex;
+static std::vector<std::pair<void*, std::function<void()>>> g_onTextureUpdate;
 
 class GtaNuiTextureBase : public nui::GITexture
 {
@@ -864,7 +864,24 @@ void GtaNuiInterface::UpdateTexture(HANDLE shareHandle, fwRefContainer<GITexture
 			}
 		});
 	};
-	g_onTextureUpdate.emplace(texRef, std::move(renderCb));
+
+	{
+		std::lock_guard lock(g_onTextureUpdateMutex);
+
+		auto it = std::find_if(g_onTextureUpdate.begin(), g_onTextureUpdate.end(), [texRef](const auto& p)
+		{
+			return p.first == texRef;
+		});
+
+		if (it != g_onTextureUpdate.end())
+		{
+			it->second = std::move(renderCb);
+		}
+		else
+		{
+			g_onTextureUpdate.emplace_back(texRef, std::move(renderCb));
+		}
+	}
 #elif defined(IS_RDR3)
 	if (GetCurrentGraphicsAPI() == GraphicsAPI::D3D12)
 	{
@@ -916,7 +933,23 @@ void GtaNuiInterface::UpdateTexture(HANDLE shareHandle, fwRefContainer<GITexture
 				oldResource->Release();
 			});
 		};
-		g_onTextureUpdate.emplace(texRef, std::move(renderCb));
+
+		{
+			std::lock_guard lock(g_onTextureUpdateMutex);
+			auto it = std::find_if(g_onTextureUpdate.begin(), g_onTextureUpdate.end(), [texRef](const auto& p)
+			{
+				return p.first == texRef;
+			});
+
+			if (it != g_onTextureUpdate.end())
+			{
+				it->second = std::move(renderCb);
+			}
+			else
+			{
+				g_onTextureUpdate.emplace_back(texRef, std::move(renderCb));
+			}
+		}
 	}
 	else if (GetCurrentGraphicsAPI() == GraphicsAPI::Vulkan)
 	{
@@ -1014,7 +1047,23 @@ void GtaNuiInterface::UpdateTexture(HANDLE shareHandle, fwRefContainer<GITexture
 				}
 			});
 		};
-		g_onTextureUpdate.emplace(texRef, std::move(renderCb));
+
+		{
+			std::lock_guard lock(g_onTextureUpdateMutex);
+			auto it = std::find_if(g_onTextureUpdate.begin(), g_onTextureUpdate.end(), [texRef](const auto& p)
+			{
+				return p.first == texRef;
+			});
+
+			if (it != g_onTextureUpdate.end())
+			{
+				it->second = std::move(renderCb);
+			}
+			else
+			{
+				g_onTextureUpdate.emplace_back(texRef, std::move(renderCb));
+			}
+		}
 	}
 #endif
 }
@@ -1130,26 +1179,15 @@ static void DoRender()
 		fn();
 	}
 
-	if (!g_onTextureUpdate.empty())
 	{
-		std::vector<std::function<void()>> updates;
-		updates.reserve(g_onTextureUpdate.size());
-
-		auto it = g_onTextureUpdate.begin();
-		while (it != g_onTextureUpdate.end())
+		std::vector<std::pair<void*, std::function<void()>>> local;
 		{
-			updates.push_back(std::move(it->second));
-			void* tex = it->first;
-			++it;
-			g_onTextureUpdate.erase(tex);
+			std::lock_guard lock(g_onTextureUpdateMutex);
+			local.swap(g_onTextureUpdate);
 		}
-
-		for (auto& fn : updates)
+		for (auto& [tex, cb] : local)
 		{
-			if (fn)
-			{
-				fn();
-			}
+			cb();
 		}
 	}
 
