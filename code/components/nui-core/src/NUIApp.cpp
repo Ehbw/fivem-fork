@@ -150,6 +150,7 @@ void NUIApp::OnContextReleased(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame
 void NUIApp::OnBeforeCommandLineProcessing(const CefString& process_type, CefRefPtr<CefCommandLine> command_line)
 {
 	static ConVar<bool> nuiUseInProcessGpu("nui_useInProcessGpu", ConVar_Archive, true);
+	static ConVar<bool> nuiUseAcceleratedVideo("nui_useAcceleratedVideo", ConVar_Archive | ConVar_UserPref, true);
 
 	static std::string defaultUiUrl = "https://nui-game-internal/ui/app/index.html";
 	static ConVar<std::string> uiUrlVar("ui_url", ConVar_UserPref, defaultUiUrl);
@@ -172,6 +173,14 @@ void NUIApp::OnBeforeCommandLineProcessing(const CefString& process_type, CefRef
 		// In process GPU also disables the GPU watchdog.
 		command_line->AppendSwitch("in-process-gpu");
 	}
+
+	if (nuiUseAcceleratedVideo.GetValue())
+	{
+		command_line->AppendSwitch("disable-accelerated-video-decode");
+		command_line->AppendSwitch("disable-accelerated-video-encode");
+		command_line->AppendSwitch("disable-accelerated-mjpeg-decode");
+	}
+
 	// FxDK makes use of the Views Framework within CEF
 	// which depends on direct composition in order to draw.
 	if (!launch::IsSDK())
