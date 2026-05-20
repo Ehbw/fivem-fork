@@ -185,6 +185,9 @@ public:
 static tbb::concurrent_queue<std::function<void()>> g_onRenderQueue;
 static tbb::concurrent_queue<std::function<void()>> g_earlyOnRenderQueue;
 
+#include <tbb/concurrent_hash_map.h>
+static tbb::concurrent_hash_map<void*, std::function<void()>> g_onTextureUpdate;
+
 class GtaNuiTextureBase : public nui::GITexture
 {
 public:
@@ -781,9 +784,9 @@ void GtaNuiInterface::UpdateTexture(HANDLE shareHandle, fwRefContainer<GITexture
 		return;
 	}
 
-	ID3D11Texture2D* cefTexture = nullptr;
+	WRL::ComPtr<ID3D11Texture2D> cefTexture;
 	auto hr = device1->OpenSharedResource1(shareHandle, IID_PPV_ARGS(&cefTexture));
-	if (FAILED(hr))
+	if (FAILED(hr) || !cefTexture)
 	{
 		trace("Failed to open shared resource for NUI Update 0x%x\n", hr);
 		if (cb)
@@ -800,7 +803,7 @@ void GtaNuiInterface::UpdateTexture(HANDLE shareHandle, fwRefContainer<GITexture
 	}* gameDevice = (decltype(gameDevice))::GetD3D11Device();
 
 	WRL::ComPtr<ID3D11ShaderResourceView> cefSrv = nullptr;
-	hr = gameDevice->rawDevice->CreateShaderResourceView(cefTexture, nullptr, &cefSrv);
+	hr = gameDevice->rawDevice->CreateShaderResourceView(cefTexture.Get(), nullptr, &cefSrv);
 	if (FAILED(hr))
 	{
 		if (cb)
@@ -829,16 +832,13 @@ void GtaNuiInterface::UpdateTexture(HANDLE shareHandle, fwRefContainer<GITexture
 		return;
 	}
 
-	g_onRenderQueue.emplace([cefTexture, cefSrv, texture, cb]()
+	auto renderCb = [cefTexture, cefSrv, texture, cb]() mutable
 	{
 		if (cb)
 		{
 			// Pass SRV to be used for DUI (if applicable)
 			if (cb(cefSrv.Get()))
 			{
-				// cb returns true if theres only this reference left so its pointless.
-				cefTexture->Release();
-
 				return;
 			}
 		}
@@ -848,23 +848,23 @@ void GtaNuiInterface::UpdateTexture(HANDLE shareHandle, fwRefContainer<GITexture
 		auto oldTex = texRef->texture;
 		auto oldSrv = texRef->srv;
 
-		texRef->texture = cefTexture;
+		texRef->texture = cefTexture.Detach();
+		texRef->srv = cefSrv.Detach();
 
-		texRef->srv = cefSrv.Get();
-		texRef->srv->AddRef();
-
-		if (oldTex)
+		g_earlyOnRenderQueue.emplace([oldTex, oldSrv]()
 		{
-			oldTex->Release();
-			oldTex = nullptr;
-		}
+			if (oldTex)
+			{
+				oldTex->Release();
+			}
 
-		if (oldSrv)
-		{
-			oldSrv->Release();
-			oldSrv = nullptr;
-		}
-	});
+			if (oldSrv)
+			{
+				oldSrv->Release();
+			}
+		});
+	};
+	g_onTextureUpdate.emplace(texRef, std::move(renderCb));
 #elif defined(IS_RDR3)
 	if (GetCurrentGraphicsAPI() == GraphicsAPI::D3D12)
 	{
@@ -880,37 +880,43 @@ void GtaNuiInterface::UpdateTexture(HANDLE shareHandle, fwRefContainer<GITexture
 			return;
 		}
 
-		WRL::ComPtr<ID3D12Resource> resource = nullptr;
-		if (SUCCEEDED(device->OpenSharedHandle(shareHandle, __uuidof(ID3D12Resource), (void**)&resource)))
+		WRL::ComPtr<ID3D12Resource> cefResoruce = nullptr;
+		auto hr = device->OpenSharedHandle(shareHandle, IID_PPV_ARGS(&cefResoruce));
+		if (FAILED(hr))
 		{
-			g_onRenderQueue.emplace([resource, texRef, cb]()
+			trace("Failed to open shared resource for NUI Update 0x%x\n", hr);
+			if (cb)
 			{
-				if (cb && cb(nullptr))
-				{
-					resource->Release();
-					return;
-				}
-
-				ID3D12Resource* oldResource = texRef->resource;
-
-				texRef->resource = resource.Get();
-				texRef->resource->AddRef();
-
-				rage::sga::TextureViewDesc srvDesc;
-				srvDesc.mipLevels = 1;
-				srvDesc.arrayStart = 0;
-				srvDesc.dimension = 4;
-				srvDesc.arraySize = 1;
-
-				rage::sga::Driver_Create_ShaderResourceView(texRef, srvDesc);
-
-				g_earlyOnRenderQueue.emplace([oldResource]()
-				{
-					oldResource->Release();
-				});
-			});
+				cb(nullptr);
+			}
 			return;
 		}
+
+		auto renderCb = [cefResoruce, texture, cb]() mutable
+		{
+			if (cb && cb(nullptr))
+			{
+				return;
+			}
+
+			auto texRef = (rage::sga::TextureD3D12*)texture->GetHostTexture();
+			ID3D12Resource* oldResource = texRef->resource;
+			texRef->resource = cefResoruce.Detach();
+
+			rage::sga::TextureViewDesc srvDesc;
+			srvDesc.mipLevels = 1;
+			srvDesc.arrayStart = 0;
+			srvDesc.dimension = 4;
+			srvDesc.arraySize = 1;
+
+			rage::sga::Driver_Create_ShaderResourceView(texRef, srvDesc);
+
+			g_earlyOnRenderQueue.emplace([oldResource]()
+			{
+				oldResource->Release();
+			});
+		};
+		g_onTextureUpdate.emplace(texRef, std::move(renderCb));
 	}
 	else if (GetCurrentGraphicsAPI() == GraphicsAPI::Vulkan)
 	{
@@ -940,21 +946,44 @@ void GtaNuiInterface::UpdateTexture(HANDLE shareHandle, fwRefContainer<GITexture
 			return;
 		}
 
-		g_onRenderQueue.emplace([shareHandle, width, height, image, deviceMemory, texRef, cb]()
+		struct VkGuard
 		{
-			VkDevice device = (VkDevice)GetGraphicsDriverHandle();
+			VkImage image;
+			VkDeviceMemory deviceMemory;
 
-			if (cb && cb(nullptr))
+			VkGuard(VkImage image, VkDeviceMemory deviceMemory)
+				: image(image), deviceMemory(deviceMemory)
 			{
+			}
+
+			void Clear()
+			{
+				image = nullptr;
+				deviceMemory = nullptr;
+			}
+
+			~VkGuard()
+			{
+				VkDevice device = (VkDevice)GetGraphicsDriverHandle();
+
 				if (image)
 				{
 					vkDestroyImage(device, image, nullptr);
-				}
 
+				}
 				if (deviceMemory)
 				{
 					vkFreeMemory(device, deviceMemory, nullptr);
 				}
+			}
+		};
+
+		auto guard = std::make_shared<VkGuard>(image, deviceMemory);
+		auto renderCb = [shareHandle, width, height, image, deviceMemory, guard, texRef, cb]() mutable
+		{
+			VkDevice device = (VkDevice)GetGraphicsDriverHandle();
+			if (cb && cb(nullptr))
+			{
 				return;
 			}
 
@@ -964,6 +993,7 @@ void GtaNuiInterface::UpdateTexture(HANDLE shareHandle, fwRefContainer<GITexture
 			texRef->image->image = image;
 			texRef->image->memory = deviceMemory;
 
+			guard->Clear();
 			rage::sga::TextureViewDesc srvDesc;
 			srvDesc.mipLevels = 1;
 			srvDesc.arrayStart = 0;
@@ -983,7 +1013,8 @@ void GtaNuiInterface::UpdateTexture(HANDLE shareHandle, fwRefContainer<GITexture
 					vkFreeMemory(device, oldMemory, nullptr);
 				}
 			});
-		});
+		};
+		g_onTextureUpdate.emplace(texRef, std::move(renderCb));
 	}
 #endif
 }
@@ -1097,6 +1128,29 @@ static void DoRender()
 	while (g_earlyOnRenderQueue.try_pop(fn))
 	{
 		fn();
+	}
+
+	if (!g_onTextureUpdate.empty())
+	{
+		std::vector<std::function<void()>> updates;
+		updates.reserve(g_onTextureUpdate.size());
+
+		auto it = g_onTextureUpdate.begin();
+		while (it != g_onTextureUpdate.end())
+		{
+			updates.push_back(std::move(it->second));
+			void* tex = it->first;
+			++it;
+			g_onTextureUpdate.erase(tex);
+		}
+
+		for (auto& fn : updates)
+		{
+			if (fn)
+			{
+				fn();
+			}
+		}
 	}
 
 	while (g_onRenderQueue.try_pop(fn))
