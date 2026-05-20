@@ -146,7 +146,7 @@ void NUIApp::OnContextReleased(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame
 		handler(context);
 	}
 }
-
+	
 void NUIApp::OnBeforeCommandLineProcessing(const CefString& process_type, CefRefPtr<CefCommandLine> command_line)
 {
 	static ConVar<bool> nuiUseInProcessGpu("nui_useInProcessGpu", ConVar_Archive, true);
@@ -174,7 +174,7 @@ void NUIApp::OnBeforeCommandLineProcessing(const CefString& process_type, CefRef
 		command_line->AppendSwitch("in-process-gpu");
 	}
 
-	if (nuiUseAcceleratedVideo.GetValue())
+	if (!nuiUseAcceleratedVideo.GetValue())
 	{
 		command_line->AppendSwitch("disable-accelerated-video-decode");
 		command_line->AppendSwitch("disable-accelerated-video-encode");
