@@ -783,7 +783,6 @@ static HookFunction initFunction([] ()
 					browser->GetHost()->SendMouseWheelEventNative(&m);
 				}
 #else
-//#warning "Using fallback mouse wheel input behaviour. Provided CEF is missing CEF_OSR_NATIVE_MOUSE_EVENT"
 				// TODO: Investigate why this doesn't result in smooth scrolling in NUI
 				auto browser = GetFocusBrowser();
 				
@@ -907,8 +906,7 @@ static HookFunction initFunction([] ()
 						// Send the text to the browser. The |replacement_range| and
 						// |relative_cursor_pos| params are not used on Windows, so provide
 						// default invalid values.
-						browser->GetHost()->ImeCommitText(cTextStr,
-						CefRange(UINT32_MAX, UINT32_MAX), 0);
+						browser->GetHost()->ImeCommitText(cTextStr, CefRange::InvalidRange(), 0);
 						g_imeHandler->ResetComposition();
 						// Continue reading the composition string - Japanese IMEs send both
 						// GCS_RESULTSTR and GCS_COMPSTR.
@@ -920,17 +918,19 @@ static HookFunction initFunction([] ()
 					if (g_imeHandler->GetComposition(lParam, cTextStr, underlines,
 						composition_start))
 					{
+						int cursor_pos = static_cast<int>(composition_start + cTextStr.length());
+
 						// Send the composition string to the browser. The |replacement_range|
 						// param is not used on Windows, so provide a default invalid value.
 						browser->GetHost()->ImeSetComposition(
-						cTextStr, underlines, CefRange(UINT32_MAX, UINT32_MAX),
-						CefRange(composition_start, composition_start));
+						cTextStr, underlines, CefRange::InvalidRange(),
+						CefRange(cursor_pos, cursor_pos));
 
 						// Update the Candidate Window position. The cursor is at the end so
 						// subtract 1. This is safe because IMM32 does not support non-zero-width
 						// in a composition. Also,  negative values are safely ignored in
 						// MoveImeWindow
-						g_imeHandler->UpdateCaretPosition(composition_start - 1);
+						g_imeHandler->UpdateCaretPosition(cursor_pos);
 					}
 					else
 					{
