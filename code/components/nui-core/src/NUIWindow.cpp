@@ -681,7 +681,6 @@ void NUIWindow::UpdateSharedResource(CefRenderHandler::PaintElementType type)
 	}
 
 	auto frame = this->LockFrame(type);
-
 	if (!frame)
 	{
 		return;
@@ -732,15 +731,10 @@ void NUIWindow::UpdateSharedResource(CefRenderHandler::PaintElementType type)
 				SetParentTexture(type, texRef);
 			}
 		}
-		else if (!m_sharedResourceTexturesCreated[type] && m_pendingTextureCreation[type])
-		{
-			// Throw out any frames that get sent while we haven't processed the first frame
-			ReleaseFrame(type, frame->frame_seq);
-		}
 		else
 		{
 			AddRef();
-			g_nuiGi->UpdateTexture(sharedHandle, texRef, nullptr, 1, w, h, [frameSequence, this, type](void* srv)
+			g_nuiGi->UpdateTexture(sharedHandle, texRef, w, h, [frameSequence, this, type](void* srv)
 			{
 				ReleaseFrame(type, frameSequence);
 #ifdef GTA_FIVE

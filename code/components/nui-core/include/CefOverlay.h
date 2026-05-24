@@ -171,7 +171,7 @@ namespace nui
 
 		using UpdateTextureCB = std::function<bool(void* duiSrv)>;
 
-		virtual void UpdateTexture(HANDLE shareHandle, fwRefContainer<GITexture> texture, cef_rect_t* dirtyRects, int dirtyRectCount, int width, int height, UpdateTextureCB cb = nullptr) = 0;
+		virtual void UpdateTexture(HANDLE shareHandle, fwRefContainer<GITexture> texture, int width, int height, UpdateTextureCB cb = nullptr) = 0;
 
 		virtual void SetTexture(fwRefContainer<GITexture> texture, bool pm = false) = 0;
 
