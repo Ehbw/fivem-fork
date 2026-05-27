@@ -12,7 +12,7 @@
 
 #pragma comment(lib, "vulkan-1.lib")
 
-static VkInstance g_vkInstance = nullptr;
+VkInstance g_vkInstance = nullptr;
 static bool g_enableVulkanValidation = false;
 
 // Function to print the output of the validation layers
