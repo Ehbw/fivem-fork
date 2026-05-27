@@ -883,39 +883,6 @@ void GtaNuiInterface::UpdateTexture(HANDLE shareHandle, fwRefContainer<GITexture
 		return;
 	}
 
-	auto renderCb = [cefTexture, cefSrv, texture, cb]() mutable
-	{
-		if (cb)
-		{
-			// Pass SRV to be used for DUI (if applicable)
-			if (cb(cefSrv.Get()))
-			{
-				return;
-			}
-		}
-
-		auto texRef = (rage::grcTexture*)texture->GetHostTexture();
-
-		auto oldTex = texRef->texture;
-		auto oldSrv = texRef->srv;
-
-		texRef->texture = cefTexture.Detach();
-		texRef->srv = cefSrv.Detach();
-
-		g_earlyOnRenderQueue.emplace([oldTex, oldSrv]()
-		{
-			if (oldTex)
-			{
-				oldTex->Release();
-			}
-
-			if (oldSrv)
-			{
-				oldSrv->Release();
-			}
-		});
-	};
-
 	{
 		std::lock_guard lock(g_onTextureUpdateMutex);
 
@@ -1203,6 +1170,8 @@ static void UpdateTexture(NUITextureUpdateVK& texture)
 	srvDesc.arrayStart = 0;
 	srvDesc.dimension = 4;
 	srvDesc.arraySize = 1;
+
+	rage::sga::Driver_Destroy_ShaderResourceView(texRef);
 	rage::sga::Driver_Create_ShaderResourceView(texRef, srvDesc);
 
 	g_onRenderQueue.emplace([oldImage, oldMemory, device]()
@@ -1236,11 +1205,15 @@ static void UpdateTexture(NUITextureUpdateDX12& texture)
 	srvDesc.dimension = 4;
 	srvDesc.arraySize = 1;
 
+	rage::sga::Driver_Destroy_ShaderResourceView(texRef);
 	rage::sga::Driver_Create_ShaderResourceView(texRef, srvDesc);
 
-	g_onRenderQueue.emplace([oldResource]()
+	g_earlyOnRenderQueue.emplace([oldResource]()
 	{
-		oldResource->Release();
+		if (oldResource)
+		{
+			oldResource->Release();
+		}
 	});
 }
 #endif

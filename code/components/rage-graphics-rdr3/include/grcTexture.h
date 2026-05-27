@@ -228,6 +228,8 @@ namespace sga
 
 	void GFX_EXPORT Driver_Create_ShaderResourceView(Texture* texture, const TextureViewDesc& desc);
 
+	void GFX_EXPORT Driver_Destroy_ShaderResourceView(Texture* texture);
+
 	void GFX_EXPORT Driver_Destroy_Texture(Texture* texture);
 
 	struct BackBufferData

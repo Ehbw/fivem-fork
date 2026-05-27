@@ -585,11 +585,28 @@ void* GetVulkanPhysicalDevice()
 	return nullptr;
 }
 
+extern VkInstance g_vkInstance;
+
+void* GetVulkanInstance()
+{
+	if (GetCurrentGraphicsAPI() == GraphicsAPI::Vulkan)
+	{
+		return g_vkInstance;
+	}
+
+	return nullptr;
+}
+
 namespace rage::sga
 {
 void Driver_Create_ShaderResourceView(rage::sga::Texture* texture, const rage::sga::TextureViewDesc& desc)
 {
 	(*(void(__fastcall**)(__int64, void*, void*, const void*))(**(uint64_t**)sgaDriver + 256i64))(*(uint64_t*)sgaDriver, *(char**)((char*)texture + 48), texture, &desc);
+}
+
+void Driver_Destroy_ShaderResourceView(rage::sga::Texture* texture)
+{
+	(*(void(__fastcall**)(__int64, void*))(**(uint64_t**)sgaDriver + 432i64))(*(uint64_t*)sgaDriver, *(char**)((char*)texture + 48));
 }
 
 void Driver_Destroy_Texture(rage::sga::Texture* texture)
