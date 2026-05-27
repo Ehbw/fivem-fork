@@ -6,6 +6,10 @@
 #include <vulkan/vulkan_win32.h>
 #include <DrawCommands.h>
 
+static PFN_vkBindImageMemory2 _vkBindImageMemory2 = nullptr;
+static PFN_vkGetPhysicalDeviceMemoryProperties2 _vkGetPhysicalDeviceMemoryProperties2 = nullptr;
+static PFN_vkGetImageMemoryRequirements2 _vkGetImageMemoryRequirements2 = nullptr;
+
 namespace vk
 {
 	inline std::string_view ResultToString(VkResult result)
@@ -65,25 +69,57 @@ namespace vk
 		}
 	}
 
-	static uint32_t FindMemoryType(VkPhysicalDevice physicalDevice, uint32_t typeFilter, VkMemoryPropertyFlags properties)
+	static uint32_t FindMemoryType(VkPhysicalDevice physDevice, uint32_t typeFilter, VkMemoryPropertyFlags properties)
 	{
-		VkPhysicalDeviceMemoryProperties memProperties;
-		vkGetPhysicalDeviceMemoryProperties(physicalDevice, &memProperties);
+		VkPhysicalDeviceMemoryProperties2 memProps2 = {};
+		memProps2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_PROPERTIES_2;
+		_vkGetPhysicalDeviceMemoryProperties2(physDevice, &memProps2);
 
-		for (uint32_t i = 0; i < memProperties.memoryTypeCount; i++)
+		for (uint32_t i = 0; i < memProps2.memoryProperties.memoryTypeCount; i++)
 		{
-			if ((typeFilter & (1 << i)) && (memProperties.memoryTypes[i].propertyFlags & properties) == properties)
+			if ((typeFilter & (1 << i)) && (memProps2.memoryProperties.memoryTypes[i].propertyFlags & properties) == properties)
 			{
 				return i;
 			}
 		}
 
-		return VK_NULL_HANDLE;
+		FatalError("Failed to find suitable Vulkan memory type.");
+		return UINT32_MAX;
 	}
 
 	static void CreateImageFromShareHandle(VkDevice& device, HANDLE handle, unsigned int width, unsigned int height, VkImage& outImage, VkDeviceMemory& outMemory, bool throwFatal = true)
 	{
-		VkExternalMemoryImageCreateInfo externalMemoryInfo = {};
+		outImage = VK_NULL_HANDLE;
+		outMemory = VK_NULL_HANDLE;
+
+		if (!_vkBindImageMemory2)
+		{
+			_vkBindImageMemory2 = (PFN_vkBindImageMemory2)vkGetDeviceProcAddr(device, "vkBindImageMemory2");
+			if (!_vkBindImageMemory2)
+			{
+				FatalError("Unable to find 'vkBindImageMemory2' in vulkan.");
+			}
+		}
+
+		if (!_vkGetPhysicalDeviceMemoryProperties2)
+		{
+			_vkGetPhysicalDeviceMemoryProperties2 = (PFN_vkGetPhysicalDeviceMemoryProperties2)vkGetInstanceProcAddr((VkInstance)GetVulkanInstance(), "vkGetPhysicalDeviceMemoryProperties2");
+			if (!_vkGetPhysicalDeviceMemoryProperties2)
+			{
+				FatalError("Unable to find 'vkGetPhysicalDeviceMemoryProperties2' in vulkan.");
+			}
+		}
+
+		if (!_vkGetImageMemoryRequirements2)
+		{
+			_vkGetImageMemoryRequirements2 = (PFN_vkGetImageMemoryRequirements2)vkGetInstanceProcAddr((VkInstance)GetVulkanInstance(), "vkGetImageMemoryRequirements2");
+			if (!_vkGetImageMemoryRequirements2)
+			{
+				FatalError("Unable to find 'vkGetImageMemoryRequirements2' in vulkan.");
+			}
+		}
+
+        VkExternalMemoryImageCreateInfo externalMemoryInfo = {};
 		externalMemoryInfo.sType = VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_IMAGE_CREATE_INFO;
 		externalMemoryInfo.handleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_D3D11_TEXTURE_BIT;
 
@@ -99,7 +135,7 @@ namespace vk
 		imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
 		imageInfo.usage = VK_IMAGE_USAGE_SAMPLED_BIT;
 		imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-		imageInfo.initialLayout = VK_IMAGE_LAYOUT_PREINITIALIZED;
+		imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 
 		VkResult result = vkCreateImage(device, &imageInfo, nullptr, &outImage);
 
@@ -109,11 +145,37 @@ namespace vk
 			{
 				FatalError("Failed to create a Vulkan image. VkResult: %s", vk::ResultToString(result));
 			}
+			outImage = VK_NULL_HANDLE;
+			outMemory = VK_NULL_HANDLE;
 			return;
 		}
 
-        VkMemoryRequirements memReqs;
-		vkGetImageMemoryRequirements(device, outImage, &memReqs);
+	    VkMemoryDedicatedRequirements dedicatedReqs = {};
+		dedicatedReqs.sType = VK_STRUCTURE_TYPE_MEMORY_DEDICATED_REQUIREMENTS;
+
+		VkMemoryRequirements2 memReqs2 = {};
+		memReqs2.sType = VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2;
+		memReqs2.pNext = &dedicatedReqs;
+
+		VkImageMemoryRequirementsInfo2 memReqsInfo = {};
+		memReqsInfo.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_REQUIREMENTS_INFO_2;
+		memReqsInfo.image = outImage;
+
+		_vkGetImageMemoryRequirements2(device, &memReqsInfo, &memReqs2);
+
+		if (dedicatedReqs.requiresDedicatedAllocation == VK_FALSE && dedicatedReqs.prefersDedicatedAllocation == VK_FALSE)
+		{
+			// Dedicated allocation is neither required nor preferred, which is
+			// unexpected for a D3D11 shared texture. Treat as a fatal configuration issue.
+			if (throwFatal)
+			{
+				FatalError("Vulkan shared texture does not support dedicated allocation as expected.");
+			}
+			vkDestroyImage(device, outImage, nullptr);
+			outImage = VK_NULL_HANDLE;
+			outMemory = VK_NULL_HANDLE;
+			return;
+		}
 
         VkMemoryDedicatedAllocateInfo dedicatedInfo = {};
 		dedicatedInfo.sType = VK_STRUCTURE_TYPE_MEMORY_DEDICATED_ALLOCATE_INFO;
@@ -125,37 +187,49 @@ namespace vk
 		importInfo.handleType = VK_EXTERNAL_MEMORY_HANDLE_TYPE_D3D11_TEXTURE_BIT;
 		importInfo.handle = handle;
 
+		uint32_t memTypeIndex = FindMemoryType(
+			(VkPhysicalDevice)GetVulkanPhysicalDevice(),
+			memReqs2.memoryRequirements.memoryTypeBits,
+			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+
+		if (memTypeIndex == UINT32_MAX)
+		{
+			if (throwFatal)
+			{
+				FatalError("Failed to find suitable memory type for Vulkan shared texture.");
+			}
+			vkDestroyImage(device, outImage, nullptr);
+			outImage = VK_NULL_HANDLE;
+			outMemory = VK_NULL_HANDLE;
+			return;
+		}
+
 		VkMemoryAllocateInfo allocInfo = {};
 		allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
 		allocInfo.pNext = &importInfo;
-		allocInfo.allocationSize = memReqs.size;
-		allocInfo.memoryTypeIndex = FindMemoryType((VkPhysicalDevice)GetVulkanPhysicalDevice(), memReqs.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+		allocInfo.allocationSize = memReqs2.memoryRequirements.size;
+		allocInfo.memoryTypeIndex = memTypeIndex;
 
-		result = vkAllocateMemory(device, &allocInfo, nullptr, &outMemory);
-
+        result = vkAllocateMemory(device, &allocInfo, nullptr, &outMemory);
 		if (result != VK_SUCCESS)
 		{
 			if (throwFatal)
 			{
-				FatalError("Failed to allocate memory for Vulkan. VkResult: %s", vk::ResultToString(result));
+				FatalError("Failed to allocate memory for Vulkan shared texture. VkResult: %s", vk::ResultToString(result));
 			}
 			vkDestroyImage(device, outImage, nullptr);
 			outImage = VK_NULL_HANDLE;
+			outMemory = VK_NULL_HANDLE;
 			return;
 		}
 
-		static auto _vkBindImageMemory2 = (PFN_vkBindImageMemory2)vkGetDeviceProcAddr(device, "vkBindImageMemory2");
-		if (!_vkBindImageMemory2)
-		{
-			FatalError("Unable to find 'vkBindImageMemory2' in vulkan.");
-		}
+        VkBindImageMemoryInfo bindInfo = {};
+		bindInfo.sType = VK_STRUCTURE_TYPE_BIND_IMAGE_MEMORY_INFO;
+		bindInfo.image = outImage;
+		bindInfo.memory = outMemory;
+		bindInfo.memoryOffset = 0;
 
-		VkBindImageMemoryInfo BindImageMemoryInfo = { VK_STRUCTURE_TYPE_BIND_IMAGE_MEMORY_INFO };
-		BindImageMemoryInfo.image = outImage;
-		BindImageMemoryInfo.memory = outMemory;
-
-		result = _vkBindImageMemory2(device, 1, &BindImageMemoryInfo);
-
+		result = _vkBindImageMemory2(device, 1, &bindInfo);
 		if (result != VK_SUCCESS)
 		{
 			if (throwFatal)
