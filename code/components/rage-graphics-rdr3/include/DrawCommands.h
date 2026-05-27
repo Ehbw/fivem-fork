@@ -79,6 +79,8 @@ extern GFX_EXPORT void* GetGraphicsDriverHandle();
 // Vulkan Specific
 extern GFX_EXPORT void* GetVulkanPhysicalDevice();
 
+extern GFX_EXPORT void* GetVulkanInstance();
+
 namespace rage::sga
 {
 class GFX_EXPORT GraphicsContext
