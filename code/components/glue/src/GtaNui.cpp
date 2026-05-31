@@ -213,9 +213,10 @@ public:
 struct NUITextureUpdateDX12 : public NUITextureUpdate
 {
 	WRL::ComPtr<ID3D12Resource> newTexture;
+	uint64_t handle;
 
-	NUITextureUpdateDX12(WRL::ComPtr<ID3D12Resource> newTexture, fwRefContainer<nui::GITexture> texture, nui::GameInterface::UpdateTextureCB cb)
-		: NUITextureUpdate(texture, cb), newTexture(newTexture)
+	NUITextureUpdateDX12(WRL::ComPtr<ID3D12Resource> newTexture, uint64_t handle, fwRefContainer<nui::GITexture> texture, nui::GameInterface::UpdateTextureCB cb)
+		: NUITextureUpdate(texture, cb), newTexture(newTexture), handle(handle)
 	{
 	}
 };
@@ -224,9 +225,10 @@ struct NUITextureUpdateVK : public NUITextureUpdate
 {
 	VkImage image;
 	VkDeviceMemory deviceMemory;
+	VkImageView imageView;
 
-	NUITextureUpdateVK(VkImage image, VkDeviceMemory deviceMemory, fwRefContainer<nui::GITexture> texture, nui::GameInterface::UpdateTextureCB cb)
-		: NUITextureUpdate(texture, cb), image(image), deviceMemory(deviceMemory)
+	NUITextureUpdateVK(VkImage image, VkDeviceMemory deviceMemory, fwRefContainer<nui::GITexture> texture, VkImageView imageView, nui::GameInterface::UpdateTextureCB cb)
+		: NUITextureUpdate(texture, cb), image(image), deviceMemory(deviceMemory), imageView(imageView)
 	{
 	}
 };
@@ -822,6 +824,11 @@ fwRefContainer<GITexture> GtaNuiInterface::CreateTextureFromShareHandle(HANDLE s
 	return new GtaNuiTexture(nullptr);
 }
 
+#ifdef IS_RDR3
+static uint64_t CreateNUIShaderResourceView(rage::sga::TextureD3D12::TextureData* texture, ID3D12Resource* resource);
+static void DestroyNUIShaderResourceView(uint64_t cpuHandle);
+#endif
+
 void GtaNuiInterface::UpdateTexture(HANDLE shareHandle, fwRefContainer<GITexture> texture, int width, int height, nui::GameInterface::UpdateTextureCB cb)
 {
 #ifdef GTA_FIVE
@@ -928,6 +935,7 @@ void GtaNuiInterface::UpdateTexture(HANDLE shareHandle, fwRefContainer<GITexture
 			return;
 		}
 
+		uint64_t handle = CreateNUIShaderResourceView(texRef->data, cefResource.Get());
 		{
 			std::lock_guard lock(g_onTextureUpdateMutex);
 			auto it = std::find_if(g_onTextureUpdate.begin(), g_onTextureUpdate.end(), [texture](auto& p)
@@ -939,10 +947,18 @@ void GtaNuiInterface::UpdateTexture(HANDLE shareHandle, fwRefContainer<GITexture
 			{
 				NUITextureUpdateDX12& dx = std::get<NUITextureUpdateDX12>(*it);
 				dx.newTexture = std::move(cefResource);
+				
+				if (dx.handle != 0)
+				{
+					DestroyNUIShaderResourceView(dx.handle);
+					dx.handle = 0;
+				}
+
+				dx.handle = handle;
 			}
 			else
 			{
-				g_onTextureUpdate.emplace_back(std::in_place_type<NUITextureUpdateDX12>, std::move(cefResource), texture, cb);
+				g_onTextureUpdate.emplace_back(std::in_place_type<NUITextureUpdateDX12>, std::move(cefResource), handle, texture, cb);
 			}
 		}
 	}
@@ -974,6 +990,26 @@ void GtaNuiInterface::UpdateTexture(HANDLE shareHandle, fwRefContainer<GITexture
 			return;
 		}
 
+		VkImageViewCreateInfo viewInfo{};
+		viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+		viewInfo.image = image;
+		viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+		viewInfo.format = VK_FORMAT_B8G8R8A8_UNORM;
+		viewInfo.components = {
+			VK_COMPONENT_SWIZZLE_IDENTITY,
+			VK_COMPONENT_SWIZZLE_IDENTITY,
+			VK_COMPONENT_SWIZZLE_IDENTITY,
+			VK_COMPONENT_SWIZZLE_IDENTITY
+		};
+		viewInfo.subresourceRange = {
+			VK_IMAGE_ASPECT_COLOR_BIT,
+			0, 1,
+			0, 1
+		};
+
+		VkImageView view;
+		vkCreateImageView((VkDevice)GetGraphicsDriverHandle(), &viewInfo, nullptr, &view);
+
 		{
 			std::lock_guard lock(g_onTextureUpdateMutex);
 			auto it = std::find_if(g_onTextureUpdate.begin(), g_onTextureUpdate.end(), [texture](auto& p)
@@ -984,22 +1020,31 @@ void GtaNuiInterface::UpdateTexture(HANDLE shareHandle, fwRefContainer<GITexture
 			if (it != g_onTextureUpdate.end())
 			{
 				NUITextureUpdateVK& vk = std::get<NUITextureUpdateVK>(*it);
+				if (vk.imageView)
+				{
+					vkDestroyImageView(device, vk.imageView, nullptr);
+					vk.imageView = VK_NULL_HANDLE;
+				}
+
 				if (vk.image)
 				{
 					vkDestroyImage(device, vk.image, nullptr);
+					vk.image = VK_NULL_HANDLE;
 				}
 
 				if (vk.deviceMemory)
 				{
 					vkFreeMemory(device, vk.deviceMemory, nullptr);
+					vk.deviceMemory = VK_NULL_HANDLE;
 				}
 
 				vk.image = std::move(image);
 				vk.deviceMemory = std::move(deviceMemory);
+				vk.imageView = std::move(view);
 			}
 			else
 			{
-				g_onTextureUpdate.emplace_back(std::in_place_type<NUITextureUpdateVK>, std::move(image), std::move(deviceMemory), texture, cb);
+				g_onTextureUpdate.emplace_back(std::in_place_type<NUITextureUpdateVK>, std::move(image), std::move(deviceMemory), texture, std::move(view), cb);
 			}
 		}
 	}
@@ -1142,11 +1187,103 @@ static void UpdateTexture(NUITextureUpdate& texture)
 	});
 }
 #elif IS_RDR3
+#include <Hooking.h>
+
+struct DX12DescHeapAllocation
+{
+	void* padding;
+	void* m_heapCPUStart;
+	void* padding1;
+	int32_t* m_data;
+	int32_t m_head;
+	int32_t m_incrementSize;
+	int32_t m_totalCount;
+};
+
+static DX12DescHeapAllocation* g_srvHeapLinkedList;
+static LPCRITICAL_SECTION g_srvCritSec;
+
+static uint64_t CreateNUIShaderResourceView(rage::sga::TextureD3D12::TextureData* texture, ID3D12Resource* resource)
+{
+	if (g_srvCritSec->DebugInfo)
+	{
+		EnterCriticalSection(g_srvCritSec);
+	}
+
+	int32_t slot = g_srvHeapLinkedList->m_head;
+	g_srvHeapLinkedList->m_head = g_srvHeapLinkedList->m_data[g_srvHeapLinkedList->m_head];
+
+	if (g_srvCritSec->DebugInfo)
+	{
+		LeaveCriticalSection(g_srvCritSec);
+	}
+
+    uint64_t cpuHandle = (uint64_t)g_srvHeapLinkedList->m_heapCPUStart + (g_srvHeapLinkedList->m_incrementSize * slot);
+
+    D3D12_CPU_DESCRIPTOR_HANDLE handle{ cpuHandle };
+	D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc{};
+	srvDesc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+	srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+	srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+	srvDesc.Texture2D.MipLevels = 1;
+
+	((ID3D12Device*)GetGraphicsDriverHandle())->CreateShaderResourceView(resource, &srvDesc, handle);
+
+	return cpuHandle;
+}
+
+static void CreateNUIShaderResourceView(rage::sga::TextureVK::TextureData* texture, VkImage image)
+{
+	VkImageViewCreateInfo viewInfo{};
+	viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+	viewInfo.image = image;
+	viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+	viewInfo.format = VK_FORMAT_B8G8R8A8_UNORM;
+	viewInfo.components = {
+		VK_COMPONENT_SWIZZLE_IDENTITY,
+		VK_COMPONENT_SWIZZLE_IDENTITY,
+		VK_COMPONENT_SWIZZLE_IDENTITY,
+		VK_COMPONENT_SWIZZLE_IDENTITY
+	};
+	viewInfo.subresourceRange = {
+		VK_IMAGE_ASPECT_COLOR_BIT,
+		0, 1,
+		0, 1
+	};
+
+    VkImageView view;
+	vkCreateImageView((VkDevice)GetGraphicsDriverHandle(), &viewInfo, nullptr, &view);
+
+	texture->imageView = view;
+	texture->imageViewType = 2;
+}
+
+static void DestroyNUIShaderResourceView(uint64_t cpuHandle)
+{
+	int32_t slot = (cpuHandle - (uint64_t)g_srvHeapLinkedList->m_heapCPUStart) / g_srvHeapLinkedList->m_incrementSize;
+	if (g_srvCritSec->DebugInfo)
+	{
+		EnterCriticalSection(g_srvCritSec);
+	}
+
+    g_srvHeapLinkedList->m_data[slot] = g_srvHeapLinkedList->m_head;
+	g_srvHeapLinkedList->m_head = slot;
+
+	if (g_srvCritSec->DebugInfo)
+	{
+		LeaveCriticalSection(g_srvCritSec);
+	}
+}
+
 static void UpdateTexture(NUITextureUpdateVK& texture)
 {
 	VkDevice device = (VkDevice)GetGraphicsDriverHandle();
-	if (texture.cb && texture.cb(nullptr))
+	auto texRef = (rage::sga::TextureVK*)texture.texture->GetHostTexture();
+
+	if ((texture.cb && texture.cb(nullptr)) || !texRef || !texRef->image)
 	{
+		trace("texRef %p\n, texRef->image %p", (void*)texRef, (void*)texRef->image);
+
 		if (texture.image)
 		{
 			vkDestroyImage(device, texture.image, nullptr);
@@ -1158,23 +1295,28 @@ static void UpdateTexture(NUITextureUpdateVK& texture)
 		return;
 	}
 
-	auto texRef = (rage::sga::TextureVK*)texture.texture->GetHostTexture();
-	VkImage oldImage = texRef->image->image;
-	VkDeviceMemory oldMemory = texRef->image->memory;
+	VkImage oldImage = VK_NULL_HANDLE;
+	VkDeviceMemory oldMemory = VK_NULL_HANDLE;
+
+	if (texRef->image->image)
+	{
+		oldImage = texRef->image->image;
+	}
+
+	if (texRef->image->memory)
+	{
+		oldMemory = texRef->image->memory;
+	}
 
 	texRef->image->image = texture.image;
 	texRef->image->memory = texture.deviceMemory;
 
-	rage::sga::TextureViewDesc srvDesc;
-	srvDesc.mipLevels = 1;
-	srvDesc.arrayStart = 0;
-	srvDesc.dimension = 4;
-	srvDesc.arraySize = 1;
+	VkImageView oldView = texRef->data->imageView;
 
-	rage::sga::Driver_Destroy_ShaderResourceView(texRef);
-	rage::sga::Driver_Create_ShaderResourceView(texRef, srvDesc);
+	texRef->data->imageView = texture.imageView;
+	texRef->data->imageViewType = 2;
 
-	g_onRenderQueue.emplace([oldImage, oldMemory, device]()
+	g_earlyOnRenderQueue.emplace([oldImage, oldMemory, oldView, device]()
 	{
 		if (oldImage)
 		{
@@ -1184,6 +1326,11 @@ static void UpdateTexture(NUITextureUpdateVK& texture)
 		if (oldMemory)
 		{
 			vkFreeMemory(device, oldMemory, nullptr);
+		}
+
+		if (oldView)
+		{
+			vkDestroyImageView((VkDevice)GetGraphicsDriverHandle(), oldView, nullptr);
 		}
 	});
 }
@@ -1196,23 +1343,27 @@ static void UpdateTexture(NUITextureUpdateDX12& texture)
 	}
 
 	auto texRef = (rage::sga::TextureD3D12*)texture.texture->GetHostTexture();
+	if (!texRef)
+	{
+		return;
+	}
+
 	ID3D12Resource* oldResource = texRef->resource;
 	texRef->resource = texture.newTexture.Detach();
 
-	rage::sga::TextureViewDesc srvDesc;
-	srvDesc.mipLevels = 1;
-	srvDesc.arrayStart = 0;
-	srvDesc.dimension = 4;
-	srvDesc.arraySize = 1;
+	uint64_t oldHandle = texRef->data->handle.ptr;
+	texRef->data->handle.ptr = texture.handle;
 
-	rage::sga::Driver_Destroy_ShaderResourceView(texRef);
-	rage::sga::Driver_Create_ShaderResourceView(texRef, srvDesc);
-
-	g_earlyOnRenderQueue.emplace([oldResource]()
+	g_earlyOnRenderQueue.emplace([oldResource, oldHandle]()
 	{
 		if (oldResource)
 		{
 			oldResource->Release();
+		}
+
+		if (oldHandle)
+		{
+			DestroyNUIShaderResourceView(oldHandle);
 		}
 	});
 }
@@ -1258,6 +1409,12 @@ static void DoRender()
 
 	nuiGi.OnRender();
 }
+
+static HookFunction hookFunction([]()
+{
+	g_srvCritSec = hook::get_address<RTL_CRITICAL_SECTION*>(hook::get_pattern("48 8D 0D ? ? ? ? E8 ? ? ? ? 8B 1D ? ? ? ? 48 8D 0D ? ? ? ? 48 8B 05 ? ? ? ? 8B 14 98 89 15 ? ? ? ? E8 ? ? ? ? 0F AF 1D", 3));
+	g_srvHeapLinkedList = hook::get_address<DX12DescHeapAllocation*>(hook::get_pattern("48 8D 0D ? ? ? ? 41 B8 ? ? ? ? E8 ? ? ? ? 45 33 C9 44 88 64 24", 3));
+});
 
 static InitFunction initFunction([]()
 {
