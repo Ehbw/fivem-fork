@@ -171,7 +171,7 @@ namespace sga
 
 		char pad[31];
 		uint8_t textureType;
-		char pad1[0x30 - 32 - 8];
+		char pad1[8];
 		TextureData* data;
 		char pad2[0x10];
 		ID3D12Resource* resource;
@@ -180,6 +180,15 @@ namespace sga
 	class TextureVK : public Texture
 	{
 	public:
+		struct TextureData : public sysUseAllocator
+		{
+			char pad0[0x11];
+			uint8_t imageViewType;
+			char pad1[6];
+			VkImageView imageView;
+		};
+		static_assert(offsetof(TextureData, imageView) == 0x18, "TextureVK::TextureData imageView offset is incorrect");
+
 		struct ImageData : public sysUseAllocator
 		{
 			VkDeviceMemory memory;
@@ -191,9 +200,12 @@ namespace sga
 		char pad[0x10];
 		uint16_t width;
 		uint16_t height;
-		char pad2[64 - 0x10 - 4];
+		char pad2[20];
+		TextureData* data;
+		char pad3[16];
 		ImageData* image;
 	};
+	static_assert(offsetof(TextureVK, data) == 48, "TextureVK::TextureData imageView offset is incorrect");
 
 	enum BufferType
 	{
@@ -226,7 +238,7 @@ namespace sga
 		}
 	};
 
-	void GFX_EXPORT Driver_Create_ShaderResourceView(Texture* texture, const TextureViewDesc& desc);
+	bool GFX_EXPORT Driver_Create_ShaderResourceView(Texture* texture, const TextureViewDesc& desc);
 
 	void GFX_EXPORT Driver_Destroy_ShaderResourceView(Texture* texture);
 
