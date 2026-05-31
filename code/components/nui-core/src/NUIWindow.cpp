@@ -695,8 +695,8 @@ void NUIWindow::UpdateSharedResource(CefRenderHandler::PaintElementType type)
 	auto sharedHandle = frame->shared_handle;
 	auto frameSequence = frame->frame_seq - 1;
 
-	int w = type == PET_VIEW ? m_width : m_popupRect.width;
-	int h = type == PET_VIEW ? m_height : m_popupRect.height;
+	int w = frame->width;
+	int h = frame->height;
 
 	{
 		std::unique_lock<std::shared_mutex> textureLock(m_textureMutex, std::defer_lock);
