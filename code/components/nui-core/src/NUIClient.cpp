@@ -127,6 +127,14 @@ void NUIClient::OnLoadStart(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> f
 		m_loadedMainFrame = false;
 	}
 
+	// Disable spellchecking.
+	{
+		CefRefPtr<CefValue> value = CefValue::Create();
+		value->SetBool(false);
+		CefString error;
+		GetBrowser()->GetHost()->GetRequestContext()->SetPreference("browser.enable_spellchecking", value, error);
+	}
+
 	browser->GetHost()->AddDevToolsMessageObserver(g_devToolsObserver);
 	if (g_audioSink)
 	{
