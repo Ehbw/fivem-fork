@@ -111,7 +111,7 @@ namespace vk
 		}
 
 		if (!_vkGetImageMemoryRequirements2)
-		{
+		{	
 			_vkGetImageMemoryRequirements2 = (PFN_vkGetImageMemoryRequirements2)vkGetDeviceProcAddr(device, "vkGetImageMemoryRequirements2");
 			if (!_vkGetImageMemoryRequirements2)
 			{
