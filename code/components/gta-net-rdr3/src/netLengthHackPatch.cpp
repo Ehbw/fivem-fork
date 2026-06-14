@@ -27,6 +27,11 @@ static hook::cdecl_stub<bool(rage::datBitBuffer*, uint64_t, int)> datBitBuffer__
 	return hook::get_call(hook::get_pattern("E8 ? ? ? ? 0F B7 47 ? 66 FF C8"));
 });
 
+static hook::cdecl_stub<bool(rage::datBitBuffer*, int*, int, int)> datBitBuffer__readBits([]()
+{
+	return hook::get_pattern("48 89 5C 24 ? 57 48 83 EC ? 41 8B F8 4C 8B D2");
+});
+
 #include <set>
 static std::set<uintptr_t> g_accessedAddress{};
 
@@ -51,8 +56,8 @@ static inline void __forceinline LogObjectIdSerialise(const char* func, uint16_t
 }
 
 // bool CSyncDataWriter::SerialiseObjectID(rage::CSyncDataWriter* self, uint16_t* objectId, char* prefix, void* a4)
-static bool (*g_origCSyncDataWriter__SerialiseObjectIdPF)(rage::CSyncDataReader*, uint16_t*, char*, void*);
-static bool CSyncDataWriter__SerialiseObjectIdPF(rage::CSyncDataReader* self, uint16_t* objectId, char* a3, void* a4)
+static bool (*g_origCSyncDataWriter__SerialiseObjectIdPF)(rage::CSyncDataWriter*, uint16_t*, char*, void*);
+static bool CSyncDataWriter__SerialiseObjectIdPF(rage::CSyncDataWriter* self, uint16_t* objectId, char* a3, void* a4)
 {
 	LogObjectIdSerialise(__func__, *objectId);
 
@@ -184,7 +189,10 @@ static bool NetworkEventComponentControlBase__Serialise(hook::FlexStruct* self, 
 {
 	LogObjectIdSerialise(__func__);
 
-	return g_origNetworkEventComponentControlBase__Serialise(self, buffer);
+	datBitBuffer__writeWord(buffer, self->Get<uint16_t>(0x8), kMaxObjectIdSize);
+	datBitBuffer__writeWord(buffer, self->Get<uint16_t>(0xA), kMaxObjectIdSize);
+	buffer->WriteUns(self->Get<uint8_t>(0xC), 6);
+	return buffer->WriteBit(self->Get<bool>(0xD));
 }
 
 static void (*g_origNetworkEventComponentControlBase__SerialiseReply)(hook::FlexStruct*, rage::datBitBuffer*);
@@ -209,6 +217,30 @@ static void NetworkEventComponentControlBase__SerialiseReply(hook::FlexStruct* s
 
 static HookFunction objectIdMapping([]()
 {
+	// DEBUG: Entirely eliminate Net ID Mapping
+	// NOTE: Theres a lot of physicalIndex mapping thats done with this struct.
+	// DEBUG: don't allocate CNetIdMapper's object ids
+	//hook::call(hook::get_pattern("E8 ? ? ? ? 48 81 C7 ? ? ? ? 48 83 EE ? 75 ? 4C 8D 83"), ResetNetIdMap);
+
+
+#if 0
+	{
+		g_initNetIdmapping = hook::trampoline(hook::get_pattern("48 89 5C 24 ? 48 89 6C 24 ? 48 89 74 24 ? 57 48 83 EC ? BD ? ? ? ? 48 8B D9 8B F5"), initNetIdMapping);
+		g_CSyncDataWriter__SerialisePlayerBitfield = hook::trampoline(hook::get_pattern("48 89 5C 24 ? 48 89 6C 24 ? 48 89 74 24 ? 57 48 83 EC ? 65 4C 8B 14 25 ? ? ? ? 48 8B F9 8B 05 ? ? ? ? 45 33 DB"), CSyncDataWriter__SerialisePlayerBitfield);
+		g_CSyncDataReader__SerialisePlayerBitfield = hook::trampoline(hook::get_pattern("48 89 5C 24 ? 48 89 6C 24 ? 48 89 74 24 ? 57 41 56 41 57 48 83 EC ? 8B 35 ? ? ? ? 48 8B E9"), CSyncDataReader__SerialisePlayerBitfield);
+		// CNetworkWorldGridManager::Update
+		hook::nop(hook::get_pattern("48 8B 05 ? ? ? ? 41 0F B6 CC"), 7);
+		hook::nop(hook::get_pattern("8A 0C 01 48 85 FF"), 3);
+		{
+			auto location = (char*)hook::get_pattern("48 8B 05 ? ? ? ? 44 8A 0C 01");
+			hook::nop(location, 11);
+
+			hook::put<uint8_t>(location, 0x44);
+			hook::put<uint8_t>(location + 1, 0x8A);
+			hook::put<uint8_t>(location + 2, 0x09);
+		}
+	}
+#endif
 	// Patch the respective CDataSyncReader/CDataSyncWriter/CDataSyncSizeCalculator fields (static and non-static) to properly account for 16 bit objectIds.
 	// Along with removing usage of object mapping.
 	{
@@ -244,9 +276,6 @@ static HookFunction objectIdMapping([]()
 		hook::call(hook::pattern("C6 44 24 ? 02 45 ? ? E8 ? ? ? ? 48 ? ? 48 C3").count(6).get(1).get<void>(8), CSyncDataWriter__SerialiseObjectId);
 		g_origCSyncDataReader__SerialiseObjectId = hook::trampoline(hook::get_pattern("40 53 48 83 EC ? 48 8B 49 ? 41 B8"), CSyncDataReader__SerialiseObjectId);
 	}
-
-	//DEBUG: don't allocate CNetIdMapper's object ids
-	//hook::call(hook::get_pattern("E8 ? ? ? ? 48 81 C7 ? ? ? ? 48 83 EE ? 75 ? 4C 8D 83"), ReturnSelf);
 
 	// Patch CScriptEntityStateChangeEvent(s) to remove id mapping.
 	{
