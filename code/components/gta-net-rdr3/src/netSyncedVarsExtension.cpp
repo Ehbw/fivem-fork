@@ -15,7 +15,7 @@ static uint64_t (*g_origSyncedUintFalse_GetMaxBits)(void*);
 static uint64_t SyncedIntFalse_GetMaxBits(void* self)
 {
 	auto val = g_origSyncedUintFalse_GetMaxBits(self);
-	trace("%s %i %p\n", __func__, val, _ReturnAddress());
+	trace("%s %i %p\n", __func__, val, (void*)hook::get_unadjusted(_ReturnAddress()));
 	return (val == 13 && icgi->OneSyncBigIdEnabled) ? 16 : val;
 }
 
@@ -23,7 +23,7 @@ static uint64_t (*g_origSyncedInt_GetMaxBits)(void*);
 static uint64_t SyncedInt_GetMaxBits(void* self)
 {
 	auto val = g_origSyncedInt_GetMaxBits(self);
-	trace("%s %i %p\n", __func__, val, _ReturnAddress());
+	trace("%s %i %p\n", __func__, val, (void*)hook::get_unadjusted(_ReturnAddress()));
 	return (val == 13 && icgi->OneSyncBigIdEnabled) ? 16 : val;
 }
 
@@ -31,7 +31,7 @@ static uint64_t (*g_origSyncedUnkD038_GetMaxBits)(void*);
 static uint64_t SyncedUnkD038_GetMaxBits(void* self)
 {
 	auto val = g_origSyncedUnkD038_GetMaxBits(self);
-	trace("%s %i %p\n", __func__, val, _ReturnAddress());
+	trace("%s %i %p\n", __func__, val, (void*)hook::get_unadjusted(_ReturnAddress()));
 	return (val == 13 && icgi->OneSyncBigIdEnabled) ? 16 : val;
 }
 
@@ -45,28 +45,28 @@ static uint64_t SyncedVarGroup_GetMaxBits(void* self)
 static bool (*g_origSyncedVarGroup_UsesIdMappings)(void*);
 static bool SyncedVarGroup_UsesIdMappings(void* self)
 {
-	trace("%s %i (%p) %p\n", __func__, g_origSyncedVarGroup_UsesIdMappings(self), (void*)hook::get_unadjusted(*(uint64_t**)self), _ReturnAddress());
+	trace("%s %i (%p) %p\n", __func__, g_origSyncedVarGroup_UsesIdMappings(self), (void*)hook::get_unadjusted(*(uint64_t**)self), (void*)hook::get_unadjusted(_ReturnAddress()));
 	return g_origSyncedVarGroup_UsesIdMappings(self);
 }
 
 static bool (*g_origMeleeArbitationFailed)(void*, int);
 static bool _meleeArbitationFailed(void* a1, int a2)
 {
-	trace("melee arbitation failed %p %i\n", a1, a2);
+	trace("melee arbitation failed %p %i %p\n", a1, a2, (void*)hook::get_unadjusted(_ReturnAddress()));
 	return g_origMeleeArbitationFailed(a1, a2);
 }
 
 static void* (*g_sub_14014D)(void* a1, void* a2);
 static void* sub_14014D(void* a1, void* a2)
 {
-	trace("a1 %p a2 %p\n", (void*)hook::get_unadjusted(*(uint64_t**)a1), (void*)hook::get_unadjusted(*(uint64_t**)a2));	
+	trace("a1 %p a2 %p %p\n", (void*)hook::get_unadjusted(*(uint64_t**)a1), (void*)hook::get_unadjusted(*(uint64_t**)a2), (void*)hook::get_unadjusted(_ReturnAddress()));	
 	return g_sub_14014D(a1, a2);
 }
 
 template<int BigSize, int DefaultSize>
 static int64_t ReturnSize(void* self)
 {
-	trace("CSyncedObject returnSize<%i,%i> %p, %i %p\n", BigSize, DefaultSize, (void*)hook::get_unadjusted(*(uint64_t**)self), (icgi->OneSyncBigIdEnabled ? BigSize : DefaultSize), _ReturnAddress());
+	trace("CSyncedObject returnSize<%i,%i> %p, %i %p\n", BigSize, DefaultSize, (void*)hook::get_unadjusted(*(uint64_t**)self), (icgi->OneSyncBigIdEnabled ? BigSize : DefaultSize), (void*)hook::get_unadjusted(_ReturnAddress()));
 	return icgi->OneSyncBigIdEnabled ? BigSize : DefaultSize;
 }
 
@@ -74,7 +74,7 @@ static int64_t (*g_syncedPedSerialise)(hook::FlexStruct*, void*, rage::datBitBuf
 static int64_t __stdcall SyncedPedSerialise(hook::FlexStruct* self, void* a2, rage::datBitBuffer* buffer)
 {
 	int64_t size = g_syncedPedSerialise(self, a2, buffer);
-	trace("Synced ped serialise size %i %p\n", size, _ReturnAddress());
+	trace("Synced ped serialise size %i %p\n", size, (void*)hook::get_unadjusted(_ReturnAddress()));
 	return size;
 }
 
@@ -82,7 +82,7 @@ static int64_t (*g_syncedTaskEntSerialise)(hook::FlexStruct*, void*, rage::datBi
 static int64_t __stdcall SyncedTaskEntSerialise(hook::FlexStruct* self, void* a2, rage::datBitBuffer* buffer)
 {
 	int64_t size = g_syncedTaskEntSerialise(self, a2, buffer);
-	trace("SyncedTaskEntSerialise size %i %p\n", size, _ReturnAddress());
+	trace("SyncedTaskEntSerialise size %i %p\n", size, (void*)hook::get_unadjusted(_ReturnAddress()));
 	return size;
 }
 

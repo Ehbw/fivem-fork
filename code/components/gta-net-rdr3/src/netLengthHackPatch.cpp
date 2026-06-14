@@ -22,6 +22,11 @@ static hook::cdecl_stub<void(rage::CSyncDataBase*, uint16_t*, char*, void*)> CSy
 	return hook::get_call(hook::get_pattern("0F B7 03 B9 3F 1F 00 00 66 FF C8 66 3B C1 76 04", -5));
 });
 
+static hook::cdecl_stub<bool(rage::datBitBuffer*, uint64_t, int)> datBitBuffer__writeWord([]()
+{
+	return hook::get_call(hook::get_pattern("E8 ? ? ? ? 0F B7 47 ? 66 FF C8"));
+});
+
 #include <set>
 static std::set<uintptr_t> g_accessedAddress{};
 
@@ -57,7 +62,7 @@ static bool CSyncDataWriter__SerialiseObjectIdPF(rage::CSyncDataReader* self, ui
 	}
 
 	CSyncDataBase__serialiseObjectId(self, objectId, a3, a4);
-	return self->m_buffer->WriteUns(*objectId, kMaxObjectIdSize);
+	return datBitBuffer__writeWord(self->m_buffer, *objectId, kMaxObjectIdSize);
 }
 
 // static: CSyncDataWriter::SerialiseObjectID(rage::CSyncDataReader* self, uint16_t* objectId)
@@ -71,10 +76,10 @@ static bool CSyncDataWriter__SerialiseObjectId(rage::CSyncDataWriter* self, uint
 		return g_origCSyncDataWriter__SerialiseObjectId(self, objectId);
 	}
 
-	return self->m_buffer->WriteUns(*objectId, kMaxObjectIdSize);
+	return datBitBuffer__writeWord(self->m_buffer, *objectId, kMaxObjectIdSize);
 }
 
- static void (*g_origCSyncDataReader__SerialiseObjectIdPF)(rage::CSyncDataReader*, uint16_t*, char*, void*);
+static void (*g_origCSyncDataReader__SerialiseObjectIdPF)(rage::CSyncDataReader*, uint16_t*, char*, void*);
 static void CSyncDataReader__SerialiseObjectIdPF(rage::CSyncDataReader* self, uint16_t* objectId, char* a3, void* a4)
 {
 	if (!g_lengthHackEnabled)
@@ -84,17 +89,15 @@ static void CSyncDataReader__SerialiseObjectIdPF(rage::CSyncDataReader* self, ui
 	}
 
 	uint32_t readerObjectId = 0;
-	if (self->m_buffer->ReadInteger(&readerObjectId, kMaxObjectIdSize))
-	{
-		*objectId = readerObjectId;
-	}
+	self->m_buffer->ReadInteger(&readerObjectId, kMaxObjectIdSize);
+	*objectId = readerObjectId;
 
 	LogObjectIdSerialise(__func__, *objectId);
 	CSyncDataBase__serialiseObjectId(self, objectId, a3, a4);
 }
 
-static void (*g_origCSyncDataReader__SerialiseObjectId)(rage::CSyncDataReader*, uint16_t*);
-static void CSyncDataReader__SerialiseObjectId(rage::CSyncDataReader* self, uint16_t* objectId)
+static uint16_t (*g_origCSyncDataReader__SerialiseObjectId)(rage::CSyncDataReader*, uint16_t*);
+static uint16_t CSyncDataReader__SerialiseObjectId(rage::CSyncDataReader* self, uint16_t* objectId)
 {
 	if (!g_lengthHackEnabled)
 	{
@@ -103,11 +106,10 @@ static void CSyncDataReader__SerialiseObjectId(rage::CSyncDataReader* self, uint
 	}
 
 	uint32_t readerObjectId = 0;
-	if (self->m_buffer->ReadInteger(&readerObjectId, kMaxObjectIdSize))
-	{
-		*objectId = readerObjectId;
-	}
+	self->m_buffer->ReadInteger(&readerObjectId, kMaxObjectIdSize);
+	*objectId = readerObjectId;
 	LogObjectIdSerialise(__func__, *objectId);
+	return *objectId;
 }
 
 static void (*g_origSyncDataSizeCalculator_SerializeObjectId)(rage::CSyncDataSizeCalculator*);
@@ -133,8 +135,8 @@ static bool SetVehicleExclusiveDriver__Write(hook::FlexStruct* self, rage::datBi
 		return g_origSetVehicleExclusiveDriver__Write(self, buffer);
 	}
 
-	buffer->WriteUns(self->Get<uint16_t>(8), kMaxObjectIdSize);
-	return buffer->WriteUns(self->Get<uint32_t>(0xC), 2);
+	datBitBuffer__writeWord(buffer, self->Get<uint16_t>(8), kMaxObjectIdSize);
+	return buffer->WriteInteger(self->Get<uint32_t>(0xC), 2);
 }
 
 static bool (*g_origSetLookAtEntity__Write)(hook::FlexStruct*, rage::datBitBuffer*);
@@ -147,9 +149,9 @@ static bool SetLookAtEntity__Write(hook::FlexStruct* self, rage::datBitBuffer* b
 		return g_origSetLookAtEntity__Write(self, buffer);
 	}
 
-	buffer->WriteUns(self->Get<uint16_t>(8), kMaxObjectIdSize);
-	buffer->WriteUns(self->Get<uint32_t>(0xC), 18);
-	return buffer->WriteUns(self->Get<uint32_t>(0x14), 0xA);
+	datBitBuffer__writeWord(buffer, self->Get<uint16_t>(8), kMaxObjectIdSize);
+	buffer->WriteInteger(self->Get<uint32_t>(0xC), 18);
+	return buffer->WriteInteger(self->Get<uint32_t>(0x14), 0xA);
 }
 
 static bool (*g_origSetVehicleTempAction__Write)(hook::FlexStruct*, rage::datBitBuffer*);
@@ -162,12 +164,10 @@ static bool SetVehicleTempAction__Write(hook::FlexStruct* self, rage::datBitBuff
 		return g_origSetVehicleTempAction__Write(self, buffer);
 	}
 
-	buffer->WriteUns(self->Get<uint16_t>(8), kMaxObjectIdSize);
-	buffer->WriteUns(self->Get<uint32_t>(0xC), 8);
+	datBitBuffer__writeWord(buffer, self->Get<uint16_t>(8), kMaxObjectIdSize);
+	buffer->WriteInteger(self->Get<uint32_t>(0xC), 8);
 
 	bool hasTime = self->Get<bool>(0x14);
-	buffer->WriteBit(hasTime);
-
 	bool result = buffer->WriteBit(hasTime);
 
 	if (!hasTime)
@@ -184,16 +184,7 @@ static bool NetworkEventComponentControlBase__Serialise(hook::FlexStruct* self, 
 {
 	LogObjectIdSerialise(__func__);
 
-	if (!g_lengthHackEnabled)
-	{
-		return g_origNetworkEventComponentControlBase__Serialise(self, buffer);
-	}
-
-	buffer->WriteUns(self->Get<uint16_t>(0x8), kMaxObjectIdSize);
-	buffer->WriteUns(self->Get<uint16_t>(0xA), kMaxObjectIdSize);
-
-	buffer->WriteUns(self->Get<uint8_t>(0xC), 6); // componentIndex
-	return buffer->WriteBit(self->Get<bool>(0xD)); 
+	return g_origNetworkEventComponentControlBase__Serialise(self, buffer);
 }
 
 static void (*g_origNetworkEventComponentControlBase__SerialiseReply)(hook::FlexStruct*, rage::datBitBuffer*);
@@ -206,12 +197,12 @@ static void NetworkEventComponentControlBase__SerialiseReply(hook::FlexStruct* s
 		return g_origNetworkEventComponentControlBase__SerialiseReply(self, buffer);
 	}
 
-	if (self->Get<uint16_t>(0xE))
+	if (self->Get<uint8_t>(0xE))
 	{
 		buffer->WriteBit(self->Get<bool>(0x1A));
 		if (self->Get<bool>(0x1A))
 		{
-			buffer->WriteUns(self->Get<uint16_t>(0x18), kMaxObjectIdSize);
+			datBitBuffer__writeWord(buffer, self->Get<uint16_t>(0x18), kMaxObjectIdSize);
 		}
 	}
 }
@@ -292,10 +283,9 @@ static HookFunction objectIdMapping([]()
 
 			virtual void InternalMain() override
 			{
-				mov(rdx, reinterpret_cast<uintptr_t>(&g_lengthHackEnabled));
-				mov(al, byte_ptr[rdx]);
-
-				cmp(al, al);
+				mov(r11, reinterpret_cast<uintptr_t>(&g_lengthHackEnabled));
+				mov(r11b, byte_ptr[r11]);
+				test(r11b, r11b);
 				jz("orig");
 
 				movzx(eax, word_ptr[rbp + 0x40]);
@@ -334,23 +324,22 @@ static HookFunction objectIdMapping([]()
 
 			virtual void InternalMain() override
 			{
-				mov(rdx, reinterpret_cast<uintptr_t>(&g_lengthHackEnabled));
-				mov(al, byte_ptr[rdx]);
-
-				cmp(al, al);
+				mov(r11, reinterpret_cast<uintptr_t>(&g_lengthHackEnabled));
+				mov(r11b, byte_ptr[r11]);
+				test(r11b, r11b);
 				jz("orig");
 
 				movzx(edx, word_ptr[rbx + 0x18]);
 
-				mov(rax, retn);
-				jmp(rax);
+				mov(r11, retn);
+				jmp(r11);
 
 				L("orig");
-				// Original code
+				// Original code, cx is used.
 				mov(ecx, 7999);
 				
-				mov(rax, retnOrig);
-				jmp(rax);
+				mov(r11, retnOrig);
+				jmp(r11);
 			}
 		} scriptWriteStub;
 
@@ -378,10 +367,9 @@ static HookFunction objectIdMapping([]()
 
 			virtual void InternalMain() override
 			{
-				mov(rdx, reinterpret_cast<uintptr_t>(&g_lengthHackEnabled));
-				mov(al, byte_ptr[rdx]);
-
-				cmp(al, al);
+				mov(r11, reinterpret_cast<uintptr_t>(&g_lengthHackEnabled));
+				mov(r11b, byte_ptr[r11]);
+				test(r11b, r11b);
 				jz("orig");
 
 				// edx already contains the objectId
@@ -428,10 +416,9 @@ static HookFunction objectIdMapping([]()
 
 			virtual void InternalMain() override
 			{
-				mov(rdx, reinterpret_cast<uintptr_t>(&g_lengthHackEnabled));
-				mov(al, byte_ptr[rdx]);
-
-				cmp(al, al);
+				mov(r11, reinterpret_cast<uintptr_t>(&g_lengthHackEnabled));
+				mov(r11b, byte_ptr[r11]);
+				test(r11b, r11b);
 				jz("orig");
 
 				// ecx contains the object id.
@@ -471,10 +458,9 @@ static HookFunction objectIdMapping([]()
 
 			virtual void InternalMain() override
 			{
-				mov(rcx, reinterpret_cast<uintptr_t>(&g_lengthHackEnabled));
-				mov(bl, byte_ptr[rcx]);
-
-				cmp(bl, bl);
+				mov(r11, reinterpret_cast<uintptr_t>(&g_lengthHackEnabled));
+				mov(r11b, byte_ptr[r11]);
+				test(r11b, r11b);
 				jz("orig");
 				
 				// Original code
@@ -526,23 +512,21 @@ static HookFunction objectIdMapping([]()
 
 			virtual void InternalMain() override
 			{
-				mov(rdx, reinterpret_cast<uintptr_t>(&g_lengthHackEnabled));
-				mov(al, byte_ptr[rdx]);
-
-				cmp(al, al);
+				mov(r11, reinterpret_cast<uintptr_t>(&g_lengthHackEnabled));
+				mov(r11b, byte_ptr[r11]);
+				test(r11b, r11b);
 				jz("orig");
 
-				movzx(edx, word_ptr[rbx + 0x18]);
-
-				mov(rax, retn);
-				jmp(rax);
+				movzx(edx, word_ptr[rbx + 0x18]); // the serialiser reads from edx for the object id.
+				mov(r11, retn);
+				jmp(r11);
 
 				L("orig");
-				movzx(edx, word_ptr[rbx + 0x18]);
+				movzx(eax, word_ptr[rbx + 0x18]);
 				mov(ecx, 7999);
 
-				mov(rax, retnOrig);
-				jmp(rax);
+				mov(r11, retnOrig);
+				jmp(r11);
 
 			}
 		} serialiseWriteStub;
