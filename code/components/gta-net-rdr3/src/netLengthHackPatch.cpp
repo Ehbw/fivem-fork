@@ -8,13 +8,15 @@
 #include <GameInit.h>
 #include <NetLibrary.h>
 
-//
-// By default, RDR2 (and all previous RAGE titles) used 13 bits for object ids. Allowing for a max of 8192 (in RDR3 this is capped to 8000).
-// In FiveM this has already been patched for a while. In RedM this is much more complicated with the extensive use of CSyncedVars and Object ID Mapping
-// Object ID mapping has a fixed length of 8000, but isn't needed under OneSync, so we can patch out the usage in a way that maintains legacy P2P sync.
-//
+///
+/// All current RAGE titles (RDR2, GTAV, GTAIV) use 13 bits to store object ids for any networked entities. 
+/// Allowing for a max of 8192 network ids at a time. However RDR2 has special restrictions limiting total ids to 8000.
+/// From Network ID Mapping, which isn't required under OneSync and is able to be patched out.
+/// 
 
-static constexpr int kMaxObjectIdSize = 16;
+static constexpr int kDefaultObjectIdSize = 13;
+static constexpr int kBigModeObjectIdSize = 16;
+
 static bool g_lengthHackEnabled = false;
 
 static hook::cdecl_stub<void(rage::CSyncDataBase*, uint16_t*, char*, void*)> CSyncDataBase__serialiseObjectId([]()
@@ -45,6 +47,27 @@ static inline void __forceinline LogObjectIdSerialise(const char* func)
 	}
 }
 
+static inline void __forceinline LogObjectIdSerialiseStack(const char* func)
+{
+	uintptr_t retnAddress = (uintptr_t)_ReturnAddress();
+	if (g_accessedAddress.find(retnAddress) == g_accessedAddress.end())
+	{
+		trace("%s: %p\n", func, (void*)hook::get_unadjusted(_ReturnAddress()));
+		uintptr_t* traceStart = (uintptr_t*)_AddressOfReturnAddress();
+		for (int i = 96; i > 0; i--)
+		{
+			uintptr_t addr = hook::get_unadjusted(traceStart[i]);
+			if (addr > 0x140000000 && addr < hook::exe_end())
+			{
+				trace("-> %p\n", (void*)addr);
+			}
+		}
+		trace("---------------------\n");
+		g_accessedAddress.insert(retnAddress);
+	}
+}
+
+
 static inline void __forceinline LogObjectIdSerialise(const char* func, uint16_t objectId)
 {
 	uintptr_t retnAddress = (uintptr_t)_ReturnAddress();
@@ -67,7 +90,7 @@ static bool CSyncDataWriter__SerialiseObjectIdPF(rage::CSyncDataWriter* self, ui
 	}
 
 	CSyncDataBase__serialiseObjectId(self, objectId, a3, a4);
-	return datBitBuffer__writeWord(self->m_buffer, *objectId, kMaxObjectIdSize);
+	return datBitBuffer__writeWord(self->m_buffer, *objectId, kBigModeObjectIdSize);
 }
 
 // static: CSyncDataWriter::SerialiseObjectID(rage::CSyncDataReader* self, uint16_t* objectId)
@@ -81,7 +104,7 @@ static bool CSyncDataWriter__SerialiseObjectId(rage::CSyncDataWriter* self, uint
 		return g_origCSyncDataWriter__SerialiseObjectId(self, objectId);
 	}
 
-	return datBitBuffer__writeWord(self->m_buffer, *objectId, kMaxObjectIdSize);
+	return datBitBuffer__writeWord(self->m_buffer, *objectId, kBigModeObjectIdSize);
 }
 
 static void (*g_origCSyncDataReader__SerialiseObjectIdPF)(rage::CSyncDataReader*, uint16_t*, char*, void*);
@@ -94,7 +117,7 @@ static void CSyncDataReader__SerialiseObjectIdPF(rage::CSyncDataReader* self, ui
 	}
 
 	uint32_t readerObjectId = 0;
-	self->m_buffer->ReadInteger(&readerObjectId, kMaxObjectIdSize);
+	self->m_buffer->ReadInteger(&readerObjectId, kBigModeObjectIdSize);
 	*objectId = readerObjectId;
 
 	LogObjectIdSerialise(__func__, *objectId);
@@ -111,7 +134,7 @@ static uint16_t CSyncDataReader__SerialiseObjectId(rage::CSyncDataReader* self, 
 	}
 
 	uint32_t readerObjectId = 0;
-	self->m_buffer->ReadInteger(&readerObjectId, kMaxObjectIdSize);
+	self->m_buffer->ReadInteger(&readerObjectId, kBigModeObjectIdSize);
 	*objectId = readerObjectId;
 	LogObjectIdSerialise(__func__, *objectId);
 	return *objectId;
@@ -120,14 +143,14 @@ static uint16_t CSyncDataReader__SerialiseObjectId(rage::CSyncDataReader* self, 
 static void (*g_origSyncDataSizeCalculator_SerializeObjectId)(rage::CSyncDataSizeCalculator*);
 static void SyncDataSizeCalculator_SerializeObjectId(rage::CSyncDataSizeCalculator* syncData)
 {
-	LogObjectIdSerialise(__func__);
+	LogObjectIdSerialiseStack(__func__);
 
 	if (!g_lengthHackEnabled)
 	{
 		return g_origSyncDataSizeCalculator_SerializeObjectId(syncData);
 	}
 
-	syncData->m_size += kMaxObjectIdSize;
+	syncData->m_size += kBigModeObjectIdSize;
 }
 
 static bool (*g_origSetVehicleExclusiveDriver__Write)(hook::FlexStruct*, rage::datBitBuffer*);
@@ -140,7 +163,7 @@ static bool SetVehicleExclusiveDriver__Write(hook::FlexStruct* self, rage::datBi
 		return g_origSetVehicleExclusiveDriver__Write(self, buffer);
 	}
 
-	datBitBuffer__writeWord(buffer, self->Get<uint16_t>(8), kMaxObjectIdSize);
+	datBitBuffer__writeWord(buffer, self->Get<uint16_t>(8), kBigModeObjectIdSize);
 	return buffer->WriteInteger(self->Get<uint32_t>(0xC), 2);
 }
 
@@ -154,7 +177,7 @@ static bool SetLookAtEntity__Write(hook::FlexStruct* self, rage::datBitBuffer* b
 		return g_origSetLookAtEntity__Write(self, buffer);
 	}
 
-	datBitBuffer__writeWord(buffer, self->Get<uint16_t>(8), kMaxObjectIdSize);
+	datBitBuffer__writeWord(buffer, self->Get<uint16_t>(8), kBigModeObjectIdSize);
 	buffer->WriteInteger(self->Get<uint32_t>(0xC), 18);
 	return buffer->WriteInteger(self->Get<uint32_t>(0x14), 0xA);
 }
@@ -169,7 +192,7 @@ static bool SetVehicleTempAction__Write(hook::FlexStruct* self, rage::datBitBuff
 		return g_origSetVehicleTempAction__Write(self, buffer);
 	}
 
-	datBitBuffer__writeWord(buffer, self->Get<uint16_t>(8), kMaxObjectIdSize);
+	datBitBuffer__writeWord(buffer, self->Get<uint16_t>(8), kBigModeObjectIdSize);
 	buffer->WriteInteger(self->Get<uint32_t>(0xC), 8);
 
 	bool hasTime = self->Get<bool>(0x14);
@@ -188,9 +211,13 @@ static bool (*g_origNetworkEventComponentControlBase__Serialise)(hook::FlexStruc
 static bool NetworkEventComponentControlBase__Serialise(hook::FlexStruct* self, rage::datBitBuffer* buffer)
 {
 	LogObjectIdSerialise(__func__);
+	if (!g_lengthHackEnabled)
+	{
+		return g_origNetworkEventComponentControlBase__Serialise(self, buffer);
+	}
 
-	datBitBuffer__writeWord(buffer, self->Get<uint16_t>(0x8), kMaxObjectIdSize);
-	datBitBuffer__writeWord(buffer, self->Get<uint16_t>(0xA), kMaxObjectIdSize);
+	datBitBuffer__writeWord(buffer, self->Get<uint16_t>(0x8), kBigModeObjectIdSize);
+	datBitBuffer__writeWord(buffer, self->Get<uint16_t>(0xA), kBigModeObjectIdSize);
 	buffer->WriteUns(self->Get<uint8_t>(0xC), 6);
 	return buffer->WriteBit(self->Get<bool>(0xD));
 }
@@ -210,37 +237,409 @@ static void NetworkEventComponentControlBase__SerialiseReply(hook::FlexStruct* s
 		buffer->WriteBit(self->Get<bool>(0x1A));
 		if (self->Get<bool>(0x1A))
 		{
-			datBitBuffer__writeWord(buffer, self->Get<uint16_t>(0x18), kMaxObjectIdSize);
+			datBitBuffer__writeWord(buffer, self->Get<uint16_t>(0x18), kBigModeObjectIdSize);
 		}
 	}
 }
 
+static void* (*g_initNetIdmapping)(void*);
+static void* initNetIdMapping(void* self)
+{
+	memset(self, 0xCD, 64224);
+	return nullptr;
+}
+
+static void (*g_CSyncDataWriter__SerialisePlayerBitfield)(rage::CSyncDataWriter*, int*, void*, void*);
+static void CSyncDataWriter__SerialisePlayerBitfield(rage::CSyncDataWriter* self, int* bitset, void* a3, void* a4)
+{
+	if (!g_lengthHackEnabled)
+	{
+		return g_CSyncDataWriter__SerialisePlayerBitfield(self, bitset, a3, a4);
+	}
+
+	// In onesync, 16 and 31 are the two ids that will ever be serialised.
+	constexpr int kValidPlayerBits = (1 << 16) | (1 << 31);
+	int serialised[1]{ bitset[0] & kValidPlayerBits };
+
+	self->m_buffer->WriteBits(serialised, 0x20, 0);
+}
+
+static void* (*g_CSyncDataReader__SerialisePlayerBitfield)(rage::CSyncDataReader*, int*, void*, void*);
+static void* CSyncDataReader__SerialisePlayerBitfield(rage::CSyncDataReader* self, int* bitset, void* a3, void* a4)
+{
+	if (!g_lengthHackEnabled)
+	{
+		return g_CSyncDataReader__SerialisePlayerBitfield(self, bitset, a3, a4);
+	}
+
+	int bitfield[1];
+	datBitBuffer__readBits(self->m_buffer, bitfield, 0x20, 0);
+
+	// Keep 16 and 31 only in OneSync
+	constexpr int kValidPlayerBits = (1 << 16) | (1 << 31);
+	bitset[0] |= bitfield[0] & kValidPlayerBits;
+}
+
+static void SetObjectIdSize(bool bigMode)
+{
+	uint32_t bits = bigMode ? kBigModeObjectIdSize : kDefaultObjectIdSize;
+
+	static auto gameScriptIdWrite = hook::get_pattern("41 B8 ? ? ? ? 48 8B CF E8 ? ? ? ? 84 C0 0F 85", 2);
+	static auto gameScriptIdRead = hook::get_pattern("41 B8 ? ? ? ? 48 8D 55 ? E8 ? ? ? ? 84 C0 75 ? B8", 2);
+	static auto vehComponentControlWrite = hook::get_pattern("41 B8 ? ? ? ? 48 8B CF E8 ? ? ? ? 48 8B 5C 24 ? 48 83 C4 ? 5F C3 4C 8B DC", 2);
+
+	hook::put<uint32_t>(gameScriptIdWrite, bits);
+	hook::put<uint32_t>(gameScriptIdWrite, bits);
+	hook::put<uint32_t>(vehComponentControlWrite, bits);
+
+	// TODO: Verify that these are/aren't used in OneSync
+	static auto packObjectIdData = hook::get_pattern("41 B8 ? ? ? ? 49 8B CF 44 0F B7 64 44", 2);
+	static auto packObjectIdCount = hook::get_pattern("41 B8 ? ? ? ? 8B D7 49 8B CF E8 ? ? ? ? 84 C0", 2);
+	static auto packObjectIdCount2 = hook::get_pattern("41 B8 ? ? ? ? 0F B7 D7 49 8B CF", 2);
+	hook::put<uint32_t>(packObjectIdCount, bits);
+	hook::put<uint32_t>(packObjectIdData, bits);
+	hook::put<uint32_t>(packObjectIdCount2, bits);
+}
+
 static HookFunction objectIdMapping([]()
 {
-	// DEBUG: Entirely eliminate Net ID Mapping
-	// NOTE: Theres a lot of physicalIndex mapping thats done with this struct.
-	// DEBUG: don't allocate CNetIdMapper's object ids
-	//hook::call(hook::get_pattern("E8 ? ? ? ? 48 81 C7 ? ? ? ? 48 83 EE ? 75 ? 4C 8D 83"), ResetNetIdMap);
+	// DEBUG: don't initialize NetIdMapping, replace allocation with a known pattern to catch any missed uses of id mapping.
+	g_initNetIdmapping = hook::trampoline(hook::get_pattern("48 89 5C 24 ? 48 89 6C 24 ? 48 89 74 24 ? 57 48 83 EC ? BD ? ? ? ? 48 8B D9 8B F5"), initNetIdMapping);
 
+	// Replace ID Mapping (& player iteration) for serialising player fields.
+	g_CSyncDataWriter__SerialisePlayerBitfield = hook::trampoline(hook::get_pattern("48 89 5C 24 ? 48 89 6C 24 ? 48 89 74 24 ? 57 48 83 EC ? 65 4C 8B 14 25 ? ? ? ? 48 8B F9 8B 05 ? ? ? ? 45 33 DB"), CSyncDataWriter__SerialisePlayerBitfield);
+	g_CSyncDataReader__SerialisePlayerBitfield = hook::trampoline(hook::get_pattern("48 89 5C 24 ? 48 89 6C 24 ? 48 89 74 24 ? 57 41 56 41 57 48 83 EC ? 8B 35 ? ? ? ? 48 8B E9"), CSyncDataReader__SerialisePlayerBitfield);
 
-#if 0
 	{
-		g_initNetIdmapping = hook::trampoline(hook::get_pattern("48 89 5C 24 ? 48 89 6C 24 ? 48 89 74 24 ? 57 48 83 EC ? BD ? ? ? ? 48 8B D9 8B F5"), initNetIdMapping);
-		g_CSyncDataWriter__SerialisePlayerBitfield = hook::trampoline(hook::get_pattern("48 89 5C 24 ? 48 89 6C 24 ? 48 89 74 24 ? 57 48 83 EC ? 65 4C 8B 14 25 ? ? ? ? 48 8B F9 8B 05 ? ? ? ? 45 33 DB"), CSyncDataWriter__SerialisePlayerBitfield);
-		g_CSyncDataReader__SerialisePlayerBitfield = hook::trampoline(hook::get_pattern("48 89 5C 24 ? 48 89 6C 24 ? 48 89 74 24 ? 57 41 56 41 57 48 83 EC ? 8B 35 ? ? ? ? 48 8B E9"), CSyncDataReader__SerialisePlayerBitfield);
-		// CNetworkWorldGridManager::Update
-		hook::nop(hook::get_pattern("48 8B 05 ? ? ? ? 41 0F B6 CC"), 7);
-		hook::nop(hook::get_pattern("8A 0C 01 48 85 FF"), 3);
-		{
-			auto location = (char*)hook::get_pattern("48 8B 05 ? ? ? ? 44 8A 0C 01");
-			hook::nop(location, 11);
+		auto locations = hook::pattern("FF 90 ? ? ? ? 8A 48 ? 80 F9 20 73 ? 48 8B 05 ? ? ? ? 0F B6").count(7);
 
-			hook::put<uint8_t>(location, 0x44);
-			hook::put<uint8_t>(location + 1, 0x8A);
-			hook::put<uint8_t>(location + 2, 0x09);
+		for (size_t i = 0; i < locations.size(); i++)
+		{
+			auto location = locations.get(i).get<char>(9);
+
+			struct : jitasm::Frontend
+			{
+				uintptr_t retn;
+				uintptr_t retnOrig;
+
+				void Init(uintptr_t retn, uintptr_t retnOrig)
+				{
+					this->retn = retn;
+					this->retnOrig = retnOrig;
+				}
+
+				virtual void InternalMain() override
+				{
+					mov(r11, reinterpret_cast<uintptr_t>(&g_lengthHackEnabled));
+					mov(r11b, byte_ptr[r11]);
+					test(r11b, r11b);
+					jz("Orig");
+
+					L("skipIdMap");
+					mov(rax, retn);
+					jmp(rax);
+
+					L("Orig");
+					cmp(cl, 0x20);
+					jnb("skipIdMap");
+
+					mov(rax, retnOrig);
+					jmp(rax);
+				}
+			} *stub = new std::remove_pointer_t<decltype(stub)>();
+
+			stub->Init((uintptr_t)location + 0x13, (uintptr_t)location + 5);
+			hook::nop(location, 5);
+			hook::jump(location, stub->GetCode());
 		}
 	}
-#endif
+
+	hook::put<uint8_t>(hook::get_pattern("73 ? 0F B6 C8 48 8B 05 ? ? ? ? 8A 44 01 ? 3C ? 0F 85"), 0xEB); // jnb -> jmp
+
+	{
+		auto location = (char*)hook::get_pattern("41 80 FC ? 72 ? B1");
+		static struct : jitasm::Frontend
+		{
+			uintptr_t retnLength;
+			uintptr_t retnOrig;
+
+			void Init(uintptr_t retnLength, uintptr_t retnOrig)
+			{
+				this->retnLength = retnLength;
+				this->retnOrig = retnOrig;
+			}
+
+			virtual void InternalMain() override
+			{
+				mov(r11, reinterpret_cast<uintptr_t>(&g_lengthHackEnabled));
+				mov(r11b, byte_ptr[r11]);
+				test(r11b, r11b);
+				jz("orig");
+
+				// The game already guards this code with a 32 index check.
+				movzx(ecx, r12b);
+
+				mov(r11, retnLength);
+				jmp(r11);
+
+				L("orig");
+				mov(r11, retnOrig);
+				jmp(r11);
+			}
+		} patchWorldGridStub;
+		patchWorldGridStub.Init((uintptr_t)location + 0x18, (uintptr_t)location + 0xA);
+
+		hook::nop(location, 6);
+		hook::jump(location, patchWorldGridStub.GetCode());
+	}
+
+	// Patch bubble join to prevent writing out of bounds for player objects
+	{
+		auto location = hook::get_pattern("44 0F B6 4E ? 0F B6 40");
+
+		static struct : jitasm::Frontend
+		{
+			uintptr_t retnSuccess;
+			uintptr_t retnFail;
+
+			void Init(uintptr_t success, uintptr_t failure)
+			{
+				retnSuccess = success;
+				retnFail = failure;
+			}
+
+			virtual void InternalMain() override
+			{
+				mov(r11, reinterpret_cast<uintptr_t>(&g_lengthHackEnabled));
+				mov(r11b, byte_ptr[r11]);
+				test(r11b, r11b);
+				jnz("Fail");
+
+				// Original code
+				movzx(r9d, byte_ptr[rsi + 0x10]);
+				movzx(eax, byte_ptr[rax + 0x20]);
+
+				cmp(eax, 0x20);
+				jge("Fail");
+
+				L("Orig");
+
+				mov(r11, retnSuccess);
+				jmp(r11);
+
+				L("Fail");
+				mov(r11, retnFail);
+				jmp(r11);
+			}
+		} bubbleJoinStub;
+
+		const uintptr_t retnSuccess = (uintptr_t)location + 9;
+		const uintptr_t retnFail = retnSuccess + 0x19;
+
+		hook::nop(location, 9);
+		bubbleJoinStub.Init(retnSuccess, retnFail);
+		hook::jump_reg<5>(location, bubbleJoinStub.GetCode());
+	}
+
+	{
+		auto location = (char*)hook::get_pattern("80 79 ? ? 73 ? 0F B6 49 ? 48 8B 05 ? ? ? ? 44 8A 0C 01");
+		static struct : jitasm::Frontend
+		{
+			uintptr_t retn;
+			uintptr_t retnOrig;
+
+			void Init(uintptr_t retn, uintptr_t retnOrig)
+			{
+				this->retn = retn;
+				this->retnOrig = retnOrig;
+			}
+
+			virtual void InternalMain() override
+			{
+				mov(r11, reinterpret_cast<uintptr_t>(&g_lengthHackEnabled));
+				mov(r11b, byte_ptr[r11]);
+				test(r11b, r11b);
+				jz("Orig");
+
+				L("skipIdMap");
+				mov(rax, retn);
+				jmp(rax);
+
+				L("Orig");
+				cmp(byte_ptr[rcx + 0x19], 0x20);
+				jnb("skipIdMap");
+
+				mov(rax, retnOrig);
+				jmp(rax);
+			}
+		} patchStub;
+
+		patchStub.Init((uintptr_t)location + 0x17, (uintptr_t)location + 6);
+
+		hook::nop(location, 6);
+		hook::jump(location, patchStub.GetCode());
+	}
+
+	{
+		auto location = (char*)hook::get_pattern("80 79 ? ? 73 ? 0F B6 49 ? 48 8B 05 ? ? ? ? 44 8A 14 01");
+
+		static struct : jitasm::Frontend
+		{
+			uintptr_t retn;
+			uintptr_t retnOrig;
+
+			void Init(uintptr_t retn, uintptr_t retnOrig)
+			{
+				this->retn = retn;
+				this->retnOrig = retnOrig;
+			}
+
+			virtual void InternalMain() override
+			{
+				mov(r11, reinterpret_cast<uintptr_t>(&g_lengthHackEnabled));
+				mov(r11b, byte_ptr[r11]);
+				test(r11b, r11b);
+				jz("Orig");
+
+				L("skipIdMap");
+				mov(rax, retn);
+				jmp(rax);
+
+				L("Orig");
+				cmp(byte_ptr[rcx + 0x19], 0x20);
+				jnb("skipIdMap");
+
+				mov(rax, retnOrig);
+				jmp(rax);
+			}
+		} patchStub;
+
+		patchStub.Init((uintptr_t)location + 0x17, (uintptr_t)location + 6);
+		hook::nop(location, 6);
+		hook::jump(location, patchStub.GetCode());
+	}
+
+	{
+		auto location = (char*)hook::get_pattern("80 FB ? 73 ? 48 8B 05");
+
+		static struct : jitasm::Frontend
+		{
+			uintptr_t retn;
+			uintptr_t retnOrig;
+			uintptr_t retnOrigFail;
+
+			void Init(uintptr_t retn, uintptr_t retnOrig)
+			{
+				this->retn = retn;
+				this->retnOrig = retnOrig;
+			}
+
+			virtual void InternalMain() override
+			{
+				mov(r11, reinterpret_cast<uintptr_t>(&g_lengthHackEnabled));
+				mov(r11b, byte_ptr[r11]);
+				test(r11b, r11b);
+				jz("Orig");
+
+				L("skipIdMap");
+				mov(rax, retn);
+				jmp(rax);
+
+				L("Orig");
+				cmp(bl, 0x20);
+				jnb("skipIdMap");
+
+				mov(rax, retnOrig);
+				jmp(rax);
+			}
+		} scriptEntCreationStub;
+
+		scriptEntCreationStub.Init((uintptr_t)location + 0x12, (uintptr_t)location + 5);
+
+		hook::nop(location, 5);
+		hook::jump(location, scriptEntCreationStub.GetCode());
+	}
+
+	{
+		auto location = (char*)hook::get_pattern("80 F9 ? 73 ? 48 8B 05 ? ? ? ? 0F B6 C9 8A 4C 01 ? 48 8B 07");
+
+		static struct : jitasm::Frontend
+		{
+			uintptr_t retn;
+			uintptr_t retnOrig;
+
+			void Init(uintptr_t retn, uintptr_t retnOrig)
+			{
+				this->retn = retn;
+				this->retnOrig = retnOrig;
+			}
+
+			virtual void InternalMain() override
+			{
+				mov(r11, reinterpret_cast<uintptr_t>(&g_lengthHackEnabled));
+				mov(r11b, byte_ptr[r11]);
+				test(r11b, r11b);
+				jz("Orig");
+
+				L("skipIdMap");
+				mov(rax, retn);
+				jmp(rax);
+
+				L("Orig");
+				cmp(cl, 0x20);
+				jnb("skipIdMap");
+
+				mov(rax, retnOrig);
+				jmp(rax);
+			}
+		} draftVehCreatePedStub;
+		draftVehCreatePedStub.Init((uintptr_t)location + 0x13, (uintptr_t)location + 0x5);
+
+		hook::nop(location, 0x5);
+		hook::jump(location, draftVehCreatePedStub.GetCode());
+	}
+
+	{
+		auto location = (char*)hook::get_pattern("8A 40 ? 3C ? 73");
+
+		static struct : jitasm::Frontend
+		{
+			uintptr_t retn;
+			uintptr_t retnOrig;
+
+			void Init(uintptr_t retn, uintptr_t retnOrig)
+			{
+				this->retn = retn;
+				this->retnOrig = retnOrig;	
+			}
+
+			virtual void InternalMain() override
+			{
+				mov(r11, reinterpret_cast<uintptr_t>(&g_lengthHackEnabled));
+				mov(r11b, byte_ptr[r11]);
+				test(r11b, r11b);
+				jz("Orig");
+
+				L("skipIdMap");
+				mov(rcx, retn);
+				jmp(rcx);
+
+				L("Orig");
+				mov(al, byte_ptr[rax + 0xA]);
+				cmp(al, 0x20);
+				jnb("skipIdMap");
+
+				mov(rcx, retnOrig);
+				jmp(rcx);
+			}
+		} scriptEntityDeregisterStub;
+
+		scriptEntityDeregisterStub.Init((uintptr_t)location + 0x15, (uintptr_t)location + 7);
+		
+		hook::nop(location, 7);
+		hook::jump_rcx(location, scriptEntityDeregisterStub.GetCode());
+	}
+
 	// Patch the respective CDataSyncReader/CDataSyncWriter/CDataSyncSizeCalculator fields (static and non-static) to properly account for 16 bit objectIds.
 	// Along with removing usage of object mapping.
 	{
@@ -498,7 +897,7 @@ static HookFunction objectIdMapping([]()
 				jg("fail");
 
 				movzx(edi, word_ptr[r14]);
-				mov(word_ptr[rsi + 0x5A], di);
+				mov(word_ptr[rsi + 0x5A], di); // event->m_respawnNetId = event->m_respawnNetObj 
 
 				L("fail");
 				mov(rcx, retn);
@@ -573,6 +972,11 @@ static InitFunction initFunction([]()
 		Instance<ICoreGameInit>::Get()->OnGameRequestLoad.Connect([]()
 		{
 			g_lengthHackEnabled = Instance<ICoreGameInit>::Get()->OneSyncBigIdEnabled;
+
+			if (g_lengthHackEnabled)
+			{
+				SetObjectIdSize(g_lengthHackEnabled);
+			}
 		});
 	});
 

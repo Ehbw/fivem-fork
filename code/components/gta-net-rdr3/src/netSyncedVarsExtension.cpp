@@ -16,7 +16,8 @@ static uint64_t SyncedIntFalse_GetMaxBits(void* self)
 {
 	auto val = g_origSyncedUintFalse_GetMaxBits(self);
 	trace("%s %i %p\n", __func__, val, (void*)hook::get_unadjusted(_ReturnAddress()));
-	return (val == 13 && icgi->OneSyncBigIdEnabled) ? 16 : val;
+	return val;
+	//return (val == 13 && icgi->OneSyncBigIdEnabled) ? 16 : val;
 }
 
 static uint64_t (*g_origSyncedInt_GetMaxBits)(void*);
@@ -24,7 +25,8 @@ static uint64_t SyncedInt_GetMaxBits(void* self)
 {
 	auto val = g_origSyncedInt_GetMaxBits(self);
 	trace("%s %i %p\n", __func__, val, (void*)hook::get_unadjusted(_ReturnAddress()));
-	return (val == 13 && icgi->OneSyncBigIdEnabled) ? 16 : val;
+	return val;
+	//return (val == 13 && icgi->OneSyncBigIdEnabled) ? 16 : val;
 }
 
 static uint64_t (*g_origSyncedUnkD038_GetMaxBits)(void*);
@@ -32,14 +34,15 @@ static uint64_t SyncedUnkD038_GetMaxBits(void* self)
 {
 	auto val = g_origSyncedUnkD038_GetMaxBits(self);
 	trace("%s %i %p\n", __func__, val, (void*)hook::get_unadjusted(_ReturnAddress()));
-	return (val == 13 && icgi->OneSyncBigIdEnabled) ? 16 : val;
+	return val;
+	//return (val == 13 && icgi->OneSyncBigIdEnabled) ? 16 : val;
 }
 
 static uint64_t(*g_origSyncedVarGroup_GetMaxBits)(void*);
 static uint64_t SyncedVarGroup_GetMaxBits(void* self)
 {
 	trace("SyncedVarGroup::GetMaxBits (vtable %p) %i\n", (void*)hook::get_unadjusted(*(uint64_t**)self), g_origSyncedVarGroup_GetMaxBits(self));
-	return g_origSyncedVarGroup_GetMaxBits(self) + (static_cast<unsigned long long>(3) * 5);
+	return g_origSyncedVarGroup_GetMaxBits(self);
 }
 
 static bool (*g_origSyncedVarGroup_UsesIdMappings)(void*);
@@ -59,7 +62,7 @@ static bool _meleeArbitationFailed(void* a1, int a2)
 static void* (*g_sub_14014D)(void* a1, void* a2);
 static void* sub_14014D(void* a1, void* a2)
 {
-	trace("a1 %p a2 %p %p\n", (void*)hook::get_unadjusted(*(uint64_t**)a1), (void*)hook::get_unadjusted(*(uint64_t**)a2), (void*)hook::get_unadjusted(_ReturnAddress()));	
+	trace("sub_14014D43C: a1 %p a2 %p %p\n", (void*)hook::get_unadjusted(*(uint64_t**)a1), (void*)hook::get_unadjusted(*(uint64_t**)a2), (void*)hook::get_unadjusted(_ReturnAddress()));	
 	return g_sub_14014D(a1, a2);
 }
 
@@ -93,11 +96,8 @@ static HookFunction hookSyncedExtensions([]()
 	// Patch CSyncVars* vtable methods for Size calculator and ID Mapping to support length hack in onesync.
 	static constexpr int kSyncedVarSerialiseIndex = 8;
 	static constexpr int kSyncedVarGetMaxBitsIndex = 9;
-	// This may be wrong/completely irrelevant to object mapping
-	static constexpr int kSyncedVarUsesIdMappingsIndex = 19;
 
 	// Patchs static CSynced* GetMaxBits functions to support 16 bit objectIds.
-	// TODO: Automatically fetch these data sizes to better support future game builds.
 	{
 		// Entities, excluding CSyncedPed as that is dynamically calculated.
 		const auto syncedEntity = hook::get_address<uintptr_t*>(hook::get_pattern("89 AB 84 06 00 00 48 8D 05 ? ? ? ? 48 89", 9));
@@ -145,6 +145,7 @@ static HookFunction hookSyncedExtensions([]()
 		hook::put(&syncedUnkTaskEntity[kSyncedVarSerialiseIndex], (uintptr_t)SyncedTaskEntSerialise);
 	}
 
+#if 0
 	// The serialiser for these functions will cause the datasize to become larger then what is permitted by this synced var.
 	{
 		const auto syncedBitfield13 = hook::get_address<uintptr_t*>(hook::get_pattern("48 8D 05 ? ? ? ? 48 89 02 66 89 5A ? 66 85 DB 74 ? 48 8B CA E8 ? ? ? ? 65 48 8B 04 25", 3));
@@ -184,6 +185,7 @@ static HookFunction hookSyncedExtensions([]()
 		g_origSyncedUnkD038_GetMaxBits = (decltype(g_origSyncedUnkD038_GetMaxBits))syncedTable[kSyncedVarGetMaxBitsIndex];
 		hook::put(&syncedTable[kSyncedVarGetMaxBitsIndex], (uintptr_t)SyncedUnkD038_GetMaxBits);
 	}
+#endif
 
 	// Verbose logging should the network event 'CNetworkMeleeArbitrationFailEvent' get hit.
 	g_origMeleeArbitationFailed = hook::trampoline(hook::get_pattern("89 54 24 ? 53 48 83 EC ? 48 83 B9"), _meleeArbitationFailed);

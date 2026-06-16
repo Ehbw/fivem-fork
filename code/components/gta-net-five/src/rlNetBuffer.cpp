@@ -27,12 +27,37 @@ static hook::cdecl_stub<bool(void*, uint32_t, int)> _netBuffer_WriteInteger([]()
 #endif
 });
 
+// LENGTH HACK: Debug prints to check where we need the 13 -> 16 converison in game
+#include <set>
+static std::set<uintptr_t> g_accessedAddress{};
+
+static inline void __forceinline LogObjectIdSerialise(const char* func, uint32_t value)
+{
+	uintptr_t retnAddress = (uintptr_t)_ReturnAddress();
+	if (g_accessedAddress.find(retnAddress) == g_accessedAddress.end())
+	{
+		uintptr_t* traceStart = (uintptr_t*)_AddressOfReturnAddress();
+		for (int i = 0; i < 96; i++)
+		{
+			uintptr_t addr = hook::get_unadjusted(traceStart[i]);
+			if (addr > 0x140000000 && addr < hook::exe_end())
+			{
+				trace("%p\n", (void*)addr);
+			}
+		}
+
+		trace("%s: %p %i\n", func, (void*)hook::get_unadjusted(_ReturnAddress()), value);
+		g_accessedAddress.insert(retnAddress);
+	}
+}
+
 static bool(*g_orig_netBuffer_WriteUnsigned)(void* a1, uint32_t a2, int length, int a4);
 static bool _netBuffer_WriteUnsigned(void* a1, uint32_t a2, int length, int a4)
 {
 	if (length == 13 && icgi->OneSyncBigIdEnabled)
 	{
-		length = 16;
+		LogObjectIdSerialise(__func__, a2);
+		//length = 16;
 	}
 
 	return g_orig_netBuffer_WriteUnsigned(a1, a2, length, a4);
@@ -65,38 +90,13 @@ static hook::cdecl_stub<bool(void*, uint32_t*, int)> _netBuffer_ReadInteger([]()
 #endif
 });
 
-// LENGTH HACK: Debug prints to check where we need the 13 -> 16 converison in game
-#include <set>
-static std::set<uintptr_t> g_accessedAddress{};
-
-static inline void __forceinline LogObjectIdSerialise(const char* func, uint32_t value)
-{
-	uintptr_t retnAddress = (uintptr_t)_ReturnAddress();
-	if (g_accessedAddress.find(retnAddress) == g_accessedAddress.end())
-	{
-		uintptr_t* traceStart = (uintptr_t*)_AddressOfReturnAddress();
-		for (int i = 0; i < 96; i++)
-		{
-			uintptr_t addr = hook::get_unadjusted(traceStart[i]);
-			if (addr > 0x140000000 && addr < hook::exe_end())
-			{
-				trace("%p\n", (void*)addr);
-			}
-		}
-
-
-		trace("%s: %p %i\n", func, (void*)hook::get_unadjusted(_ReturnAddress()), value);
-		g_accessedAddress.insert(retnAddress);
-	}
-}
-
 static void(*g_orig_netBuffer_ReadUnsigned)(void* a1, uint32_t* a2, int length, int a4);
 static void _netBuffer_ReadUnsigned(void* a1, uint32_t* a2, int length, int a4)
 {
 	if (length == 13 && icgi->OneSyncBigIdEnabled)
 	{
 		LogObjectIdSerialise(__func__, *a2);
-		length = 16;
+		//length = 16;
 	}
 
 	return g_orig_netBuffer_ReadUnsigned(a1, a2, length, a4);
@@ -108,7 +108,7 @@ static void _netBuffer_BumpReadWriteCursor(rage::datBitBuffer* a1, int length)
 	if (length == 13 && icgi->OneSyncBigIdEnabled)
 	{
 		LogObjectIdSerialise(__func__, length);
-		length = 16;
+		//length = 16;
 	}
 
 	return g_orig_netBuffer_BumpReadWriteCursor(a1, length);
@@ -120,7 +120,7 @@ static void _netBuffer_BumpWriteCursor(rage::datBitBuffer* a1, int length)
 	if (length == 13 && icgi->OneSyncBigIdEnabled)
 	{
 		LogObjectIdSerialise(__func__, length);
-		length = 16;
+		//length = 16;
 	}
 
 	return g_orig_netBuffer_BumpWriteCursor(a1, length);
