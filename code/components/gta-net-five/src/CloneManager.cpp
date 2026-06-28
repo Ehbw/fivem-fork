@@ -17,6 +17,10 @@
 #include <netSyncTree.h>
 #include <netTimeSync.h>
 
+#ifdef IS_RDR3
+#include <NetMultithreadedUpdates.h>
+#endif
+
 #include <lz4hc.h>
 
 #include <boost/range/adaptor/map.hpp>
@@ -50,7 +54,7 @@
 #include "StateBagV2PacketHandler.h"
 
 extern rage::netObject* g_curNetObjectSelection;
-rage::netObject* g_curNetObject;
+thread_local rage::netObject* g_curNetObject;
 
 static std::set<uint16_t> g_dontParrotDeletionAcks;
 
@@ -71,6 +75,19 @@ void ObjectIds_StealObjectId(int objectId);
 void ObjectIds_ConfirmObjectId(int objectId);
 
 void AssociateSyncTree(int objectId, rage::netSyncTree* syncTree);
+
+#ifdef IS_RDR3
+// Support for multi-threaded network updates
+static SyncWorkItem g_syncUpdates[rage::kMaxEntityUpdates];
+static int g_syncUpdateCount = 0;
+static bool g_mtSyncEnabled = true;
+static bool g_mtSyncActive = true;
+
+static InitFunction mtSyncConVarInit([]()
+{
+	static ConVar<bool> mtSyncVar("onesync_mtSync", ConVar_None, true, &g_mtSyncEnabled);
+});
+#endif
 
 rage::netObject* GetLocalPlayerPedNetObject();
 
@@ -172,6 +189,12 @@ public:
 
 private:
 	void WriteUpdates();
+
+#ifdef IS_RDR3
+	void WriteMTUpdates(bool& hitTimestamp, uint32_t ts, std::vector<std::tuple<std::string_view, std::string>>& drillList);
+#endif
+
+	void TouchTimestamp(bool& hitTimestamp, uint32_t ts);
 
 	void SendUpdates(rl::MessageBuffer& buffer, uint32_t msgType);
 
@@ -1807,6 +1830,8 @@ static HookFunction hookFunctionModifySyncTrees([]()
 
 void CloneManagerLocal::Update()
 {
+	g_mtSyncActive = g_mtSyncEnabled;
+
 #ifndef ONESYNC_CLONING_NATIVES
 	WriteUpdates();
 #endif
@@ -1818,77 +1843,104 @@ void CloneManagerLocal::Update()
 		SendUpdates(m_ackBuffer, HashString("netAcks"));
 	}
 
-	// REDM1S: implement scene optimizations
-#ifdef GTA_FIVE
 	alignas(16) float centerOfWorld[4];
 	getCoordsFromOrigin(origin, centerOfWorld);
 
 	auto origin = DirectX::XMVectorSet(centerOfWorld[0], centerOfWorld[1], centerOfWorld[2], 1.0f);
 	static uint32_t frameCount = 0;
-#endif
 
-	// run Update() on all clones
-	for (auto& clone : m_savedEntities)
+#ifdef IS_RDR3
+	if (g_mtSyncActive)
 	{
-		if (clone.second)
+		static std::vector<rage::netObject*> updateList;
+		updateList.clear();
+		updateList.reserve(m_savedEntities.size());
+
+		for (auto& clone : m_savedEntities)
 		{
-			clone.second->Update();
+			if (clone.second)
+			{
+				updateList.push_back(clone.second);
+			}
+		}
+
+		for (auto* obj : updateList)
+		{
+			obj->MainThreadUpdate();
+		}
+
+		rage::ScheduleEntityBatch(updateList, rage::schedulers::DependencyThreadUpdate);		
+		
+		for (auto* obj : updateList)
+		{
+			obj->PostDependencyThreadUpdate();
+		}
+	}
+	else
+#endif
+	{
+		// run Update() on all clones
+		for (auto& clone : m_savedEntities)
+		{
+			if (clone.second)
+			{
+				clone.second->Update();
 
 #ifdef GTA_FIVE
-			if (clone.second->GetGameObject())
-			{
-				if (clone.second->syncData.isRemote)
+				if (clone.second->GetGameObject())
 				{
-					auto ent = (fwEntity*)(clone.second->GetGameObject());
-					auto vtbl = *(char**)ent;
-
+					if (clone.second->syncData.isRemote)
 					{
-						auto posData = ent->GetPosition();
-						auto pos = DirectX::XMLoadFloat3(&posData);
+						auto ent = (fwEntity*)(clone.second->GetGameObject());
+						auto vtbl = *(char**)ent;
 
-						auto it = removedFlags.find(ent);
-
-						if (DirectX::XMVectorGetX(DirectX::XMVector2LengthSq(DirectX::XMVectorSubtract(pos, origin))) < (424.f * 424.f))
 						{
-							if (it != removedFlags.end())
-							{
-								fwSceneUpdate__AddToSceneUpdate(ent, it->second);
+							auto posData = ent->GetPosition();
+							auto pos = DirectX::XMLoadFloat3(&posData);
 
-								removedFlags.erase(it);
-							}
-						}
-						else
-						{
-							if (it == removedFlags.end())
-							{
-								uint32_t flags = 0;
+							auto it = removedFlags.find(ent);
 
-								if (auto ext = ent->GetExtension<fwSceneUpdateExtension>())
+							if (DirectX::XMVectorGetX(DirectX::XMVector2LengthSq(DirectX::XMVectorSubtract(pos, origin))) < (424.f * 424.f))
+							{
+								if (it != removedFlags.end())
 								{
-									flags = ext->GetUpdateFlags();
+									fwSceneUpdate__AddToSceneUpdate(ent, it->second);
+
+									removedFlags.erase(it);
+								}
+							}
+							else
+							{
+								if (it == removedFlags.end())
+								{
+									uint32_t flags = 0;
+
+									if (auto ext = ent->GetExtension<fwSceneUpdateExtension>())
+									{
+										flags = ext->GetUpdateFlags();
+									}
+
+									it = removedFlags.emplace(ent, flags).first;
+
+									fwSceneUpdate__RemoveFromSceneUpdate(ent, -1, true);
 								}
 
-								it = removedFlags.emplace(ent, flags).first;
+								if ((frameCount % 50) < 2)
+								{
+									fwSceneUpdate__AddToSceneUpdate(ent, it->second);
 
-								fwSceneUpdate__RemoveFromSceneUpdate(ent, -1, true);
-							}
-
-							if ((frameCount % 50) < 2)
-							{
-								fwSceneUpdate__AddToSceneUpdate(ent, it->second);
-
-								removedFlags.erase(it);
+									removedFlags.erase(it);
+								}
 							}
 						}
 					}
-				}
 
-				clone.second->UpdatePendingVisibilityChanges();
-			}
+					clone.second->UpdatePendingVisibilityChanges();
+				}
 #endif
+			}
 		}
 	}
-
 #ifdef GTA_FIVE
 	frameCount++;
 #endif
@@ -2051,35 +2103,15 @@ void CloneManagerLocal::WriteUpdates()
 
 	auto ts = *rage__s_NetworkTimeLastFrameStart;
 
-	auto touchTimestamp = [&hitTimestamp, ts, this]()
-	{
-		if (hitTimestamp)
-		{
-			return;
-		}
-
-		// remove any old acks
-		if (m_serverSendFrame > 5000)
-		{
-			auto firstAckRemove = (m_serverSendFrame - 5000);
-			auto firstIt = m_serverAcks.lower_bound(firstAckRemove);
-			m_serverAcks.erase(m_serverAcks.begin(), firstIt);
-		}
-
-		uint32_t timestamp = ts;
-
-		m_sendBuffer.Write(3, 5);
-		m_sendBuffer.Write(32, timestamp);
-
-		++m_serverSendFrame;
-
-		m_sendBuffer.Write(3, 6);
-		m_sendBuffer.Write<uint32_t>(32, m_serverSendFrame);
-
-		hitTimestamp = true;
-	};
-
 	std::vector<std::tuple<std::string_view, std::string>> drillList;
+
+#ifdef IS_RDR3
+	if (g_mtSyncEnabled && !IsDrilldown())
+	{
+		memset(g_syncUpdates, 0, g_syncUpdateCount * sizeof(SyncWorkItem));
+		g_syncUpdateCount = 0;
+	}
+#endif
 
 	// on each object...
 	auto objectCb = [&](rage::netObject* object)
@@ -2300,6 +2332,10 @@ void CloneManagerLocal::WriteUpdates()
 				++syncCount2;
 			}
 
+#ifdef IS_RDR3
+			if (IsDrilldown() || !g_mtSyncEnabled)
+			{
+#endif
 			// write tree
 			g_curNetObject = object;
 
@@ -2350,8 +2386,8 @@ void CloneManagerLocal::WriteUpdates()
 					}
 
 					// touch the timestamp
-					touchTimestamp();
-					
+					TouchTimestamp(hitTimestamp, ts);
+
 					// add pending ack
 					m_serverAcks.emplace(m_serverSendFrame, std::make_tuple(syncType, objectId, objectData.uniqifier, ts));
 
@@ -2384,6 +2420,18 @@ void CloneManagerLocal::WriteUpdates()
 					objectData.lastSyncTime = msec();
 				}
 			}
+#ifdef IS_RDR3
+			}
+			else
+			{
+				auto& item = g_syncUpdates[g_syncUpdateCount];
+				item.object = object;
+				item.syncType = syncType;
+				item.uniqifier = objectData.uniqifier;
+				item.ts = ts;
+				g_syncUpdateCount++;
+			}
+#endif
 		}
 
 		/*		m_savedEntities[objectId] = object;
@@ -2421,6 +2469,13 @@ void CloneManagerLocal::WriteUpdates()
 		}
 	}
 
+#ifdef IS_RDR3
+	if (g_mtSyncActive && !IsDrilldown())
+	{
+		WriteMTUpdates(hitTimestamp, ts, drillList);
+	}
+#endif
+
 	auto t = msec();
 
 	for (auto& pair : m_pendingRemoveAcks)
@@ -2437,7 +2492,7 @@ void CloneManagerLocal::WriteUpdates()
 		auto& netBuffer = m_sendBuffer;
 		
 		// touch the timestamp (needed for acks)
-		touchTimestamp();
+		TouchTimestamp(hitTimestamp, ts);
 
 		// add pending *server* ack
 		m_serverAcks.emplace(m_serverSendFrame, std::make_tuple(3, objectId, uniqifier, ts));
@@ -2465,6 +2520,97 @@ void CloneManagerLocal::WriteUpdates()
 	}
 }
 
+void CloneManagerLocal::WriteMTUpdates(bool& hitTimestamp, uint32_t ts, std::vector<std::tuple<std::string_view, std::string>>& drillList)
+{
+	// Handle syncTree init (if needed) and tree updates on a worker thread similar to how RDO handles it.
+	rage::ScheduleSyncBatch(g_syncUpdates, g_syncUpdateCount, rage::schedulers::SyncWorkSerialise);
+
+	for (int i = 0; i < g_syncUpdateCount; i++)
+	{
+		auto& item = g_syncUpdates[i];
+		uint16_t objectId = item.object->GetObjectId();
+
+		auto& objectData = m_trackedObjects[objectId];
+		auto& netBuffer = m_sendBuffer;
+
+		bool shouldTrySend = item.shouldTrySend;
+
+		if (!shouldTrySend)
+		{
+			if (ts >= objectData.nextKeepaliveSync)
+			{
+				item.dataLen = 0;
+				shouldTrySend = true;
+			}
+		}
+
+		if (!shouldTrySend)
+		{
+			continue;
+		}
+
+		// #TODO1S: dynamic resend time based on latency
+		bool shouldWrite = true;
+
+		if ((item.lastChangeTime == objectData.lastChangeTime || item.syncType == 1) && ts < (objectData.lastResendTime + std::min(40, std::max(100, m_netLibrary->GetPing() + (m_netLibrary->GetVariance() * 4)))))
+		{
+			Log("%s: no early resend of object [obj:%d]\n", __func__, objectId);
+			shouldWrite = false;
+		}
+
+		// in case of syncType == 1, we want to write change time too
+		// (as otherwise first syncType = 2 will do spammy resending anyway)
+		objectData.lastChangeTime = item.lastChangeTime;
+
+		if (!shouldWrite)
+		{
+			continue;
+		}
+
+		if (IsDrilldown())
+		{
+			drillList.push_back({ item.syncType == 1 ? "create" : "sync", fmt::sprintf("obj:%d@%d[%s] sz %db", objectId, objectData.uniqifier, item.object->GetTypeString(), item.dataLen) });
+		}
+
+		objectData.nextKeepaliveSync = ts + 1000;
+
+		AssociateSyncTree(objectId, item.object->GetSyncTree());
+
+		// touch the timestamp
+		TouchTimestamp(hitTimestamp, ts);
+
+		// add pending ack
+		m_serverAcks.emplace(m_serverSendFrame, std::make_tuple(item.syncType, objectId, objectData.uniqifier, ts));
+
+		// write header to send buffer
+		netBuffer.Write(3, item.syncType);
+		netBuffer.Write(16, objectData.uniqifier);
+
+		// write data
+		netBuffer.Write(13, objectId); // object ID (short)
+
+		if (item.syncType == 1)
+		{
+			netBuffer.Write(32, g_objectIdToCreationTokenRPC[objectId]);
+			netBuffer.Write(kNetObjectTypeBitLength, item.object->GetObjectType());
+		}
+
+		netBuffer.Write(12, item.dataLen); // length (short)
+
+		if (item.dataLen > 0)
+		{
+			netBuffer.WriteBits(item.storage, item.dataLen * 8); // data
+		}
+
+		Log("uncompressed clone sync for [obj:%d]: %d bytes\n", objectId, item.dataLen);
+
+		AttemptFlushCloneBuffer();
+
+		objectData.lastResendTime = ts;
+		objectData.lastSyncTime = msec();
+	}
+}
+
 void CloneManagerLocal::AttemptFlushCloneBuffer()
 {
 	AttemptFlushNetBuffer(m_sendBuffer, HashString("netClones"));
@@ -2485,6 +2631,34 @@ void CloneManagerLocal::AttemptFlushNetBuffer(rl::MessageBuffer& buffer, uint32_
 	{
 		SendUpdates(buffer, msgType);
 	}
+}
+
+void CloneManagerLocal::TouchTimestamp(bool& hitTimestamp, uint32_t ts)
+{
+	if (hitTimestamp)
+	{
+		return;
+	}
+
+	// remove any old acks
+	if (m_serverSendFrame > 5000)
+	{
+		auto firstAckRemove = (m_serverSendFrame - 5000);
+		auto firstIt = m_serverAcks.lower_bound(firstAckRemove);
+		m_serverAcks.erase(m_serverAcks.begin(), firstIt);
+	}
+
+	uint32_t timestamp = ts;
+
+	m_sendBuffer.Write(3, 5);
+	m_sendBuffer.Write(32, timestamp);
+
+	++m_serverSendFrame;
+
+	m_sendBuffer.Write(3, 6);
+	m_sendBuffer.Write<uint32_t>(32, m_serverSendFrame);
+
+	hitTimestamp = true;
 }
 
 void CloneManagerLocal::SendUpdates(rl::MessageBuffer& buffer, uint32_t msgType)

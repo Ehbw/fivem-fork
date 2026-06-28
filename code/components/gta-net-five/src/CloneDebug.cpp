@@ -475,6 +475,7 @@ private:
 	std::function<void(const std::string&)> m_logger;
 };
 
+extern std::mutex g_netObjectNodeMappingMutex;
 extern std::map<int, std::map<void*, std::tuple<int, uint32_t>>> g_netObjectNodeMapping;
 
 static void TraverseSyncNode(TSyncLog& retval, TSyncLog* old, int oldId, rage::netSyncNodeBase* node, rage::netObject* object = nullptr)
@@ -490,6 +491,9 @@ static void TraverseSyncNode(TSyncLog& retval, TSyncLog* old, int oldId, rage::n
 	{
 		SyncLogger logger([&retval, node, old, oldId](const std::string& line)
 		{
+#ifdef IS_RDR3
+			std::lock_guard<std::mutex> lock(g_netObjectNodeMappingMutex);
+#endif
 			if (std::get<1>(g_netObjectNodeMapping[oldId][node]) < (rage::netInterface_queryFunctions::GetInstance()->GetTimestamp() - 75))
 			{
 				retval[node] = (*old)[node];
@@ -595,7 +599,7 @@ static void TraverseTree(rage::netSyncTree* tree, T& state, const std::function<
 	TraverseTreeInternal(tree->syncNode, state, cb);
 }
 
-static void InitTree(rage::netSyncTree* tree)
+void InitTree(rage::netSyncTree* tree)
 {
 	// unused padding in GTA5/RDR3
 #ifdef GTA_FIVE
@@ -922,6 +926,9 @@ bool netSyncTree::WriteTreeCfx(int flags, int objFlags, rage::netObject* object,
 
 				if (state.object)
 				{
+#ifdef IS_RDR3
+					std::lock_guard<std::mutex> lock(g_netObjectNodeMappingMutex);
+#endif
 					g_netObjectNodeMapping[state.object->GetObjectId()][node] = { 1, rage::netInterface_queryFunctions::GetInstance()->GetTimestamp() };
 				}
 
@@ -1182,7 +1189,7 @@ extern uint32_t* rage__s_NetworkTimeThisFrameStart;
 void DirtyNode(rage::netObject* object, rage::netSyncDataNodeBase* node)
 {
 	auto tree = object->GetSyncTree();
-	InitTree(tree);
+	rage::InitTree(tree);
 
 	size_t nodeIdx = GET_NIDX(tree, node);
 	const auto& sd = rage::g_syncData[((rage::netObject*)object)->GetObjectId()];
@@ -1256,7 +1263,13 @@ void RenderSyncNodeDetail(rage::netObject* netObject, rage::netSyncNodeBase* nod
 
 	std::vector<std::string> right = syncLog[netObject->GetObjectId()][node];
 
-	auto t = g_netObjectNodeMapping[netObject->GetObjectId()][node];
+	std::tuple<int, uint32_t> t;
+	{
+#ifdef IS_RDR3
+		std::lock_guard<std::mutex> lock(g_netObjectNodeMappingMutex);
+#endif
+		t = g_netObjectNodeMapping[netObject->GetObjectId()][node];
+	}
 
 	InitTree(netObject->GetSyncTree());
 	const auto& snd = rage::g_syncData[netObject->GetObjectId()];

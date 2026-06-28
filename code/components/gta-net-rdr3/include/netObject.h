@@ -3,6 +3,7 @@
 #include <NetworkPlayerMgr.h>
 #include <net/NetObjEntityType.h>
 #include <CrossBuildRuntime.h>
+#include <RageScheduler.h>
 
 using NetObjEntityType = fx::sync::NetObjEntityType;
 
@@ -86,6 +87,10 @@ public:
 		return *(netBlender**)((uintptr_t)this + 96);
 	}
 
+	inline rage::sysDependencyBatch* GetSchedulerUpdate()
+	{
+		return (rage::sysDependencyBatch*)((uintptr_t)this + 0x90);
+	}
 private:
 	template<typename TMember>
 	inline static TMember get_member(void* ptr)

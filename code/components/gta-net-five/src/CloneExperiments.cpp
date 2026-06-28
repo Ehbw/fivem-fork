@@ -2204,10 +2204,16 @@ static HookFunction hookFunction([]()
 #include <nutsnbolts.h>
 #include <GameInit.h>
 
-extern rage::netObject* g_curNetObject;
+extern thread_local rage::netObject* g_curNetObject;
+
+namespace sync
+{
+bool IsDrilldown();
+}
 
 static char(*g_origReadDataNode)(void* node, uint32_t serializationMode, uint32_t flags, rage::datBitBuffer* buffer, void* logger);
 
+std::mutex g_netObjectNodeMappingMutex;
 std::map<int, std::map<void*, std::tuple<int, uint32_t>>> g_netObjectNodeMapping;
 
 static bool ReadDataNodeStub(void* node, uint32_t serializationMode, uint32_t flags, rage::datBitBuffer* buffer, void* logger)
@@ -2227,8 +2233,11 @@ static bool ReadDataNodeStub(void* node, uint32_t serializationMode, uint32_t fl
 
 	bool didRead = g_origReadDataNode(node, serializationMode, flags, buffer, logger);
 
-	if (didRead && g_curNetObject)
+	if (didRead && g_curNetObject && sync::IsDrilldown())
 	{
+#ifdef IS_RDR3
+		std::lock_guard<std::mutex> lock(g_netObjectNodeMappingMutex);
+#endif
 		g_netObjectNodeMapping[g_curNetObject->GetObjectId()][node] = { 0, rage::netInterface_queryFunctions::GetInstance()->GetTimestamp() };
 	}
 
@@ -2318,8 +2327,9 @@ static bool WriteDataNodeStub(void* node, uint32_t flags, uint32_t objectFlags, 
 			buffer->WriteUns(length, 11);
 			buffer->Seek(endPosition);
 
-			if (g_curNetObject)
+			if (g_curNetObject && sync::IsDrilldown())
 			{
+				std::lock_guard<std::mutex> lock(g_netObjectNodeMappingMutex);
 				g_netObjectNodeMapping[g_curNetObject->GetObjectId()][node] = { 1, rage::netInterface_queryFunctions::GetInstance()->GetTimestamp() };
 			}
 		}

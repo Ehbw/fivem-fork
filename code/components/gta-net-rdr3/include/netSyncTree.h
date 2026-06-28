@@ -90,6 +90,18 @@ public:
 public:
 	static netSyncTree* GetForType(NetObjEntityType type);
 
+	struct LockMutex
+	{
+		enum eSyncTreeThread : uint32_t
+		{
+			TREE_THREAD_WRITER = 6
+		};
+
+		rage::netSyncTree* m_tree;
+		eSyncTreeThread m_lock;
+	};
+	static_assert(sizeof(LockMutex) == 16);
+
 private:
 	char pad[168]; // +8
 
