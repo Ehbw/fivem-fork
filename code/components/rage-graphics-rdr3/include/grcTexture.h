@@ -165,17 +165,30 @@ namespace sga
 	public:
 		struct TextureData : public sysUseAllocator
 		{
-			char pad0[0x18];
+			void* vtbl;
+			rage::sga::TextureD3D12* texture;
+			uint8_t unkFlags;
+			char pad[7];
 			D3D12_CPU_DESCRIPTOR_HANDLE handle;
+			char pad1[8];
 		};
 
-		char pad[31];
-		uint8_t textureType;
-		char pad1[8];
+		uint32_t blockCount;
+		uint16_t blockStride;
+		uint32_t flags;
+
+		uint32_t heapOffset;
+		char pad[4];
+		rage::sga::ImageParams* params;
+		uint8_t pixelStride;
+		char pad1[7];
 		TextureData* data;
 		char pad2[0x10];
 		ID3D12Resource* resource;
+		ID3D12Heap* heap;
 	};
+	static_assert(offsetof(TextureD3D12, data) == 48, "TextureVK::TextureData data offset is incorrect");
+	static_assert(offsetof(TextureD3D12, resource) == 72, "TextureVK::TextureData resource offset is incorrect");
 
 	class TextureVK : public Texture
 	{
@@ -243,6 +256,8 @@ namespace sga
 	void GFX_EXPORT Driver_Destroy_ShaderResourceView(Texture* texture);
 
 	void GFX_EXPORT Driver_Destroy_Texture(Texture* texture);
+	
+	void GFX_EXPORT Driver_Destroy_DefereredTexture(void* texture);
 
 	struct BackBufferData
 	{

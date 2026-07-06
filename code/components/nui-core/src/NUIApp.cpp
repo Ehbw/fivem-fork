@@ -174,6 +174,10 @@ void NUIApp::OnBeforeCommandLineProcessing(const CefString& process_type, CefRef
 		command_line->AppendSwitch("in-process-gpu");
 	}
 
+	// GPU accelerated video/encoding
+	// Some GPUS/Drivers and Graphics mods run into stability/performance issues while using this.
+	// As a result this is disabled by default.
+	// However, this may help users on CPU limited systems that struggle with NUI playing videos.
 	if (!nuiEnableAcceleratedVideo.GetValue())
 	{
 		command_line->AppendSwitch("disable-accelerated-video-decode");
@@ -205,8 +209,10 @@ void NUIApp::OnBeforeCommandLineProcessing(const CefString& process_type, CefRef
 	command_line->AppendSwitchWithValue("disable-blink-features", 
 		"WidthAndHeightAsPresentationAttributesOnNestedSvg,"  // Breaks SVG's with custom height/width.
 															  // see https://issues.chromium.org/issues/449170647 
-		"SelectionAndFocusedVisiblePositionMatch"			  // Known bad feature, can lead to UI/GPU process hangs
+		"SelectionAndFocusedVisiblePositionMatch,"			  // Known bad feature, can lead to UI/GPU process hangs
 															  // Issue details are currently private.
+		"SpellcheckAPI"                                       // Breaks assumptions made by a majority of FiveM resources
+		                                                      // As pre-m144 Spellcheck did not work as intended.
 	);
 
 	// Disable features that aren't desired in NUI.
@@ -224,12 +230,13 @@ void NUIApp::OnBeforeCommandLineProcessing(const CefString& process_type, CefRef
 		"MediaRouter," // NUI does not need anything related to presentation or casting to a TV.
 		"DialMediaRouteProvider," // ^
 		"MetricsReporting,"
+		"SpellcheckService,"
+		"Spellcheck,"
 		"GCMDriver"
 	);
 
 	command_line->AppendSwitchWithValue("default-encoding", "utf-8");
 	command_line->AppendSwitchWithValue("autoplay-policy", "no-user-gesture-required");
-
 	// For lower end systems with fewer cores we want to limit the amount of threads.
 	// On lower end systems in busy scenarios could lead to a negative impact on the game performance
 	{
@@ -261,6 +268,8 @@ void NUIApp::OnBeforeCommandLineProcessing(const CefString& process_type, CefRef
 	command_line->AppendSwitch("disable-sync");
 	command_line->AppendSwitch("disable-extensions");
 	command_line->AppendSwitch("disable-spell-checking");
+	command_line->AppendSwitch("disable-autocorrect");
+	command_line->AppendSwitch("no-spell-check-suggestions");
 
 	// Block NUI from having presentation api. https://developer.mozilla.org/en-US/docs/Web/API/Presentation_API
 	command_line->AppendSwitch("disable-presentation-api");
@@ -277,6 +286,7 @@ void NUIApp::OnBeforeCommandLineProcessing(const CefString& process_type, CefRef
 	// Disables background thread for hang monitor.
 	// In CEF this makes CefRequestHandler::OnRenderProcessUnresponsive & CefRequestHandler::OnRenderProcessResponsive noop
 	// But these are not currently used in NUI. Making hang monitor entirely useless.
+	// IF either functions mentioned above are planned to be use, disable this.
 	command_line->AppendSwitch("disable-hang-monitor");
 }
 
