@@ -6,6 +6,8 @@
 #include <vulkan/vulkan_win32.h>
 #include <DrawCommands.h>
 
+#include <Error.h>
+
 static PFN_vkBindImageMemory2 _vkBindImageMemory2 = nullptr;
 static PFN_vkGetPhysicalDeviceMemoryProperties2 _vkGetPhysicalDeviceMemoryProperties2 = nullptr;
 static PFN_vkGetImageMemoryRequirements2 _vkGetImageMemoryRequirements2 = nullptr;

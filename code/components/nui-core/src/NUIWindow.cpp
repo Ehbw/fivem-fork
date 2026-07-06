@@ -174,7 +174,7 @@ void NUIWindow::Initialize(CefString url)
 
 	CefBrowserSettings settings;
 	settings.javascript_close_windows = STATE_DISABLED;
-	settings.windowless_frame_rate = GetPrimaryMonitorRefreshRate();
+	settings.windowless_frame_rate = GetPrimaryMonitorRefreshRate(); // 240;
 	CefString(&settings.default_encoding).FromString("utf-8");
 
 	CefRefPtr<CefRequestContext> rc;
@@ -717,25 +717,27 @@ void NUIWindow::UpdateSharedResource(CefRenderHandler::PaintElementType type)
 				Release();
 			};
 
-			if (!IsPrimary())
-			{
-				auto faketexRef = g_nuiGi->CreateTextureFromShareHandle(sharedHandle, w, h, cb);
-				SetParentTexture(type, faketexRef);
-#ifdef GTA_FIVE
-				m_swapSrv = nullptr;
-#endif
-			}
-			else
+			if (IsPrimary())
 			{
 				texRef = g_nuiGi->CreateTextureFromShareHandle(sharedHandle, w, h, cb);
 				SetParentTexture(type, texRef);
 			}
+#ifdef GTA_FIVE
+			else
+			{
+				auto faketexRef = g_nuiGi->CreateTextureFromShareHandle(sharedHandle, w, h, cb);
+				SetParentTexture(type, faketexRef);
+
+				m_swapSrv = nullptr;
+			}
+#endif
 		}
 		else
 		{
 			AddRef();
-			g_nuiGi->UpdateTexture(sharedHandle, texRef, w, h, [frameSequence, this, type](void* srv)
+			g_nuiGi->UpdateTexture(sharedHandle, texRef, w, h, [sharedHandle, frameSequence, this, type](void* srv)
 			{
+				trace("releasing frame %i, %p\n", frameSequence, (void*)sharedHandle);
 				ReleaseFrame(type, frameSequence);
 #ifdef GTA_FIVE
 				if (!IsPrimary() && srv)

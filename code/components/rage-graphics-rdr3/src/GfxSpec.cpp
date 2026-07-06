@@ -597,6 +597,20 @@ void* GetVulkanInstance()
 	return nullptr;
 }
 
+static void* g_inflightTrackerDX12;
+static void* g_inflightTrackerVK;
+static void* g_resourceCheckVK;
+
+static hook::cdecl_stub<void(void*, void*)> _driver_DeferredDestroyTexture([]()
+{
+	return hook::get_call(hook::get_pattern("E8 ? ? ? ? EB ? 40 84 F6 74 ? 45 8B C6"));
+});
+
+static hook::cdecl_stub<bool(void*, rage::sga::TextureVK::ImageData*)> _driverVK_isResourceInUse([]()
+{
+	return hook::get_call(hook::get_pattern("E8 ? ? ? ? 84 C0 74 ? 48 8D 54 24 ? 48 8D 0D ? ? ? ? E8 ? ? ? ? EB ? 48 8D 4C 24 ? E8 ? ? ? ? 48 8B 5C 24"));
+});
+
 namespace rage::sga
 {
 bool Driver_Create_ShaderResourceView(rage::sga::Texture* texture, const rage::sga::TextureViewDesc& desc)
@@ -612,6 +626,30 @@ void Driver_Destroy_ShaderResourceView(rage::sga::Texture* texture)
 void Driver_Destroy_Texture(rage::sga::Texture* texture)
 {
 	(*(void(__fastcall**)(__int64, void*))(**(uint64_t**)sgaDriver + 440i64))(*(uint64_t*)sgaDriver, texture);
+}
+
+void Driver_Destroy_DefereredTexture(void* textureInfo)
+{
+	// Vulkan requires some additional checks
+	if (GetCurrentGraphicsAPI() == GraphicsAPI::Vulkan)
+	{
+		if (_driverVK_isResourceInUse(g_resourceCheckVK, ((rage::sga::VK::DeferredTextureDestroy*)textureInfo)->imageData))
+		{
+			trace("resource is in use, deleting\n");
+
+			//_driver_DeferredDestroyTexture(g_inflightTrackerVK, textureInfo);
+		}
+		else
+		{
+			trace("resource isn't in use\n");
+		}
+
+		_driver_DeferredDestroyTexture(g_inflightTrackerVK, textureInfo);
+	}
+	else
+	{
+		_driver_DeferredDestroyTexture(g_inflightTrackerDX12, textureInfo);
+	}
 }
 
 GraphicsContext* GraphicsContext::GetCurrent()
@@ -726,6 +764,10 @@ static HookFunction hookFunction([]()
 	MH_CreateHook(hook::get_pattern("48 8B CB E8 ? ? ? ? 48 8B 0D ? ? ? ? 0F 57 ED", -0x1D), WrapEndDraw, (void**)&origEndDraw);
 
 	g_sgaGraphicsContextOffset = *hook::get_pattern<uint32_t>("48 8B 0C D8 48 8B 14 0E 41 C6 40 18 00 C6 82", -21);
+
+	g_inflightTrackerDX12 = hook::get_address<void*>(hook::get_pattern("48 8D 0D ? ? ? ? 48 8B 43 ? 48 89 45 ? 8B 43", 3));
+	g_inflightTrackerVK = hook::get_address<void*>(hook::get_pattern("48 8D 0D ? ? ? ? E8 ? ? ? ? 65 48 8B 04 25 ? ? ? ? 41 BE", 3));
+	g_resourceCheckVK = hook::get_address<void*>(hook::get_pattern("48 8D 0D ? ? ? ? 89 44 24 ? E8 ? ? ? ? 8B 15", 3));
 
 	// rage::sga::RS_NoBackfaceCull
 	stockStates[RasterizerStateNoCulling] = hook::get_address<uint16_t*>(hook::get_pattern("48 8D 4D BF 88 05 ? ? ? ? C6 45 BF 02", 6));
