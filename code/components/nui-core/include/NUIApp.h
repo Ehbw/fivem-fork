@@ -41,7 +41,9 @@ protected:
 	virtual void OnBeforeCommandLineProcessing(const CefString& process_type, CefRefPtr<CefCommandLine> command_line) override;
 
 	virtual bool OnProcessMessageReceived(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, CefProcessId source_process, CefRefPtr<CefProcessMessage> message) override;
-// CefResourceBundleHandler
+
+	virtual CefRefPtr<CefClient> GetDefaultClient() override;
+	// CefResourceBundleHandler
 protected:
 	virtual bool GetDataResource(int resourceID, void*& data, size_t& data_size) override;
 

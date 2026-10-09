@@ -10,6 +10,7 @@
 #include "CefOverlay.h"
 #include <CoreConsole.h>
 #include "memdbgon.h"
+#include "NUIDummyClient.h"
 #include <CrossBuildRuntime.h>
 #include <PureModeState.h>
 
@@ -50,6 +51,45 @@ bool NUIApp::GetLocalizedString(int messageID, CefString& string)
 
 void NUIApp::OnContextInitialized()
 {
+	CefRefPtr<CefRequestContext> requestContext = CefRequestContext::GetGlobalContext();
+
+	constexpr std::array<std::string_view, 21> kDisabledPreferences{
+		"translate",
+		"autologin.enabled",
+		"printing.enabled",
+		"shopping_list_enabled",
+		"search.suggest_enabled",
+		"side_panel.google_search_side_panel_enabled",
+		"side_search.enabled",
+		"signin.allowed",
+		"signin.allowed_on_next_startup",
+		"url_keyed_anonymized_data_collection.enabled",
+		"autofill.credit_card_enabled",
+		"autofill.enabled",
+		"autofill.iban_enabled",
+		"autofill.payment_card_benefits",
+		"autofill.payment_cvc_storage",
+		"autofill.profile_enabled",
+		"browser_labs_enabled",
+		"credentials_enable_autosignin",
+		"credentials_enable_service",
+		"payments.can_make_payment_enabled",
+		"browser.enable_spellchecking"
+	};
+
+	CefRefPtr<CefValue> featureOption = CefValue::Create();
+	featureOption->SetBool(false);
+
+	CefString errorMessage;
+	for (std::string_view feature : kDisabledPreferences)
+	{
+		requestContext->SetPreference(feature.data(), featureOption.get(), errorMessage);
+	}
+
+	featureOption->SetBool(true);
+	// Extra toggles to further disable extensions
+	requestContext->SetPreference("extensions.block_external_extensions", featureOption.get(), errorMessage);
+	requestContext->SetPreference("extensions.disabled", featureOption.get(), errorMessage);
 }
 
 void NUIApp::OnContextCreated(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, CefRefPtr<CefV8Context> context)
@@ -68,8 +108,7 @@ void NUIApp::OnContextCreated(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame>
 	if (auto parent = frame->GetParent(); parent && parent->IsMain())
 	{
 		frame->ExecuteJavaScript(fmt::sprintf(g_epoxyScript, frame->GetName().ToString()), "nui://epoxy", 0);
-	}
-	                     
+	}	                     
 	frame->ExecuteJavaScript(g_gameViewScript, "nui://game-view-wrapper", 0);
 
 	{
@@ -150,7 +189,6 @@ void NUIApp::OnContextReleased(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame
 void NUIApp::OnBeforeCommandLineProcessing(const CefString& process_type, CefRefPtr<CefCommandLine> command_line)
 {
 	static ConVar<bool> nuiUseInProcessGpu("nui_useInProcessGpu", ConVar_Archive, true);
-	static ConVar<bool> nuiEnableAcceleratedVideo("nui_enableAcceleratedVideo", ConVar_Archive | ConVar_UserPref, false);
 
 	static std::string defaultUiUrl = "https://nui-game-internal/ui/app/index.html";
 	static ConVar<std::string> uiUrlVar("ui_url", ConVar_UserPref, defaultUiUrl);
@@ -174,17 +212,6 @@ void NUIApp::OnBeforeCommandLineProcessing(const CefString& process_type, CefRef
 		command_line->AppendSwitch("in-process-gpu");
 	}
 
-	// GPU accelerated video/encoding
-	// Some GPUS/Drivers and Graphics mods run into stability/performance issues while using this.
-	// As a result this is disabled by default.
-	// However, this may help users on CPU limited systems that struggle with NUI playing videos.
-	if (!nuiEnableAcceleratedVideo.GetValue())
-	{
-		command_line->AppendSwitch("disable-accelerated-video-decode");
-		command_line->AppendSwitch("disable-accelerated-video-encode");
-		command_line->AppendSwitch("disable-accelerated-mjpeg-decode");
-	}
-
 	// FxDK makes use of the Views Framework within CEF
 	// which depends on direct composition in order to draw.
 	if (!launch::IsSDK())
@@ -200,19 +227,25 @@ void NUIApp::OnBeforeCommandLineProcessing(const CefString& process_type, CefRef
 	command_line->AppendSwitchWithValue("use-angle", "d3d11");
 	//
 
-	// It's not right to have this enabled and enable *all* experimental features
-	// Rather any experimental feature should be added on a case-by-case
+	// Previously we would enable *all* experimental features 
+	// that were bundled with the chromium version
+	// This shouldn't have been the case, rather any experimental features 
+	// should be added on a case-by-case basis.
 	//command_line->AppendSwitch("enable-experimental-web-platform-features");
 
-	// These experimental features are currently broken as of writing (April 2026, M144 build)
-	// While experimental web features are disabled, it's worth keeping a list of ones that **are** broken in NUI.
 	command_line->AppendSwitchWithValue("disable-blink-features", 
+		// These experimental features are currently broken as of M144 (October 2026 build)
+		// While experimental web features are disabled, it's worth keeping a list of ones that **are** broken in NUI.
 		"WidthAndHeightAsPresentationAttributesOnNestedSvg,"  // Breaks SVG's with custom height/width.
 															  // see https://issues.chromium.org/issues/449170647 
 		"SelectionAndFocusedVisiblePositionMatch,"			  // Known bad feature, can lead to UI/GPU process hangs
 															  // Issue details are currently private.
-		"SpellcheckAPI"                                       // Breaks assumptions made by a majority of FiveM resources
+
+		// Other functionality that aren't required in NUI.
+		"SpellcheckAPI,"                                      // Breaks assumptions made by a majority of FiveM resources
 		                                                      // As pre-m144 Spellcheck did not work as intended.
+		"DocumentPictureInPictureAPI,"                         // Not needed in NUI
+
 	);
 
 	// Disable features that aren't desired in NUI.
@@ -224,6 +257,7 @@ void NUIApp::OnBeforeCommandLineProcessing(const CefString& process_type, CefRef
 		"CalculateNativeWinOcclusion," // Not relevant in OSR
 		"WebUSB," // NUI contexts shouldn't have access to USB API's
 	    "WebBluetooth," // Same with WebBluetooth API's
+		"WebHID," // Same with HID API's
 		"SerialAPI," // Same with SerialAPI
 		"OptimizationHints," // fetch hints for preloading don't work in NUI and make no sense being enabled
 		"OptimizationHintsFetching," // ^, should already be partially no-op in CEF. But disable it anyway
@@ -232,7 +266,10 @@ void NUIApp::OnBeforeCommandLineProcessing(const CefString& process_type, CefRef
 		"MetricsReporting,"
 		"SpellcheckService,"
 		"Spellcheck,"
-		"GCMDriver"
+		"GCMDriver,"
+		"StorageNotificationService,"// Shows a popup when running low on cache space.
+									 // See https://github.com/chromiumembedded/cef/issues/3966
+		"LiveCaption" // This doesn't work in CEF. Disable it so NUI resources are aware.
 	);
 
 	command_line->AppendSwitchWithValue("default-encoding", "utf-8");
@@ -260,9 +297,6 @@ void NUIApp::OnBeforeCommandLineProcessing(const CefString& process_type, CefRef
 	command_line->AppendSwitchWithValue("sync-url", "http://0.0.0.0");
 	command_line->AppendSwitchWithValue("crash-server-url", "http://0.0.0.0");
 
-	// "NetworkServiceInProcess2", restore M103 behaviour by handling network in process, reducing IPC overhead and CPU usage from cross process communication
-	command_line->AppendSwitchWithValue("enable-features", "NetworkServiceInProcess2");
-
 	// Disable features forced into CEF by Chrome runtime/bootstrap
 	command_line->AppendSwitch("disable-gaia-services");
 	command_line->AppendSwitch("disable-sync");
@@ -270,6 +304,7 @@ void NUIApp::OnBeforeCommandLineProcessing(const CefString& process_type, CefRef
 	command_line->AppendSwitch("disable-spell-checking");
 	command_line->AppendSwitch("disable-autocorrect");
 	command_line->AppendSwitch("no-spell-check-suggestions");
+	command_line->AppendSwitch("hide-crash-restore-bubble");
 
 	// Block NUI from having presentation api. https://developer.mozilla.org/en-US/docs/Web/API/Presentation_API
 	command_line->AppendSwitch("disable-presentation-api");
@@ -279,18 +314,10 @@ void NUIApp::OnBeforeCommandLineProcessing(const CefString& process_type, CefRef
 
 	// important switch to prevent users from mentioning 'why are there 50 chromes again'
 	command_line->AppendSwitch("disable-site-isolation-trials");
+	command_line->AppendSwitchWithValue("isolate-origins", "https://nui-game-internal");
 
 	// TODO: remove this flag in the future
 	command_line->AppendSwitch("disable-web-security");
-
-	// Disables background thread for hang monitor.
-	// In CEF this makes CefRequestHandler::OnRenderProcessUnresponsive & CefRequestHandler::OnRenderProcessResponsive noop
-	// But these are not currently used in NUI. Making hang monitor entirely useless.
-	// IF either functions mentioned above are planned to be use, disable this.
-	command_line->AppendSwitch("disable-hang-monitor");
-
-	// prevent widewine from downloading
-	command_line->AppendSwitch("disable-component-update");
 }
 
 bool NUIApp::OnProcessMessageReceived(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, CefProcessId source_process, CefRefPtr<CefProcessMessage> message)
@@ -312,6 +339,18 @@ bool NUIApp::OnProcessMessageReceived(CefRefPtr<CefBrowser> browser, CefRefPtr<C
 	}
 
 	return success;
+}
+
+CefRefPtr<CefClient> NUIApp::GetDefaultClient()
+{
+	static CefRefPtr<NUIDummyClient> dummyClient;
+	if (!dummyClient)
+	{
+		dummyClient = new NUIDummyClient();
+	}
+
+	// If anything tries to call GetDefaultClient they will get a dummy client that will exit immediately
+	return dummyClient;
 }
 
 bool NUIApp::Execute(const CefString& name, CefRefPtr<CefV8Value> object, const CefV8ValueList& arguments, CefRefPtr<CefV8Value>& retval, CefString& exception)
