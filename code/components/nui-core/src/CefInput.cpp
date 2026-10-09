@@ -753,7 +753,6 @@ static HookFunction initFunction([] ()
 			{
 				// Smooth scrolling while using OSR.
 				// See https://magpcss.org/ceforum/viewtopic.php?p=47550#p47550 for original issue and fix.
-				// This solution is still needed with >M144+. But we have fallback behaviour
 #if defined(CEF_OSR_NATIVE_MOUSE_EVENT)
 				int x = GET_X_LPARAM(lParam);
 				int y = GET_Y_LPARAM(lParam);
@@ -781,33 +780,6 @@ static HookFunction initFunction([] ()
 				if (browser)
 				{
 					browser->GetHost()->SendMouseWheelEventNative(&m);
-				}
-#else
-				// TODO: Investigate why this doesn't result in smooth scrolling in NUI
-				auto browser = GetFocusBrowser();
-				
-				if (browser)
-				{
-					POINT p = { GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam) };
-					HWND scrolled_wnd = ::WindowFromPoint(p);
-					if (scrolled_wnd != hWnd)
-					{
-						break;
-					}
-
-					::ScreenToClient(hWnd, &p);
-					TranslateMouseEvent(GetFocusWindow(), &p.x, &p.y);
-
-					int delta = GET_WHEEL_DELTA_WPARAM(wParam);
-
-					CefMouseEvent mouse_event;
-					mouse_event.x = p.x;
-					mouse_event.y = p.y;
-					mouse_event.modifiers = GetCefMouseModifiers(wParam);
-					auto isShiftDown = (GetKeyState(VK_SHIFT) & 0x8000) != 0;
-					browser->GetHost()->SendMouseWheelEvent(mouse_event,
-					isShiftDown ? delta : 0,
-					!isShiftDown ? delta : 0);
 				}
 #endif
 				suppressInput();
