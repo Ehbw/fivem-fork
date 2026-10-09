@@ -237,7 +237,7 @@ public:
 		return texture;
 	}
 
-	virtual void UpdateTexture(HANDLE shareHandle, fwRefContainer<GITexture> texture, int width, int height, nui::GameInterface::UpdateTextureCB cb = nullptr) override
+	virtual void UpdateTexture(HANDLE shareHandle, fwRefContainer<GITexture> texture, int width, int height, std::pair<uint64_t, uint64_t> key, nui::GameInterface::UpdateTextureCB cb = nullptr) override
 	{
 		WRL::ComPtr<ID3D11Texture2D> sharedTexture;
 		HRESULT hr = GetD3D11Device1()->OpenSharedResource1(shareHandle, __uuidof(ID3D11Texture2D), (void**)sharedTexture.GetAddressOf());
@@ -398,26 +398,6 @@ public:
 
 		return cxt;
 	}
-
-#ifdef IS_RDR3
-	virtual ID3D12Device* GetD3D12Device() override
-	{
-		assert(!"FrontendNUI doesn't support RedM");
-		return nullptr;
-	}
-
-	virtual void* GetVulkanDevice() override
-	{
-		assert(!"FrontendNUI doesn't support RedM");
-		return nullptr;
-	}
-
-	virtual bool IsUsingD3D12() override
-	{
-		assert(!"FrontendNUI doesn't support RedM");
-		return false;
-	}
-#endif
 
 	virtual fwRefContainer<GITexture> CreateTextureFromD3D11Texture(ID3D11Texture2D* texture) override
 	{
