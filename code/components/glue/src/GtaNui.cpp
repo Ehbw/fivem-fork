@@ -67,7 +67,7 @@ public:
 
 	virtual fwRefContainer<GITexture> CreateTextureFromShareHandle(HANDLE shareHandle, int width, int height, std::function<void()> cb = nullptr) override;
 
-	virtual void UpdateTexture(HANDLE shareHandle, fwRefContainer<GITexture> texture, int width, int height, nui::GameInterface::UpdateTextureCB cb = nullptr) override;
+	virtual void UpdateTexture(HANDLE shareHandle, fwRefContainer<GITexture> texture, int width, int height, std::pair<uint64_t, uint64_t>, nui::GameInterface::UpdateTextureCB cb = nullptr) override;
 
 	virtual void SetTexture(fwRefContainer<GITexture> texture, bool pm) override;
 
@@ -127,28 +127,6 @@ public:
 		return NULL;
 	}
 
-#ifdef IS_RDR3
-	virtual ID3D12Device* GetD3D12Device() override
-	{
-		return (ID3D12Device*)::GetGraphicsDriverHandle();			
-
-	}
-
-	virtual void* GetVulkanDevice() override
-	{
-		if (::GetCurrentGraphicsAPI() == GraphicsAPI::Vulkan)
-		{
-			return ::GetGraphicsDriverHandle();
-		}
-		return nullptr;
-	}
-
-	virtual bool IsUsingD3D12() override
-	{
-		return ::GetCurrentGraphicsAPI() == GraphicsAPI::D3D12;
-	}
-#endif
-
 	virtual bool RequestMediaAccess(const std::string& frameOrigin, const std::string& url, int permissions, const std::function<void(bool, int)>& onComplete) override;
 
 #ifdef INPUT_HOOK_HOST_CURSOR_SUPPORT
@@ -190,97 +168,205 @@ public:
 static tbb::concurrent_queue<std::function<void()>> g_onRenderQueue;
 static tbb::concurrent_queue<std::function<void()>> g_earlyOnRenderQueue;
 
-struct NUITextureUpdate
+#include <optional>
+namespace nui
 {
-public:
-	fwRefContainer<nui::GITexture> texture;
-	nui::GameInterface::UpdateTextureCB cb;
-	HANDLE handle;
-
-	NUITextureUpdate(fwRefContainer<nui::GITexture> texture, HANDLE handle, nui::GameInterface::UpdateTextureCB cb)
-		: texture(texture), handle(handle), cb(std::move(cb))
+	struct NUITextureUpdate
 	{
-	}
+	public:
+		fwRefContainer<nui::GITexture> texture;
+		nui::GameInterface::UpdateTextureCB cb;
+		HANDLE handle;
+		std::pair<uint64_t, uint64_t> key;
+		uint32_t width = 0;
+		uint32_t height = 0;
 
-	NUITextureUpdate() = delete;
-	virtual ~NUITextureUpdate() = default;
-};
+		NUITextureUpdate(fwRefContainer<nui::GITexture> texture, HANDLE handle, nui::GameInterface::UpdateTextureCB cb, std::pair<uint64_t, uint64_t> key, uint32_t width, uint32_t height)
+			: texture(texture), handle(handle), cb(std::move(cb)), key(std::move(key)), width(width), height(height)
+		{
+		}
 
+		NUITextureUpdate() = delete;
+		virtual ~NUITextureUpdate() = default;
+	};
+
+	///
+	///
+	///
+	class TextureUpdates
+	{
+	public:
+		std::unique_ptr<NUITextureUpdate> Put(std::unique_ptr<NUITextureUpdate>&& update)
+		{
+			if (!update)
+			{
+				return nullptr;
+			}
+
+			std::lock_guard<std::mutex> _(m_mutex);
+			auto key = update->texture.GetRef();
+			auto it = m_slots.find(key);
+			if (it == m_slots.end())
+			{
+				m_slots.emplace(key, std::move(update));
+				return nullptr;
+			}
+			std::unique_ptr<NUITextureUpdate> old = std::move(it->second);
+			it->second = std::move(update);
+			return old;
+		}
+
+		std::vector<std::unique_ptr<NUITextureUpdate>> Drain()
+		{
+			decltype(m_slots) data;
+			{
+				std::scoped_lock lock(m_mutex);
+				data.swap(m_slots);
+			}
+			std::vector<std::unique_ptr<NUITextureUpdate>> out;
+			out.reserve(m_slots.size());
+			for (auto& kv : data)
+			{
+				out.push_back(std::move(kv.second));
+			}
+			return out;
+		}
+	private:
+		std::mutex m_mutex;
+		std::unordered_map<nui::GITexture*, std::unique_ptr<NUITextureUpdate>> m_slots;
+	};
+	static TextureUpdates g_textureUpdate;
+
+	///
+	/// 
+	///
+	class TextureCache
+	{
+	public:
+		using Key = std::pair<uint64_t, uint64_t>;
+		struct CachedEntry
+		{
 #ifdef IS_RDR3
-struct NUITextureUpdateRDR : public NUITextureUpdate
-{
-	VkImage image;
-	VkDeviceMemory imageMemory;
-
-	WRL::ComPtr<ID3D12Resource> resource;
-
-	NUITextureUpdateRDR(fwRefContainer<nui::GITexture> texture, HANDLE handle, nui::GameInterface::UpdateTextureCB cb, 
-	WRL::ComPtr<ID3D12Resource> resource)
-		: NUITextureUpdate(std::move(texture), handle, std::move(cb)), resource(resource)
-	{
-	}
-
-	NUITextureUpdateRDR(fwRefContainer<nui::GITexture> texture, HANDLE handle, nui::GameInterface::UpdateTextureCB cb,
-	VkImage image, VkDeviceMemory imageMemory)
-		: NUITextureUpdate(std::move(texture), handle, std::move(cb)), image(image), imageMemory(imageMemory)
-	{
-	}
-};
-#endif
-
-class NUIUpdates
-{
-public:
-	using NUITexUpdate =
-#ifdef IS_RDR3
-	NUITextureUpdateRDR
+			// RedM supports vulkan and dx12.
+			void* m_texture; // VK image
+			void* m_srv; // VK imageView
+			VkDeviceMemory m_deviceMemory; // VK
 #else
-	NUITextureUpdate
+			WRL::ComPtr<ID3D11Texture2D> m_texture;
+			WRL::ComPtr<ID3D11ShaderResourceView> m_srv;
 #endif
-	;
+			uint32_t m_width;
+			uint32_t m_height;
+			bool m_inUse;
+		};
 
-	std::unique_ptr<NUITexUpdate> Put(std::unique_ptr<NUITexUpdate>&& update)
-	{
-		if (!update)
+		CachedEntry* GetEntry(Key& key)
 		{
+			auto it = m_entries.find(key);
+			if (it != m_entries.end())
+			{
+				MarkInUse(key, it->second);
+				return &it->second;
+			}
+
 			return nullptr;
 		}
 
-		std::lock_guard<std::mutex> _(m_mutex);
-		auto key = update->texture.GetRef();
-		auto it = m_slots.find(key);
-		if (it == m_slots.end())
+		void AddEntry(Key& key, CachedEntry entry)
 		{
-			m_slots.emplace(key, std::move(update));
-			return nullptr;
+			MarkInUse(key, entry);
+			m_entries.emplace(key, entry);
 		}
-		std::unique_ptr<NUITexUpdate> old = std::move(it->second);
-		it->second = std::move(update);
-		return old;
-	}
 
-	std::vector<std::unique_ptr<NUITexUpdate>> Drain()
-	{
-		decltype(m_slots) data;
+		void ReleaseCache(CachedEntry entry)
 		{
-			std::scoped_lock lock(m_mutex);
-			data.swap(m_slots);
+#ifdef GTA_FIVE
+			g_earlyOnRenderQueue.emplace([entry]()
+			{
+				if (entry.m_texture)
+				{
+					entry.m_texture->Release();
+				}
+
+				if (entry.m_srv)
+				{
+					entry.m_srv->Release();
+				}
+			});
+#elif IS_RDR3
+			if (GetCurrentGraphicsAPI() == GraphicsAPI::Vulkan)
+			{
+				g_earlyOnRenderQueue.emplace([entry]()
+				{
+					auto device = (VkDevice)GetGraphicsDriverHandle();
+
+					if (entry.m_texture)
+					{
+						vkDestroyImage(device, (VkImage)entry.m_texture, nullptr);
+					}
+
+					if (entry.m_deviceMemory)
+					{
+						vkFreeMemory(device, entry.m_deviceMemory, nullptr);
+					}
+
+					if (entry.m_srv)
+					{
+						vkDestroyImageView(device, (VkImageView)entry.m_srv, nullptr);
+					}
+				});
+			}
+			else
+			{
+				g_earlyOnRenderQueue.emplace([entry]()
+				{
+
+				});
+			}
+#endif
 		}
-		std::vector<std::unique_ptr<NUITexUpdate>> out;
-		out.reserve(m_slots.size());
-		for (auto& kv : data)
+
+		/// 
+		/// 
+		///
+		void Clear()
 		{
-			out.push_back(std::move(kv.second));
+			for (auto& [key, entry] : m_entries)
+			{
+				ReleaseCache(entry);
+			}
+			m_entries.clear();
 		}
-		return out;
-	}
-private:
-	std::mutex m_mutex;
-	std::unordered_map<nui::GITexture*, std::unique_ptr<NUITexUpdate>> m_slots;
-};
+	private:
+		struct HashPair
+		{
+			std::size_t operator()(const Key& key) const
+			{
+				return static_cast<std::size_t>(key.first ^ key.second);
+			}
+		};
 
-static NUIUpdates g_onTextureUpdate;
+		void MarkInUse(const Key& key, CachedEntry& entry)
+		{
+			if (m_prevUse && *m_prevUse != key)
+			{
+				auto prev = m_entries.find(*m_prevUse);
+				if (prev != m_entries.end())
+				{
+					prev->second.m_inUse = false;
+				}
+			}
 
+			entry.m_inUse = true;
+			m_prevUse = key;
+		}
+
+		std::optional<Key> m_prevUse;
+		std::unordered_map<Key, CachedEntry, HashPair> m_entries;
+	};
+
+	static TextureCache g_texCache;
+}
 class GtaNuiTextureBase : public nui::GITexture
 {
 public:
@@ -854,7 +940,7 @@ fwRefContainer<GITexture> GtaNuiInterface::CreateTextureFromShareHandle(HANDLE s
 	return new GtaNuiTexture(nullptr);
 }
 
-void GtaNuiInterface::UpdateTexture(HANDLE shareHandle, fwRefContainer<GITexture> texture, int width, int height, nui::GameInterface::UpdateTextureCB cb)
+void GtaNuiInterface::UpdateTexture(HANDLE shareHandle, fwRefContainer<GITexture> texture, int width, int height, std::pair<uint64_t, uint64_t> key, nui::GameInterface::UpdateTextureCB cb)
 {
 #ifdef GTA_FIVE
 	auto device1 = GetD3D11Device1();
@@ -866,6 +952,7 @@ void GtaNuiInterface::UpdateTexture(HANDLE shareHandle, fwRefContainer<GITexture
 		}
 		return;
 	}
+#endif
 
 	auto texRef = (rage::grcTexture*)texture->GetHostTexture();
 	if (!texRef)
@@ -877,85 +964,11 @@ void GtaNuiInterface::UpdateTexture(HANDLE shareHandle, fwRefContainer<GITexture
 		return;
 	}
 
-	auto previousFrame = g_onTextureUpdate.Put(std::make_unique<NUITextureUpdate>(texture, shareHandle, cb));
+	auto previousFrame = nui::g_textureUpdate.Put(std::make_unique<nui::NUITextureUpdate>(texture, shareHandle, cb, key, width, height));
 	if (previousFrame)
 	{
 		previousFrame->cb(nullptr);
 	}
-#elif defined(IS_RDR3)
-	if (GetCurrentGraphicsAPI() == GraphicsAPI::D3D12)
-	{
-		ID3D12Device* device = (ID3D12Device*)GetGraphicsDriverHandle();
-
-		auto texRef = (rage::sga::TextureD3D12*)texture->GetHostTexture();
-		if (!texRef)
-		{
-			if (cb)
-			{
-				cb(nullptr);
-			}
-			return;
-		}
-
-
-	    WRL::ComPtr<ID3D12Resource> cefResource = nullptr;
-		auto hr = device->OpenSharedHandle(shareHandle, IID_PPV_ARGS(&cefResource));
-		if (FAILED(hr))
-		{
-			trace("Failed to open shared resource for NUI Update 0x%x (handle %p)\n", hr, (void*)shareHandle);
-			if (cb)
-			{
-				cb(nullptr);
-			}
-			return;
-		}
-
-		auto previousFrame = g_onTextureUpdate.Put(std::make_unique<NUIUpdates::NUITexUpdate>(texture, shareHandle, cb, cefResource));
-		if (previousFrame)
-		{
-			cefResource->Release();
-			previousFrame->cb(nullptr);
-		}
-	}
-	else if (GetCurrentGraphicsAPI() == GraphicsAPI::Vulkan)
-	{
-		auto texRef = (rage::sga::TextureVK*)texture->GetHostTexture();
-		if (!texRef)
-		{
-			if (cb)
-			{
-				cb(nullptr);
-			}
-			return;
-		}
-
-		VkDevice device = (VkDevice)GetGraphicsDriverHandle();
-		VkImage image;
-		VkDeviceMemory deviceMemory;
-		vk::CreateImageFromShareHandle(device, shareHandle, width, height, image, deviceMemory, false);
-
-		if (image == VK_NULL_HANDLE || deviceMemory == VK_NULL_HANDLE)
-		{
-			trace("Failed to create image share handle for %p", (void*)shareHandle);
-			return;
-		}
-
-		auto previousFrame = g_onTextureUpdate.Put(std::make_unique<NUIUpdates::NUITexUpdate>(texture, shareHandle, cb, image, deviceMemory));
-		if (previousFrame)
-		{
-			if (previousFrame->image)
-			{
-				vkDestroyImage(device, previousFrame->image, nullptr);
-			}
-
-			if (previousFrame->imageMemory)
-			{
-				vkFreeMemory(device, previousFrame->imageMemory, nullptr);
-			}
-			previousFrame->cb(nullptr);
-		}
-	}
-#endif
 }
 
 static thread_local fwRefContainer<nui::GITexture> g_currentTexture;
@@ -1061,8 +1074,22 @@ void GtaNuiInterface::SetHostCursorEnabled(bool enabled)
 static GtaNuiInterface nuiGi;
 
 #ifdef GTA_FIVE
-static void UpdateTexture(std::unique_ptr<NUITexUpdate>& texture)
+static void UpdateTexture(std::unique_ptr<nui::NUITextureUpdate>& texture)
 {
+	auto entry = nui::g_texCache.GetEntry(texture->key);
+	if (entry)
+	{
+		auto texRef = (rage::grcTexture*)texture->texture->GetHostTexture();
+
+		texRef->texture = entry->m_texture.Get();
+		texRef->srv = entry->m_srv.Get();
+		if (texture->cb && texture->cb(entry->m_srv.Get()))
+		{
+			texture->cb(entry->m_srv.Get());
+		}
+		return;
+	}
+
 	WRL::ComPtr<ID3D11Texture2D> cefTexture;
 	auto hr = nuiGi.GetD3D11Device1()->OpenSharedResource1(texture->handle, IID_PPV_ARGS(&cefTexture));
 	if (FAILED(hr) || !cefTexture)
@@ -1102,35 +1129,18 @@ static void UpdateTexture(std::unique_ptr<NUITexUpdate>& texture)
 	auto oldTex = texRef->texture;
 	auto oldSrv = texRef->srv;
 
-	texRef->texture = cefTexture.Detach();
-	texRef->srv = cefSrv.Detach();
+	texRef->texture = cefTexture.Get();
+	texRef->srv = cefSrv.Get();
 
-	g_earlyOnRenderQueue.emplace([oldTex, oldSrv]()
-	{
-		if (oldTex)
-		{
-			oldTex->Release();
-		}
-
-		if (oldSrv)
-		{
-			oldSrv->Release();
-		}
-	});
+	nui::g_texCache.AddEntry(texture->key, nui::TextureCache::CachedEntry{ cefTexture, cefSrv });
 }
 #elif IS_RDR3
-
-#include <Hooking.h>
-static hook::cdecl_stub<bool(void*, void*)> _createVKDestroyParams([]()
+static void UpdateTextureVK(std::unique_ptr<nui::NUITextureUpdate>& texture)
 {
-	return hook::get_pattern("48 8B 42 ? 4C 8B C1 48 89 01");
-});
-static void UpdateTextureVK(std::unique_ptr<NUIUpdates::NUITexUpdate>& texture)
-{
-	VkDevice device = (VkDevice)GetGraphicsDriverHandle();
+	auto entry = nui::g_texCache.GetEntry(texture->key);
 	auto texRef = (rage::sga::TextureVK*)texture->texture->GetHostTexture();
-
-	if (!texRef || !texRef->image)
+	
+	if (!texRef || !texRef->image || !texRef->data)
 	{
 		if (texture->cb)
 		{
@@ -1138,15 +1148,32 @@ static void UpdateTextureVK(std::unique_ptr<NUIUpdates::NUITexUpdate>& texture)
 		}
 		return;
 	}
+
+	if (entry)
+	{
+		texRef->image->image = (VkImage)entry->m_texture;
+		texRef->data->imageView = (VkImageView)entry->m_srv;
+		texRef->image->memory = (VkDeviceMemory)entry->m_deviceMemory;
+		texRef->data->imageViewType = 2;
+
+		if (texture->cb)
+		{
+			texture->cb(nullptr);
+		}
+		return;
+	}
+
+	VkDevice device = (VkDevice)GetGraphicsDriverHandle();
+	VkImage Image = {};
+	VkDeviceMemory ImageMemory = {};
+	vk::CreateImageFromShareHandle(device, texture->handle, texture->width, texture->height, Image, ImageMemory, true);
 
 	VkImage oldImage = texRef->image->image;
 	VkDeviceMemory oldMemory = texRef->image->memory;
 	VkImageView oldImageView = texRef->data->imageView;
 
-	// Deferred texture destroy behaves differently in Vulkan
-	// So we'll recycle it ourself
-	texRef->image->image = texture->image;
-	texRef->image->memory = texture->imageMemory;
+	texRef->image->image = Image;
+	texRef->image->memory = ImageMemory;
 
 	rage::sga::TextureViewDesc srvDesc;
 	srvDesc.mipLevels = 1;
@@ -1160,41 +1187,15 @@ static void UpdateTextureVK(std::unique_ptr<NUIUpdates::NUITexUpdate>& texture)
 		return;
 	}
 
-	g_earlyOnRenderQueue.emplace([device, oldImage, oldMemory, oldImageView]()
-	{
-		trace("oldImage %p, oldMemory %p, oldImageView %p\n", (void*)oldImage, (void*)oldMemory, (void*)oldImageView);
-		if (oldImage)
-		{
-			vkDestroyImage(device, oldImage, nullptr);
-		}
-
-		if (oldMemory)
-		{
-			vkFreeMemory(device, oldMemory, nullptr);
-		}
-
-		if (oldImageView)
-		{
-			vkDestroyImageView(device, oldImageView, nullptr);
-		}
-	});
-
+	nui::g_texCache.AddEntry(texture->key, nui::TextureCache::CachedEntry{ Image, texRef->data->imageView, ImageMemory, texture->width, texture->height });
 }
 
-static void UpdateTextureDX(std::unique_ptr<NUIUpdates::NUITexUpdate>& texture)
+static void UpdateTextureDX(std::unique_ptr<nui::NUITextureUpdate>& texture)
 {
-	ID3D12Device* device = (ID3D12Device*)GetGraphicsDriverHandle();
+	auto entry = nui::g_texCache.GetEntry(texture->key);
 	auto texRef = (rage::sga::TextureD3D12*)texture->texture->GetHostTexture();
 	if (!texRef)
 	{
-		return;
-	}
-
-	WRL::ComPtr<ID3D12Resource> cefResource = nullptr;
-	auto hr = device->OpenSharedHandle(texture->handle, IID_PPV_ARGS(&cefResource));
-	if (FAILED(hr))
-	{
-		//trace("Failed to open shared resource for NUI Update 0x%x (handle %p)\n", hr, (void*)texture->handle);
 		if (texture->cb)
 		{
 			texture->cb(nullptr);
@@ -1202,28 +1203,45 @@ static void UpdateTextureDX(std::unique_ptr<NUIUpdates::NUITexUpdate>& texture)
 		return;
 	}
 
-	rage::sga::D3D12::DeferredTextureDestroy deferredTex{};
-	deferredTex.heap = texRef->heap;
-	deferredTex.resource = texRef->resource;
-	deferredTex.heapOffset = texRef->heapOffset;
-	deferredTex.unkFlag = texRef->flags & 1;
+	if (entry)
+	{
+		texRef->resource = static_cast<ID3D12Resource*>(entry->m_texture);
+		texRef->data->handle.ptr = (size_t)entry->m_srv;
 
-	rage::sga::Driver_Destroy_DefereredTexture(&deferredTex);
+		if (texture->cb)
+		{
+			texture->cb(nullptr);
+		}
+		return;
+	}
 
-	texRef->resource = cefResource.Detach();
+	ID3D12Device* device = (ID3D12Device*)GetGraphicsDriverHandle();
+	WRL::ComPtr<ID3D12Resource> cefResource = nullptr;
+	auto hr = device->OpenSharedHandle(texture->handle, IID_PPV_ARGS(&cefResource));
+	if (FAILED(hr))
+	{
+		trace("Failed to open shared resource for NUI Update 0x%x (handle %p)\n", hr, (void*)texture->handle);
+		if (texture->cb)
+		{
+			texture->cb(nullptr);
+		}
+		return;
+	}
+
+	texRef->resource = cefResource.Get();
 	rage::sga::TextureViewDesc srvDesc;
 	srvDesc.mipLevels = 1;
 	srvDesc.arrayStart = 0;
 	srvDesc.dimension = 4;
 	srvDesc.arraySize = 1;
-
 	rage::sga::Driver_Create_ShaderResourceView(texRef, srvDesc);
 
 	if (texture->cb && texture->cb(nullptr))
 	{
-		rage::sga::Driver_Destroy_Texture(texRef);
 		return;
 	}
+
+	nui::g_texCache.AddEntry(texture->key, nui::TextureCache::CachedEntry{ (void*)cefResource.Detach(), (void*)texRef->data->handle.ptr, nullptr, 0, 0});
 }
 #endif
 
@@ -1241,21 +1259,23 @@ static void DoRender()
 		fn();
 	}
 
-	std::vector<std::unique_ptr<NUIUpdates::NUITexUpdate>> updates = g_onTextureUpdate.Drain();
-	for (auto& update : updates)
 	{
+		auto updates = nui::g_textureUpdate.Drain();
+		for (auto& update : updates)
+		{
 #ifndef IS_RDR3
-		UpdateTexture(update);
+			UpdateTexture(update);
 #else
-		if (GetCurrentGraphicsAPI() == GraphicsAPI::Vulkan)
-		{
-			UpdateTextureVK(update);
-		}
-		else
-		{
-			UpdateTextureDX(update);
-		}
+			if (GetCurrentGraphicsAPI() == GraphicsAPI::Vulkan)
+			{
+				UpdateTextureVK(update);
+			}
+			else
+			{
+				UpdateTextureDX(update);
+			}
 #endif
+		}
 	}
 
 	nuiGi.OnRender();
@@ -1274,6 +1294,13 @@ static InitFunction initFunction([]()
 	{
 		nuiGi.OnInitRenderer();
 	});
+
+#ifdef GTA_FIVE
+	OnBackbufferCreation.Connect([]()
+	{
+		nui::g_texCache.Clear();
+	});
+#endif
 
 	OnPostFrontendRender.Connect([]()
 	{

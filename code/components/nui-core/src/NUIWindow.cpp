@@ -735,9 +735,9 @@ void NUIWindow::UpdateSharedResource(CefRenderHandler::PaintElementType type)
 		else
 		{
 			AddRef();
-			g_nuiGi->UpdateTexture(sharedHandle, texRef, w, h, [sharedHandle, frameSequence, this, type](void* srv)
+			auto key = std::make_pair(frame->token_high, frame->token_low);
+			g_nuiGi->UpdateTexture(sharedHandle, texRef, w, h, key, [sharedHandle, frameSequence, this, type](void* srv)
 			{
-				trace("releasing frame %i, %p\n", frameSequence, (void*)sharedHandle);
 				ReleaseFrame(type, frameSequence);
 #ifdef GTA_FIVE
 				if (!IsPrimary() && srv)

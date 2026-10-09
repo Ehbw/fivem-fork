@@ -206,14 +206,6 @@ public:
 		}
 	}
 
-	inline void SetDisplayVSyncParameters(int64_t timebase_us, int64_t interval_us)
-	{
-		if (GetBrowser() && GetBrowser()->GetHost())
-		{
-			//GetBrowser()->GetHost()->SetDisplayVSyncParameters(timebase_us, interval_us);
-		}
-	}
-
 	void UpdateSharedResource(CefRenderHandler::PaintElementType type);
 #endif
 
