@@ -29,6 +29,7 @@ namespace WRL = Microsoft::WRL;
 void WakeWindowThreadFor(std::function<void()>&& func);
 
 fwEvent<> OnGrcCreateDevice;
+fwEvent<> OnBackbufferCreation;
 fwEvent<> OnPostFrontendRender;
 
 DLL_EXPORT fwEvent<bool*> OnFlipModelHook;
