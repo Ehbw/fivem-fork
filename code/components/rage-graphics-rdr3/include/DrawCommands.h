@@ -80,29 +80,6 @@ extern GFX_EXPORT void* GetVulkanPhysicalDevice();
 
 extern GFX_EXPORT void* GetVulkanInstance();
 
-namespace rage::sga::VK
-{
-struct GFX_EXPORT DeferredTextureDestroy
-{
-	rage::sga::TextureVK::ImageData* imageData;
-	char pad[32];
-};
-static_assert(sizeof(DeferredTextureDestroy) == 40, "Invalid size for VK::DeferredTextureDestroy");
-}
-
-namespace rage::sga::D3D12
-{
-struct GFX_EXPORT DeferredTextureDestroy
-{
-	ID3D12Resource* resource;
-	ID3D12Heap* heap;
-	uint32_t heapOffset;
-	char pad[4];
-	uint8_t unkFlag;
-};
-static_assert(sizeof(DeferredTextureDestroy) == 32, "Invalid size for D3D12::DeferredTextureDestroy");
-}
-
 namespace rage::sga
 {
 class GFX_EXPORT GraphicsContext
