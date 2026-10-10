@@ -342,7 +342,7 @@ namespace nui
 		{
 			std::size_t operator()(const Key& key) const
 			{
-				return static_cast<std::size_t>(key.first ^ key.second);
+				return static_cast<std::size_t>(key.first ^ (key.second * 0x9e3779b97f4a7c55));
 			}
 		};
 
@@ -1077,16 +1077,33 @@ static GtaNuiInterface nuiGi;
 static void UpdateTexture(std::unique_ptr<nui::NUITextureUpdate>& texture)
 {
 	auto entry = nui::g_texCache.GetEntry(texture->key);
+	auto texRef = (rage::grcTexture*)texture->texture->GetHostTexture();
+
+	if (!texRef)
+	{
+		if (texture->cb)
+		{
+			texture->cb(nullptr);
+		}
+		return;
+	}
+
 	if (entry)
 	{
-		auto texRef = (rage::grcTexture*)texture->texture->GetHostTexture();
+		if (texRef->texture == entry->m_texture.Get())
+		{
+			// CEF may occassionally send two of the same frames 
+			// right after each other. Which if we release causes a few problems.
+			return;
+		}
 
-		texRef->texture = entry->m_texture.Get();
-		texRef->srv = entry->m_srv.Get();
-		if (texture->cb && texture->cb(entry->m_srv.Get()))
+		if (texture->cb)
 		{
 			texture->cb(entry->m_srv.Get());
 		}
+
+		texRef->texture = entry->m_texture.Get();
+		texRef->srv = entry->m_srv.Get();
 		return;
 	}
 
@@ -1125,7 +1142,6 @@ static void UpdateTexture(std::unique_ptr<nui::NUITextureUpdate>& texture)
 		return;
 	}
 
-	auto texRef = (rage::grcTexture*)texture->texture->GetHostTexture();
 	auto oldTex = texRef->texture;
 	auto oldSrv = texRef->srv;
 
@@ -1151,6 +1167,12 @@ static void UpdateTextureVK(std::unique_ptr<nui::NUITextureUpdate>& texture)
 
 	if (entry)
 	{
+		if (texRef->image->image == entry->m_texture)
+		{
+			// CEF may occassionally send two of the same frames
+			// right after each other. Which if we release causes a few problems.
+			return;
+		}
 		texRef->image->image = (VkImage)entry->m_texture;
 		texRef->data->imageView = (VkImageView)entry->m_srv;
 		texRef->image->memory = (VkDeviceMemory)entry->m_deviceMemory;
@@ -1205,6 +1227,13 @@ static void UpdateTextureDX(std::unique_ptr<nui::NUITextureUpdate>& texture)
 
 	if (entry)
 	{
+		if (texRef->resource == static_cast<ID3D12Resource*>(entry->m_texture))
+		{
+			// CEF may occassionally send two of the same frames
+			// right after each other. Which if we release causes a few problems.
+			return;
+		}
+
 		texRef->resource = static_cast<ID3D12Resource*>(entry->m_texture);
 		texRef->data->handle.ptr = (size_t)entry->m_srv;
 
