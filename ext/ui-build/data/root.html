@@ -90,14 +90,13 @@ registerFrameFunction(function(msg, frameName, frameUrl)
 		frame.style.visibility = 'hidden';
 		if (frameName == "loadingscreen") 
 		{
-			frame.allow = "autoplay; encrypted-media"
+			frame.allow = "autoplay"
 		}
 		else
 		{
-			// autoplay & encrypted-media to maintain backwards compatability with 'autoplay' and for certain media types
-			frame.allow = "microphone *; camera *; autoplay; encrypted-media; payment 'none'; geolocation 'none';";
+			frame.allow = "microphone; camera; autoplay; payment 'none'; geolocation 'none';";
 		}
-		frame.sandbox = 'allow-forms allow-modals allow-scripts allow-same-origin allow-presentation';
+		frame.sandbox = 'allow-forms allow-scripts allow-same-origin';
 		frame.src = frameUrl;
 		frame.tabIndex = -1;
 
