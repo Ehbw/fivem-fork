@@ -27,6 +27,7 @@
 #include <sstream>
 #include <regex>
 #include <NUIDevtools.h>
+#include <unordered_set>
 
 extern nui::GameInterface* g_nuiGi;
 bool shouldHaveRootWindow;
@@ -66,6 +67,21 @@ static bool IsTrustedEntitlementFrame(const std::string& frameUrl)
 	}
 
 	return false;
+}
+
+static bool IsSupportedScheme(const std::string& scheme)
+{
+	static const std::unordered_set<std::string> kAllowedSchemes = {
+		"https",
+		"http",
+		"wss",
+		"ws",
+		"blob",
+		"data",
+		"nui"
+	};
+
+	return kAllowedSchemes.count(scheme);
 }
 
 namespace nui
@@ -125,14 +141,6 @@ void NUIClient::OnLoadStart(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> f
 	if (frame->IsMain() && m_window && m_window->GetName() == "nui_mpMenu")
 	{
 		m_loadedMainFrame = false;
-	}
-
-	// Disable spellchecking.
-	{
-		CefRefPtr<CefValue> value = CefValue::Create();
-		value->SetBool(false);
-		CefString error;
-		GetBrowser()->GetHost()->GetRequestContext()->SetPreference("browser.enable_spellchecking", value, error);
 	}
 
 	browser->GetHost()->AddDevToolsMessageObserver(g_devToolsObserver);
@@ -277,7 +285,7 @@ void NUIClient::OnLoadError(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> f
 	// currently, with the chrome runtime it will display an error page which can block game view and cause confusion
 	// as you are not able to focus on to it to see the error it self.
 	// instead, we'll replace any pages (usually iframes) that fail to load with about:blank.
-	// with chrome runtime it will, by default, display an error page.
+	// with chrome runtime it will, by default, display an generic chromium error page.
 	frame->LoadURL("about:blank");
 #ifdef _DEBUG
 	trace("Failed to load page because of errorcode %i", errorCode);
@@ -295,7 +303,7 @@ bool NUIClient::OnProcessMessageReceived(CefRefPtr<CefBrowser> browser, CefRefPt
 {
 	if (source_process != PID_RENDERER)
 	{
-		trace("Process message recieved from wrong source process\n");
+		trace("NUI recieved a message from an invalid process. process = %i\n", source_process);
 		return false;
 	}
 
@@ -303,16 +311,12 @@ bool NUIClient::OnProcessMessageReceived(CefRefPtr<CefBrowser> browser, CefRefPt
 	auto handler = m_processMessageHandlers.find(name);
 	bool success = false;
 
-	if (handler != m_processMessageHandlers.end())
-	{
-		success = handler->second(browser, message);
-	}
-	else
+	if (handler == m_processMessageHandlers.end())
 	{
 		trace("Unknown NUI process message: %s\n", name.ToString().c_str());
+		return false;
 	}
-
-	return success;
+	return handler->second(browser, frame, message);
 }
 
 void NUIClient::OnBeforeContextMenu(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, CefRefPtr<CefContextMenuParams> params, CefRefPtr<CefMenuModel> model)
@@ -352,7 +356,7 @@ bool NUIClient::OnConsoleMessage(CefRefPtr<CefBrowser> browser, cef_log_severity
 	}
 
 	// Suppress "An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing." errors from being shown.
-	// allow-scripts and allow-same-origin is required for backwards compatability and we are aware of the risks that it may pose.
+	// allow-scripts and allow-same-origin is required for compatability and we are aware of the risks that it may pose.
 	// The console warning has no value being shown to the end user and only serves to cause confusion/fear.
 	if (messageStr.find(L"both allow-scripts and allow-same-origin") != std::string::npos)
 	{
@@ -415,27 +419,35 @@ auto NUIClient::OnBeforeResourceLoad(CefRefPtr<CefBrowser> browser, CefRefPtr<Ce
 {
 	auto url = request->GetURL().ToString();
 
-	// We don't want NUI to use certain schemes it has no business accessing.
-	if (boost::algorithm::to_lower_copy(url).find("file://") != std::string::npos || 
-		boost::algorithm::to_lower_copy(url).find("chrome://") != std::string::npos ||
-		boost::algorithm::to_lower_copy(url).find("javascript://") != std::string::npos
-	   )
+	CefURLParts urlParts;
+	if (!CefParseURL(request->GetURL(), urlParts))
 	{
 		return RV_CANCEL;
 	}
 
-	CefURLParts urlParts;
-	if (!CefParseURL(request->GetURL(), urlParts))
+	std::string scheme = CefString(&urlParts.scheme).ToString();
+	if (!IsSupportedScheme(scheme))
 	{
-		return RV_CONTINUE;
+		return RV_CANCEL;
 	}
 
-	// When NUI scripts attempt to make HTTP requests before being fully initalized, "Origin" field will be null.
-	// Breaking NUI strict mode (espically in chat), in order to maintain backwards compatability make sure Origin is present.
-	if (request->GetMethod() == "POST")
+	// Requests made in services workers should still contain a frame reference
+	// All checks below this always made the assumption that frame shall not be null
+	// So there shouldn't be too much risk in cancelling requests from null frames.
+	if (!frame)
+	{
+		trace("Blocking request for '%s as its missing an frame origin\n", url);
+		return RV_CANCEL;
+	}
+
+	// With versions of Chromium after >m103 stricter requirements for Origin have been added
+	// as a result requests made through 'insecure' protocols such as http or ws will no longer have an Origin
+	// This results in requests from an unknown location being sent to NUI, breaking NUI strict mode.
+	// Introduce a compatability shim for resources using manifest version 'bodacious' and http:// callbacks
+	// to work the same as before. https:// for nui callbacks is uneffected.
+	if (scheme == "http" && request->GetMethod() == "POST")
 	{
 		CefString origin = request->GetHeaderByName("Origin");
-		// Sometimes origin will also be "null"
 		if (origin.empty() || origin == "null")
 		{
 			CefURLParts frameParts;
@@ -445,8 +457,12 @@ auto NUIClient::OnBeforeResourceLoad(CefRefPtr<CefBrowser> browser, CefRefPtr<Ce
 				return RV_CANCEL;
 			}
 
-			std::string hostString = CefString(&frameParts.host).ToString();
-			request->SetHeaderByName("Origin", CefString(&frameParts.scheme).ToString() + "://" + hostString, true);
+			CefString scheme = CefString(&frameParts.scheme);
+			if (scheme == "nui")
+			{
+				std::string hostString = CefString(&frameParts.host).ToString();
+				request->SetHeaderByName("Origin", "nui://" + hostString, true);
+			}
 		}
 	}
 
@@ -727,22 +743,9 @@ bool NUIClient::OnOpenURLFromTab(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFra
 	return false;
 }
 
-#include "include/cef_command_ids.h"
-
 bool NUIClient::OnChromeCommand(CefRefPtr<CefBrowser> browser, int command_id, cef_window_open_disposition_t disposition)
 {
-	switch (command_id)
-	{
-		// These commands can always stay blocked as we don't use them.
-		case IDC_DEV_TOOLS:
-		case IDC_DEV_TOOLS_CONSOLE:
-		case IDC_DEV_TOOLS_INSPECT:
-		case IDC_DEV_TOOLS_TOGGLE:
-		case IDC_DEVELOPER_MENU:
-			return true;
-			default:
-				return false;
-		}
+	return true;
 }
 
 void NUIClient::OnBeforeClose(CefRefPtr<CefBrowser> browser)

@@ -133,7 +133,7 @@ static InitFunction initFunction([] ()
 
 	NUIClient::OnClientCreated.Connect([] (NUIClient* client)
 	{
-		client->AddProcessMessageHandler("invokeNative", [client] (CefRefPtr<CefBrowser> browser, CefRefPtr<CefProcessMessage> message)
+		client->AddProcessMessageHandler("invokeNative", [client](CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, CefRefPtr<CefProcessMessage> message)
 		{
 			auto args = message->GetArgumentList();
 			auto nativeType = args->GetString(0);

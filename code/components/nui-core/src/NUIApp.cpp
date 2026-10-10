@@ -314,7 +314,6 @@ void NUIApp::OnBeforeCommandLineProcessing(const CefString& process_type, CefRef
 
 	// important switch to prevent users from mentioning 'why are there 50 chromes again'
 	command_line->AppendSwitch("disable-site-isolation-trials");
-	command_line->AppendSwitchWithValue("isolate-origins", "https://nui-game-internal");
 
 	// TODO: remove this flag in the future
 	command_line->AppendSwitch("disable-web-security");
@@ -322,23 +321,14 @@ void NUIApp::OnBeforeCommandLineProcessing(const CefString& process_type, CefRef
 
 bool NUIApp::OnProcessMessageReceived(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, CefProcessId source_process, CefRefPtr<CefProcessMessage> message)
 {
-	auto handler = std::find_if(m_processMessageHandlers.begin(), m_processMessageHandlers.end(),
-	[&](const auto& p)
-	{
-		return p.first == message->GetName().ToString();
-	});
-
-	bool success = false;
-	if (handler != m_processMessageHandlers.end())
-	{
-		success = handler->second(browser, message);
-	}
-	else
+	auto handler = m_processMessageHandlers.find(message->GetName());
+	if (handler == m_processMessageHandlers.end())
 	{
 		trace("Unknown NUI process message: %s\n", message->GetName().ToString().c_str());
+		return false;
 	}
 
-	return success;
+	return handler->second(browser, message);
 }
 
 CefRefPtr<CefClient> NUIApp::GetDefaultClient()
@@ -355,44 +345,25 @@ CefRefPtr<CefClient> NUIApp::GetDefaultClient()
 
 bool NUIApp::Execute(const CefString& name, CefRefPtr<CefV8Value> object, const CefV8ValueList& arguments, CefRefPtr<CefV8Value>& retval, CefString& exception)
 {
-	auto handler = std::find_if(m_v8Handlers.begin(), m_v8Handlers.end(),
-	[&](const auto& p)
-	{
-		return p.first == name.ToString();
-	});
-
-	bool success = false;
-	if (handler != m_v8Handlers.end())
-	{
-		retval = handler->second(arguments, exception);
-		success = true;
-	}
-	else
+	auto handler = m_v8Handlers.find(name);
+	if (handler == m_v8Handlers.end())
 	{
 		trace("Unknown NUI function: %s\n", name.ToString().c_str());
+		return false;
 	}
 
-	return success;
+	retval = handler->second(arguments, exception);
+	return true;
 }
 
 void NUIApp::AddProcessMessageHandler(std::string key, TProcessMessageHandler handler)
 {
-	auto it = std::lower_bound(m_processMessageHandlers.begin(), m_processMessageHandlers.end(), key,
-	[](const auto& p, const auto& k)
-	{
-		return p.first < k;
-	});
-	m_processMessageHandlers.insert(it, { std::move(key), std::move(handler) });
+	m_processMessageHandlers[key] = handler;
 }
 
 void NUIApp::AddV8Handler(std::string key, TV8Handler handler)
 {
-	auto it = std::lower_bound(m_v8Handlers.begin(), m_v8Handlers.end(), key,
-	[](const auto& p, const auto& k)
-	{
-		return p.first < k;
-	});
-	m_v8Handlers.insert(it, { std::move(key), std::move(handler) });
+	m_v8Handlers[key] = handler;
 }
 
 void NUIApp::AddContextReleaseHandler(TContextReleaseHandler handler)

@@ -157,7 +157,7 @@ protected:
 	virtual bool OnProcessMessageReceived(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, CefProcessId source_process, CefRefPtr<CefProcessMessage> message) override;
 
 public:
-	typedef std::function<bool(CefRefPtr<CefBrowser>, CefRefPtr<CefProcessMessage>)> TProcessMessageHandler;
+	typedef std::function<bool(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame>, CefRefPtr<CefProcessMessage>)> TProcessMessageHandler;
 
 	void AddProcessMessageHandler(std::string key, TProcessMessageHandler handler);
 

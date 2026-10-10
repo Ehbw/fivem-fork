@@ -59,9 +59,9 @@ protected:
 protected:
 	virtual void OnContextInitialized() override;
 private:
-	std::vector<std::pair<std::string, TProcessMessageHandler>> m_processMessageHandlers;
+	std::map<std::string, TProcessMessageHandler> m_processMessageHandlers;
 
-	std::vector<std::pair<std::string, TV8Handler>> m_v8Handlers;
+	std::map<std::string, TV8Handler> m_v8Handlers;
 
 	std::vector<TContextReleaseHandler> m_v8ReleaseHandlers;
 
