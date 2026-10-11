@@ -679,7 +679,7 @@ void NUIWindow::UpdateSharedResource(CefRenderHandler::PaintElementType type)
 	{
 		return;
 	}
-
+	
 	auto frame = this->LockFrame(type);
 	if (!frame)
 	{
@@ -693,7 +693,6 @@ void NUIWindow::UpdateSharedResource(CefRenderHandler::PaintElementType type)
 	}
 
 	auto sharedHandle = frame->shared_handle;
-	auto frameSequence = frame->frame_seq - 1;
 
 	int w = frame->width;
 	int h = frame->height;
@@ -709,6 +708,7 @@ void NUIWindow::UpdateSharedResource(CefRenderHandler::PaintElementType type)
 		{
 			m_pendingTextureCreation[type] = true;
 			AddRef();
+			auto frameSequence = frame->frame_seq - 1;
 			auto cb = [this, type, frameSequence]()
 			{
 				m_sharedResourceTexturesCreated[type] = true;
@@ -736,9 +736,10 @@ void NUIWindow::UpdateSharedResource(CefRenderHandler::PaintElementType type)
 		{
 			AddRef();
 			auto key = std::make_pair(frame->token_high, frame->token_low);
-			g_nuiGi->UpdateTexture(sharedHandle, texRef, w, h, key, [sharedHandle, frameSequence, this, type](void* srv)
+			auto frameSeq = frame->frame_seq;
+			g_nuiGi->UpdateTexture(sharedHandle, texRef, w, h, std::make_pair(frame->token_high, frame->token_low), [sharedHandle, frameSeq, this, type](void* srv)
 			{
-				ReleaseFrame(type, frameSequence);
+				ReleaseFrame(type, frameSeq);
 #ifdef GTA_FIVE
 				if (!IsPrimary() && srv)
 				{
