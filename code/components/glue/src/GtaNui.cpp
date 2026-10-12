@@ -1133,9 +1133,9 @@ static GtaNuiInterface nuiGi;
 // Chromium has a pool with a max allocation of 11 frames per source
 // The OSR renderer can have a max of 8 frames allocated at once
 // in order to prevent graphical artifacts from releasing too early.
-// a two frame delay allows the game to finish with the resource
+// a three frame (because rdr supports triple buffering) delay allows the game to finish with the resource
 // even in the worst case scenarios. hopefully, while still leaving ~4 extra frames
-constexpr uint64_t kReleaseDelay = 2;
+constexpr uint64_t kReleaseDelay = 3;
 static uint64_t g_releaseId = 0;
 static std::deque<std::pair<uint64_t, std::function<void()>>> g_pendingReleases;
 
