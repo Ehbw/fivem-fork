@@ -270,6 +270,10 @@ void NUIApp::OnBeforeCommandLineProcessing(const CefString& process_type, CefRef
 		"StorageNotificationService,"// Shows a popup when running low on cache space.
 									 // See https://github.com/chromiumembedded/cef/issues/3966
 		"LiveCaption" // This doesn't work in CEF. Disable it so NUI resources are aware.
+		"ComputePressure," // Disables PressureObserver API in Chromium. Introduced in M125
+						   // https://developer.mozilla.org/en-US/docs/Web/API/PressureObserver
+		"CpuPerformanceProbe," // Causes CEF to give misleading errors.
+		                       // PressureObserver depends on this so that has to be disabled as well.
 	);
 
 	command_line->AppendSwitchWithValue("default-encoding", "utf-8");
