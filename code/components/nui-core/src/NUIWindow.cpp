@@ -174,7 +174,7 @@ void NUIWindow::Initialize(CefString url)
 
 	CefBrowserSettings settings;
 	settings.javascript_close_windows = STATE_DISABLED;
-	settings.windowless_frame_rate = GetPrimaryMonitorRefreshRate(); // 240;
+	settings.windowless_frame_rate = 240; //GetPrimaryMonitorRefreshRate(); // 240;
 	CefString(&settings.default_encoding).FromString("utf-8");
 
 	CefRefPtr<CefRequestContext> rc;
@@ -739,13 +739,18 @@ void NUIWindow::UpdateSharedResource(CefRenderHandler::PaintElementType type)
 			auto frameSeq = frame->frame_seq;
 			g_nuiGi->UpdateTexture(sharedHandle, texRef, w, h, std::make_pair(frame->token_high, frame->token_low), [sharedHandle, frameSeq, this, type](void* srv)
 			{
-				ReleaseFrame(type, frameSeq);
 #ifdef GTA_FIVE
-				if (!IsPrimary() && srv)
+				// if srv is passed this cb is for DUI.
+				if (srv)
 				{
-					m_swapSrv = static_cast<ID3D11ShaderResourceView*>(srv);
+					if (!IsPrimary())
+					{
+						m_swapSrv = static_cast<ID3D11ShaderResourceView*>(srv);
+					}
+					return false;
 				}
 #endif
+				ReleaseFrame(type, frameSeq);
 				return Release();
 			});
 		}

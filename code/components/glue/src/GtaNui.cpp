@@ -1135,45 +1135,31 @@ void GtaNuiInterface::SetHostCursorEnabled(bool enabled)
 
 static GtaNuiInterface nuiGi;
 
-#ifdef GTA_FIVE
-static void ProcessFences()
+// Chromium has a pool with a max allocation of 11 frames per source
+// The OSR renderer can have a max of 8 frames allocated at once
+// in order to prevent graphical artifacts from releasing too early.
+// a two frame delay allows the game to finish with the resource
+// even in the worst case scenarios. hopefully, while still leaving ~4 extra frames
+constexpr uint64_t kReleaseDelay = 2;
+static uint64_t g_releaseId = 0;
+static std::deque<std::pair<uint64_t, std::function<void()>>> g_pendingReleases;
+
+static void QueueDelayedRelease(std::function<void()> fn)
 {
-	auto ctx = ::GetD3D11DeviceContext();
+	g_pendingReleases.emplace_back(g_releaseId + kReleaseDelay, std::move(fn));
+}
 
-	while (!g_fencedFrames.empty())
+static void ProcessReleases()
+{
+	++g_releaseId;
+	while (!g_pendingReleases.empty() && g_pendingReleases.front().first <= g_releaseId)
 	{
-		auto& [fence, cbs] = g_fencedFrames.front();
-		if (fence)
-		{
-			BOOL done = false;
-			if (ctx->GetData(fence.Get(), &done, sizeof(done), 0x1) != S_OK || !done)
-			{
-				break;
-			}
-		}
-
-		for (auto& cb : cbs)
-		{
-			cb(nullptr);
-		}
-
-		g_fencedFrames.pop_front();
-	}
-
-	if (!g_retiredFrames.empty())
-	{
-		D3D11_QUERY_DESC desc{ D3D11_QUERY_EVENT, 0 };
-		WRL::ComPtr<ID3D11Query> fence;
-		if (SUCCEEDED(nuiGi.GetD3D11Device1()->CreateQuery(&desc, &fence)))
-		{
-			ctx->End(fence.Get());
-		}
-
-		g_fencedFrames.emplace_back(fence, std::move(g_retiredFrames));
-		g_retiredFrames.clear();
+		g_pendingReleases.front().second();
+		g_pendingReleases.pop_front();
 	}
 }
 
+#ifdef GTA_FIVE
 static void UpdateTexture(std::unique_ptr<nui::NUITextureUpdate>& texture)
 {
 	auto texRef = (rage::grcTexture*)texture->texture->GetHostTexture();
@@ -1191,6 +1177,11 @@ static void UpdateTexture(std::unique_ptr<nui::NUITextureUpdate>& texture)
 		bool sameFrame = texRef->texture == tex && texRef->srv == srv;
 		if (!sameFrame)
 		{
+			if (texture->cb)
+			{
+				texture->cb(srv);
+			}
+
 			tex->AddRef();
 			srv->AddRef();
 
@@ -1230,7 +1221,10 @@ static void UpdateTexture(std::unique_ptr<nui::NUITextureUpdate>& texture)
 		}
 		else
 		{
-			g_retiredFrames.push_back(std::move(previous));
+			QueueDelayedRelease([previous = std::move(previous), srv]()
+			{
+				previous(nullptr);
+			});
 		}
 	};
 
@@ -1273,26 +1267,6 @@ static void UpdateTexture(std::unique_ptr<nui::NUITextureUpdate>& texture)
 	renderFrame(texture, cefTexture.Get(), cefSrv.Get());
 }
 #elif IS_RDR3
-// use a small frame release for RDR2 to easily cover dx/vk
-constexpr uint64_t kReleaseDelay = 1;
-static uint64_t g_renderFrame = 0;
-static std::deque<std::pair<uint64_t, std::function<void()>>> g_gpuDeferred;
-
-static void QueueDelayedRelease(std::function<void()> fn)
-{
-	g_gpuDeferred.emplace_back(g_renderFrame + kReleaseDelay, std::move(fn));
-}
-
-static void ProcessReleases()
-{
-	++g_renderFrame;
-	while (!g_gpuDeferred.empty() && g_gpuDeferred.front().first <= g_renderFrame)
-	{
-		g_gpuDeferred.front().second();
-		g_gpuDeferred.pop_front();
-	}
-}
-
 static void UpdateTextureVK(std::unique_ptr<nui::NUITextureUpdate>& texture)
 {
 	auto texRef = (rage::sga::TextureVK*)texture->texture->GetHostTexture();
@@ -1477,11 +1451,7 @@ static void DoRender()
 	}
 
 	nuiGi.OnRender();
-#ifdef GTA_FIVE
-	ProcessFences();
-#elif IS_RDR3
 	ProcessReleases();
-#endif
 }
 
 static InitFunction initFunction([]()
