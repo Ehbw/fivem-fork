@@ -164,12 +164,6 @@ public:
 static tbb::concurrent_queue<std::function<void()>> g_onRenderQueue;
 static tbb::concurrent_queue<std::function<void()>> g_earlyOnRenderQueue;
 
-static std::vector<nui::GameInterface::UpdateTextureCB> g_retiredFrames;
-
-#ifdef GTA_FIVE
-static std::deque<std::pair<WRL::ComPtr<ID3D11Query>, std::vector<nui::GameInterface::UpdateTextureCB>>> g_fencedFrames;
-#endif
-
 namespace nui
 {
 	struct NUITextureUpdate
@@ -1135,6 +1129,7 @@ void GtaNuiInterface::SetHostCursorEnabled(bool enabled)
 
 static GtaNuiInterface nuiGi;
 
+#ifdef IS_RDR3
 // Chromium has a pool with a max allocation of 11 frames per source
 // The OSR renderer can have a max of 8 frames allocated at once
 // in order to prevent graphical artifacts from releasing too early.
@@ -1158,6 +1153,49 @@ static void ProcessReleases()
 		g_pendingReleases.pop_front();
 	}
 }
+#else
+// in five we can use fences easily instead of a delay.
+static std::vector<nui::GameInterface::UpdateTextureCB> g_pendingReleases;
+static std::deque<std::pair<WRL::ComPtr<ID3D11Query>, std::vector<nui::GameInterface::UpdateTextureCB>>> g_fencedFrames;
+
+static void ProcessReleases()
+{
+	auto ctx = ::GetD3D11DeviceContext();
+
+	while (!g_fencedFrames.empty())
+	{
+		auto& [fence, cbs] = g_fencedFrames.front();
+		if (fence)
+		{
+			BOOL done = false;
+			if (ctx->GetData(fence.Get(), &done, sizeof(done), 0x1) != S_OK || !done)
+			{
+				break;
+			}
+		}
+
+		for (auto& cb : cbs)
+		{
+			cb(nullptr);
+		}
+
+		g_fencedFrames.pop_front();
+	}
+
+	if (!g_pendingReleases.empty())
+	{
+		D3D11_QUERY_DESC desc{ D3D11_QUERY_EVENT, 0 };
+		WRL::ComPtr<ID3D11Query> fence;
+		if (SUCCEEDED(nuiGi.GetD3D11Device1()->CreateQuery(&desc, &fence)))
+		{
+			ctx->End(fence.Get());
+		}
+
+		g_fencedFrames.emplace_back(fence, std::move(g_pendingReleases));
+		g_pendingReleases.clear();
+	}
+}
+#endif
 
 #ifdef GTA_FIVE
 static void UpdateTexture(std::unique_ptr<nui::NUITextureUpdate>& texture)
@@ -1221,10 +1259,7 @@ static void UpdateTexture(std::unique_ptr<nui::NUITextureUpdate>& texture)
 		}
 		else
 		{
-			QueueDelayedRelease([previous = std::move(previous), srv]()
-			{
-				previous(nullptr);
-			});
+			g_pendingReleases.push_back(std::move(previous));
 		}
 	};
 
