@@ -418,6 +418,7 @@ namespace nui
 
 	fwRefContainer<NUIWindow> CreateNUIWindow(fwString windowName, int width, int height, fwString windowURL, bool rawBlit/* = false*/, bool instant)
 	{
+		trace("create windowName %s\n", windowName);
 		auto window = NUIWindow::Create(rawBlit, width, height, windowURL, instant, (windowName != "nui_mpMenu") ? nui::GetContext() : "");
 		window->SetName(windowName);
 
@@ -437,7 +438,6 @@ namespace nui
 		std::unique_lock<std::shared_mutex> lock(windowListMutex);
 
 		auto windowIt = windowList.find(windowName);
-
 		if (windowIt != windowList.end())
 		{
 			Instance<NUIWindowManager>::Get()->RemoveWindow(windowIt->second.GetRef());
@@ -567,15 +567,13 @@ namespace nui
 
 	__declspec(dllexport) void DestroyFrame(const std::string& frameName)
 	{
-		if (frameName == "mpMenu" && Feature_TopLevelMPMenu::RunIfEnabled([&frameName]
+		if (frameName == "mpMenu")
 		{
 			auto winName = fmt::sprintf("nui_%s", frameName);
 			DestroyNUIWindow(winName);
 
 			std::unique_lock<std::shared_mutex> lock(frameListMutex);
 			frameList.erase(frameName);
-		}))
-		{
 			return;
 		}
 

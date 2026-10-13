@@ -112,6 +112,11 @@ public:
 		return NULL;
 	}
 
+	virtual void* GetNativeSRV() override
+	{
+		return NULL;
+	}
+
 	virtual void* GetHostTexture() override
 	{
 		return &m_texture;
@@ -244,30 +249,21 @@ public:
 
 		if (FAILED(hr))
 		{
-			if (cb)
-			{
-				cb(nullptr);
-			}
+			cb();
 			return;
 		}
 
 		auto nuiTexture = static_cast<FrontendNuiTexture*>(texture.GetRef());
 		if (!nuiTexture)
 		{
-			if (cb)
-			{
-				cb(nullptr);
-			}
+			cb();
 			return;
 		}
 
         auto bgfxHandle = nuiTexture->GetTexture();
 		nuiTexture->native = sharedTexture;
 		bgfx::overrideInternal(bgfxHandle, (uintptr_t)sharedTexture.Get());
-		if (cb)
-		{
-			cb(nullptr);
-		}
+		cb();
 	}
 
 	virtual void SetTexture(fwRefContainer<GITexture> texture, bool pm = false) override

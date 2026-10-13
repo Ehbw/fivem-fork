@@ -72,8 +72,6 @@ private:
 	Microsoft::WRL::ComPtr<ID3D11Texture2D> m_swapTexture;
 
 	Microsoft::WRL::ComPtr<ID3D11RenderTargetView> m_swapRtv;
-
-	Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> m_swapSrv;
 #endif
 
 	CefRect m_popupRect;

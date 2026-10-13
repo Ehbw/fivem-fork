@@ -435,6 +435,7 @@ public:
 	explicit GtaNuiTexture(std::function<rage::grcTexture*(GtaNuiTexture*)> fn)
 		: m_texture(nullptr), m_overriddenTexture(false), m_overriddenSRV(false)
 	{
+		trace("GtaNuiTexture %p\n", (void*)this);
 		g_onRenderQueue.push([self = fwRefContainer(this), fn]()
 		{
 			if (self.GetRefCount() > 1) // Don't bother creating the texture if we are the only reference left
@@ -455,9 +456,10 @@ public:
 		m_texture = nullptr;
 		if (m_releaseCB)
 		{
-			m_releaseCB(nullptr);
+			m_releaseCB();
 			m_releaseCB = nullptr;
 		}
+		trace("~GtaNuiTexture %p\n", (void*)this);
 
 #ifdef GTA_FIVE
 		// if overridden stuff i.e. not managed by grcResourceCache, manually release
@@ -525,6 +527,20 @@ public:
 		}
 
 		return m_texture->texture;
+#else
+		return m_texture;
+#endif
+	}
+
+	virtual void* GetNativeSRV() override
+	{
+#ifdef GTA_FIVE
+		if (!m_texture)
+		{
+			return nullptr;
+		}
+
+		return m_texture->srv;
 #else
 		return m_texture;
 #endif
@@ -656,6 +672,11 @@ public:
 		return GetTexture();
 	}
 
+	virtual void* GetNativeSRV() override
+	{
+		return nullptr;
+	}
+
 	virtual void* GetHostTexture() override
 	{
 		return m_texture;
@@ -757,6 +778,8 @@ fwRefContainer<GITexture> GtaNuiInterface::CreateTextureBacking(int width, int h
 	assert(format == GITextureFormat::ARGB);
 
 #if defined(GTA_FIVE)
+	trace("create texture backing\n");
+
 	return new GtaNuiTexture([width, height](GtaNuiTexture*)
 	{
 		rage::grcManualTextureDef textureDef;
@@ -810,6 +833,7 @@ fwRefContainer<GITexture> GtaNuiInterface::CreateTextureFromShareHandle(HANDLE s
 #endif
 
 #ifdef GTA_FIVE
+	trace("create texture from sharehandler\n");
 	WRL::ComPtr<ID3D11Device1> device = GetD3D11Device1();
 	if (!device)
 	{
@@ -1001,10 +1025,7 @@ void GtaNuiInterface::UpdateTexture(HANDLE shareHandle, fwRefContainer<GITexture
 	auto device1 = GetD3D11Device1();
 	if (!device1)
 	{	
-		if (cb)
-		{
-			cb(nullptr);
-		}
+		cb();
 		return;
 	}
 #endif
@@ -1012,17 +1033,14 @@ void GtaNuiInterface::UpdateTexture(HANDLE shareHandle, fwRefContainer<GITexture
 	auto texRef = (rage::grcTexture*)texture->GetHostTexture();
 	if (!texRef)
 	{
-		if (cb)
-		{
-			cb(nullptr);
-		}
+		cb();
 		return;
 	}
 
 	auto replaced = nui::g_textureUpdate.Put(std::make_unique<nui::NUITextureUpdate>(texture, shareHandle, cb, key, width, height));
 	if (replaced && replaced->cb)
 	{
-		replaced->cb(nullptr);
+		replaced->cb();
 	}
 }
 
@@ -1175,7 +1193,7 @@ static void ProcessReleases()
 
 		for (auto& cb : cbs)
 		{
-			cb(nullptr);
+			cb();
 		}
 
 		g_fencedFrames.pop_front();
@@ -1202,10 +1220,7 @@ static void UpdateTexture(std::unique_ptr<nui::NUITextureUpdate>& texture)
 	auto texRef = (rage::grcTexture*)texture->texture->GetHostTexture();
 	if (!texRef)
 	{
-		if (texture->cb)
-		{
-			texture->cb(nullptr);
-		}
+		texture->cb();
 		return;
 	}
 
@@ -1214,11 +1229,6 @@ static void UpdateTexture(std::unique_ptr<nui::NUITextureUpdate>& texture)
 		bool sameFrame = texRef->texture == tex && texRef->srv == srv;
 		if (!sameFrame)
 		{
-			if (texture->cb)
-			{
-				texture->cb(srv);
-			}
-
 			tex->AddRef();
 			srv->AddRef();
 
@@ -1254,7 +1264,7 @@ static void UpdateTexture(std::unique_ptr<nui::NUITextureUpdate>& texture)
 
 		if (sameFrame)
 		{
-			previous(nullptr);
+			previous();
 		}
 		else
 		{
@@ -1273,10 +1283,7 @@ static void UpdateTexture(std::unique_ptr<nui::NUITextureUpdate>& texture)
 	if (FAILED(hr) || !cefTexture)
 	{
 		trace("Failed to open shared resource for NUI Update 0x%x\n", hr);
-		if (texture->cb)
-		{
-			texture->cb(nullptr);
-		}
+		texture->cb();
 		return;
 	}
 
@@ -1290,10 +1297,7 @@ static void UpdateTexture(std::unique_ptr<nui::NUITextureUpdate>& texture)
 	hr = gameDevice->rawDevice->CreateShaderResourceView(cefTexture.Get(), nullptr, &cefSrv);
 	if (FAILED(hr))
 	{
-		if (texture->cb)
-		{
-			texture->cb(nullptr);
-		}
+		texture->cb();
 		return;
 	}
 
@@ -1308,7 +1312,7 @@ static void UpdateTextureVK(std::unique_ptr<nui::NUITextureUpdate>& texture)
 	{
 		if (texture->cb)
 		{
-			texture->cb(nullptr);
+			texture->cb();
 		}
 		return;
 	}
@@ -1351,13 +1355,13 @@ static void UpdateTextureVK(std::unique_ptr<nui::NUITextureUpdate>& texture)
 	{
 		if (sameFrame)
 		{
-			previous(nullptr);
+			previous();
 		}
 		else
 		{
 			QueueDelayedRelease([previous = std::move(previous)]()
 			{
-				previous(nullptr);
+				previous();
 			});
 		}
 	}
@@ -1368,10 +1372,7 @@ static void UpdateTextureDX(std::unique_ptr<nui::NUITextureUpdate>& texture)
 	auto texRef = (rage::sga::TextureD3D12*)texture->texture->GetHostTexture();
 	if (!texRef)
 	{
-		if (texture->cb)
-		{
-			texture->cb(nullptr);
-		}
+		texture->cb();
 		return;
 	}
 
@@ -1391,10 +1392,7 @@ static void UpdateTextureDX(std::unique_ptr<nui::NUITextureUpdate>& texture)
 		if (FAILED(hr))
 		{
 			trace("Failed to open shared resource for NUI Update 0x%x (handle %p)\n", hr, (void*)texture->handle);
-			if (texture->cb)
-			{
-				texture->cb(nullptr);
-			}
+			texture->cb();
 			return;
 		}
 		resource = opened.Get();
@@ -1437,13 +1435,13 @@ static void UpdateTextureDX(std::unique_ptr<nui::NUITextureUpdate>& texture)
 	{
 		if (sameFrame)
 		{
-			previous(nullptr);
+			previous();
 		}
 		else
 		{
 			QueueDelayedRelease([previous = std::move(previous)]()
 			{
-				previous(nullptr);
+				previous();
 			});
 		}
 	}

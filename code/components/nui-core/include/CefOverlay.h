@@ -94,6 +94,8 @@ namespace nui
 
 		virtual void* GetNativeTexture() = 0;
 
+		virtual void* GetNativeSRV() = 0;
+
 		virtual void* GetHostTexture() = 0;
 
 		virtual bool Map(int numSubLevels, int subLevel, GILockedTexture* lockedTexture, GILockFlags flags) = 0;
@@ -165,7 +167,7 @@ namespace nui
 			return CreateTextureFromShareHandle(shareHandle);
 		}
 
-		using UpdateTextureCB = std::function<bool(void* duiSrv)>;
+		using UpdateTextureCB = std::function<bool()>;
 
 		virtual void UpdateTexture(HANDLE shareHandle, fwRefContainer<GITexture> texture, int width, int height, std::pair<uint64_t, uint64_t> key, UpdateTextureCB cb = nullptr) = 0;
 
