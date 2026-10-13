@@ -244,7 +244,7 @@ void NUIApp::OnBeforeCommandLineProcessing(const CefString& process_type, CefRef
 		// Other functionality that aren't required in NUI.
 		"SpellcheckAPI,"                                      // Breaks assumptions made by a majority of FiveM resources
 		                                                      // As pre-m144 Spellcheck did not work as intended.
-		"DocumentPictureInPictureAPI,"                         // Not needed in NUI
+		"DocumentPictureInPictureAPI,"                        // Not needed in NUI
 
 	);
 
@@ -269,12 +269,13 @@ void NUIApp::OnBeforeCommandLineProcessing(const CefString& process_type, CefRef
 		"GCMDriver,"
 		"StorageNotificationService,"// Shows a popup when running low on cache space.
 									 // See https://github.com/chromiumembedded/cef/issues/3966
-		"LiveCaption" // This doesn't work in CEF. Disable it so NUI resources are aware.
+		"LiveCaption," // This doesn't work in CEF. Disable it so NUI resources are aware.
 		"ComputePressure," // Disables PressureObserver API in Chromium. Introduced in M125
 						   // https://developer.mozilla.org/en-US/docs/Web/API/PressureObserver
 		"CpuPerformanceProbe," // Causes CEF to give misleading errors.
 		                       // PressureObserver depends on this so that has to be disabled as well.
 	);
+
 
 	command_line->AppendSwitchWithValue("default-encoding", "utf-8");
 	command_line->AppendSwitchWithValue("autoplay-policy", "no-user-gesture-required");
