@@ -41,8 +41,7 @@ extern void AddSchemeHandlerFactories(CefRefPtr<CefRequestContext> rc);
 
 NUIWindow::NUIWindow(bool rawBlit, int width, int height, const std::string& windowContext)
 	: m_isPrimary(rawBlit), m_width(width), m_height(height), m_onClientCreated(nullptr), m_nuiTexture(nullptr), m_popupTexture(nullptr),
-	  m_lastFrameTime(0), m_lastMessageTime(0), m_roundedHeight(0), m_roundedWidth(0),
-	  m_paintType(NUIPaintTypeDummy), m_windowContext(windowContext)
+	  m_lastFrameTime(0), m_lastMessageTime(0), m_paintType(NUIPaintTypeDummy), m_windowContext(windowContext)
 #ifdef GTA_FIVE
 	  ,m_swapTexture(nullptr), m_swapRtv(nullptr), m_swapSrv(nullptr)
 #endif
@@ -116,15 +115,63 @@ void NUIWindow::DeferredCreate()
 	}
 }
 
-static auto roundUp(int x, int y)
+#include <dxgi1_6.h>
+
+#pragma comment(lib, "dxgi.lib")
+
+static uint64_t GetPrimaryGPUVRAM()
 {
-	return x + (y - (x % y));
+	namespace WRL = Microsoft::WRL;
+	WRL::ComPtr<IDXGIFactory1> factory;
+	if (FAILED(CreateDXGIFactory1(IID_PPV_ARGS(&factory))))
+	{
+		return 0;
+	}
+
+	auto hardwareVram = [](IDXGIAdapter1* adapter) -> uint64_t
+	{
+		DXGI_ADAPTER_DESC1 desc;
+		if (FAILED(adapter->GetDesc1(&desc)) || (desc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE))
+		{
+			return 0;
+		}
+		return desc.DedicatedVideoMemory;
+	};
+
+	WRL::ComPtr<IDXGIFactory6> factory6;
+	if (SUCCEEDED(factory.As(&factory6)))
+	{
+		WRL::ComPtr<IDXGIAdapter1> adapter;
+		for (UINT i = 0; SUCCEEDED(factory6->EnumAdapterByGpuPreference(i, DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE, IID_PPV_ARGS(&adapter))); ++i)
+		{
+			if (uint64_t vram = hardwareVram(adapter.Get()))
+			{
+				return vram;
+			}
+		}
+	}
+
+	uint64_t best = 0;
+	WRL::ComPtr<IDXGIAdapter1> adapter;
+	for (UINT i = 0; factory->EnumAdapters1(i, &adapter) != DXGI_ERROR_NOT_FOUND; ++i)
+	{
+		best = std::max(best, hardwareVram(adapter.Get()));
+	}
+	return best;
 }
 
 static int GetPrimaryMonitorRefreshRate()
 {
 	DEVMODE devMode = {};
 	devMode.dmSize = sizeof(DEVMODE);
+
+	// For GPU's that are limited by VRAM.
+	// Cap the frame rate of CEF window updates in order to avoid 
+	// allocating textures that may negatively impact user experience.
+	if (GetPrimaryGPUVRAM() < 4096)
+	{
+		return 60;
+	}
 
 	if (EnumDisplaySettings(nullptr, ENUM_CURRENT_SETTINGS, &devMode))
 	{
@@ -136,10 +183,6 @@ static int GetPrimaryMonitorRefreshRate()
 
 void NUIWindow::Initialize(CefString url)
 {
-	// create the temporary backing store
-	m_roundedHeight = roundUp(m_height, 16);
-	m_roundedWidth = roundUp(m_width, 16);
-
 	InitializeRenderBacking();
 
 	// create the client/browser instance
@@ -289,8 +332,6 @@ void NUIWindow::UpdateFrame()
 		{
 			m_width = resX;
 			m_height = resY;
-			m_roundedHeight = roundUp(m_height, 16);
-			m_roundedWidth = roundUp(m_width, 16);
 			if (m_client)
 			{
 				if (!m_nuiTexture.GetRef())

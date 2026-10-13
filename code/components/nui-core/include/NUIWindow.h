@@ -54,9 +54,6 @@ private:
 	int m_width;
 	int m_height;
 
-	int m_roundedWidth;	
-	int m_roundedHeight;
-
 	uint32_t m_lastFrameTime;
 	uint32_t m_lastMessageTime;
 
@@ -89,8 +86,6 @@ private:
 public:
 	inline int GetWidth() const { return m_width; }
 	inline int GetHeight() const { return m_height; }
-
-	inline int GetRoundedWidth() const { return m_roundedWidth; }
 
 	void TouchMessage();
 

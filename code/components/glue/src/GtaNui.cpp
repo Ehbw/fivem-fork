@@ -287,23 +287,22 @@ namespace nui
 
 		void ReleaseTexture(nui::GITexture* texture)
 		{
-			auto it = m_textures.find(texture);
-			if (it == m_textures.end())
+			size_t released = 0;
+			for (auto entIt = m_entries.begin(); entIt != m_entries.end();)
 			{
-				return;
-			}
-
-			for (auto& key : it->second)
-			{
-				auto entIt = m_entries.find(key);
-				if (entIt != m_entries.end())
+				if (entIt->second.m_nuiTex == texture)
 				{
 					ReleaseCache(entIt->second);
-					m_entries.erase(entIt);
+					entIt = m_entries.erase(entIt);
+					++released;
+				}
+				else
+				{
+					++entIt;
 				}
 			}
-			
-			m_textures.erase(it);
+
+			m_textures.erase(texture);		
 		}
 
 		void ReleaseCache(CachedEntry& entry)
@@ -1135,7 +1134,7 @@ static GtaNuiInterface nuiGi;
 // in order to prevent graphical artifacts from releasing too early.
 // a three frame (because rdr supports triple buffering) delay allows the game to finish with the resource
 // even in the worst case scenarios. hopefully, while still leaving ~4 extra frames
-constexpr uint64_t kReleaseDelay = 3;
+constexpr uint64_t kReleaseDelay = 2;
 static uint64_t g_releaseId = 0;
 static std::deque<std::pair<uint64_t, std::function<void()>>> g_pendingReleases;
 
