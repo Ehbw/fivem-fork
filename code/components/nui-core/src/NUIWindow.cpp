@@ -43,7 +43,7 @@ NUIWindow::NUIWindow(bool rawBlit, int width, int height, const std::string& win
 	: m_isPrimary(rawBlit), m_width(width), m_height(height), m_onClientCreated(nullptr), m_nuiTexture(nullptr), m_popupTexture(nullptr),
 	  m_lastFrameTime(0), m_lastMessageTime(0), m_paintType(NUIPaintTypeDummy), m_windowContext(windowContext)
 #ifdef GTA_FIVE
-	  ,m_swapTexture(nullptr), m_swapRtv(nullptr), m_swapSrv(nullptr)
+	  ,m_swapTexture(nullptr), m_swapRtv(nullptr)
 #endif
 {
 	memset(&m_sharedResourceTexturesCreated, 0, sizeof(m_sharedResourceTexturesCreated));
@@ -386,25 +386,12 @@ void NUIWindow::UpdateFrame()
 #ifdef GTA_FIVE
 		if (!m_isPrimary)
 		{
+			ID3D11Resource* nativeTexture = nullptr;
+			ID3D11ShaderResourceView* nativeSrv = nullptr;
+			if (auto texture = GetTexture(); texture.GetRef())
 			{
-				struct
-				{
-					void* vtbl;
-					ID3D11Device* rawDevice;
-				}* deviceStuff = (decltype(deviceStuff))g_nuiGi->GetD3D11Device();
-
-
-				if (!m_swapSrv)
-				{
-					auto nativeTexture = GetParentTexture(CefRenderHandler::PaintElementType::PET_VIEW)->GetNativeTexture();
-
-					if (nativeTexture)
-					{
-						Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> newSrv;
-						deviceStuff->rawDevice->CreateShaderResourceView((ID3D11Resource*)nativeTexture, nullptr, &newSrv);
-						m_swapSrv = newSrv;
-					}
-				}
+				nativeTexture = (ID3D11Resource*)texture->GetNativeTexture();
+				nativeSrv = (ID3D11ShaderResourceView*)texture->GetNativeSRV();
 			}
 
 			{
@@ -421,7 +408,7 @@ void NUIWindow::UpdateFrame()
 						nativeTexture = (ID3D11Resource*)texture->GetNativeTexture();
 					}
 
-					if (m_swapTexture && m_swapRtv && m_swapSrv && nativeTexture)
+					if (m_swapTexture && m_swapRtv && nativeSrv && nativeTexture)
 					{
 						//
 						// LOTS of D3D11 garbage to flip a texture...
@@ -489,7 +476,7 @@ void NUIWindow::UpdateFrame()
 						deviceContext->PSSetShader(ps, nullptr, 0);
 						deviceContext->PSSetSamplers(0, 1, &ss);
 
-						ID3D11ShaderResourceView* srv[] = { m_swapSrv.Get() };
+						ID3D11ShaderResourceView* srv[] = { nativeSrv };
 						deviceContext->PSSetShaderResources(0, std::size(srv), srv);
 
 						deviceContext->VSSetShader(vs, nullptr, 0);
@@ -643,14 +630,12 @@ void NUIWindow::UpdateSharedResource(CefRenderHandler::PaintElementType type)
 		if (!m_sharedResourceTexturesCreated[type] && !m_pendingTextureCreation[type])
 		{
 			m_pendingTextureCreation[type] = true;
-			AddRef();
 			auto frameSequence = frame->frame_seq - 1;
 			auto cb = [this, type, frameSequence]()
 			{
 				m_sharedResourceTexturesCreated[type] = true;
 				m_pendingTextureCreation[type] = false;
 				ReleaseFrame(type, frameSequence);
-				Release();
 			};
 
 			if (IsPrimary())
@@ -663,36 +648,26 @@ void NUIWindow::UpdateSharedResource(CefRenderHandler::PaintElementType type)
 			{
 				auto faketexRef = g_nuiGi->CreateTextureFromShareHandle(sharedHandle, w, h, cb);
 				SetParentTexture(type, faketexRef);
-
-				m_swapSrv = nullptr;
 			}
 #endif
 		}
 		else
 		{
-			AddRef();
 			auto key = std::make_pair(frame->token_high, frame->token_low);
 			auto frameSeq = frame->frame_seq;
-			g_nuiGi->UpdateTexture(sharedHandle, texRef, w, h, std::make_pair(frame->token_high, frame->token_low), [sharedHandle, frameSeq, this, type](void* srv)
+			CefRefPtr<CefBrowserHost> host = GetBrowser() ? GetBrowser()->GetHost() : nullptr;
+			g_nuiGi->UpdateTexture(sharedHandle, texRef, w, h, std::make_pair(frame->token_high, frame->token_low), [frameSeq, host, type]()
 			{
-#ifdef GTA_FIVE
-				// Update DUI srv if we recieve one
-				if (srv)
+				if (host)
 				{
-					if (!IsPrimary())
-					{
-						m_swapSrv = static_cast<ID3D11ShaderResourceView*>(srv);
-					}
+					host->ReleaseFrame(type, frameSeq);
 					return false;
 				}
-#endif
-				ReleaseFrame(type, frameSeq);
-				return Release();
+				return true;
 			});
 		}
 	}
 }
-
 
 CefRect NUIWindow::GetPopupRect()
 {

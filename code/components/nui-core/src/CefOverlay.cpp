@@ -418,7 +418,6 @@ namespace nui
 
 	fwRefContainer<NUIWindow> CreateNUIWindow(fwString windowName, int width, int height, fwString windowURL, bool rawBlit/* = false*/, bool instant)
 	{
-		trace("create windowName %s\n", windowName);
 		auto window = NUIWindow::Create(rawBlit, width, height, windowURL, instant, (windowName != "nui_mpMenu") ? nui::GetContext() : "");
 		window->SetName(windowName);
 
