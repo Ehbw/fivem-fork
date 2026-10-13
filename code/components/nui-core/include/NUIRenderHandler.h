@@ -21,11 +21,7 @@ public:
 private:
 	NUIClient* m_owner;
 
-	// used to prevent infinite recursion when redrawing the popup rectangle
-	bool m_paintingPopup;
-
 	CefRect m_popupRect;
-
 protected:
 	virtual void GetViewRect(CefRefPtr<CefBrowser> browser, CefRect& rect) override;
 
@@ -53,12 +49,6 @@ protected:
 	virtual bool GetScreenPoint(CefRefPtr<CefBrowser> browser, int viewX, int viewY, int& screenX, int& screenY) override;
 #endif
 private:
-	void PaintView(const RectList& dirtyRects, const void* buffer, int width, int height);
-
-	void PaintPopup(const void* buffer, int width, int height);
-
-	void UpdatePopup();
-
 	IMPLEMENT_REFCOUNTING(NUIRenderHandler);
 
 private:

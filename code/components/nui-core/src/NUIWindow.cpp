@@ -40,8 +40,8 @@ extern void AddSchemeHandlerFactories(CefRefPtr<CefRequestContext> rc);
 }
 
 NUIWindow::NUIWindow(bool rawBlit, int width, int height, const std::string& windowContext)
-	: m_isPrimary(rawBlit), m_width(width), m_height(height), m_renderBuffer(nullptr), m_dirtyFlag(0), m_onClientCreated(nullptr), m_nuiTexture(nullptr), m_popupTexture(nullptr),
-	  m_usingSharedTextures(false), m_lastFrameTime(0), m_lastMessageTime(0), m_roundedHeight(0), m_roundedWidth(0),
+	: m_isPrimary(rawBlit), m_width(width), m_height(height), m_onClientCreated(nullptr), m_nuiTexture(nullptr), m_popupTexture(nullptr),
+	  m_lastFrameTime(0), m_lastMessageTime(0), m_roundedHeight(0), m_roundedWidth(0),
 	  m_paintType(NUIPaintTypeDummy), m_windowContext(windowContext)
 #ifdef GTA_FIVE
 	  ,m_swapTexture(nullptr), m_swapRtv(nullptr), m_swapSrv(nullptr)
@@ -87,11 +87,6 @@ NUIWindow::~NUIWindow()
 				browser->GetHost()->CloseBrowser(true);
 			}
 		}
-	}
-
-	if (m_renderBuffer)
-	{
-		delete[] m_renderBuffer;
 	}
 
 	Instance<NUIWindowManager>::Get()->RemoveWindow(this);
@@ -141,14 +136,6 @@ static int GetPrimaryMonitorRefreshRate()
 
 void NUIWindow::Initialize(CefString url)
 {
-	static bool nuiSharedResourcesEnabled = true;
-	static ConVar<bool> nuiSharedResources("nui_useSharedResources", ConVar_Archive, true, &nuiSharedResourcesEnabled);
-
-	if (m_renderBuffer)
-	{
-		delete[] m_renderBuffer;
-	}
-
 	// create the temporary backing store
 	m_roundedHeight = roundUp(m_height, 16);
 	m_roundedWidth = roundUp(m_width, 16);
@@ -163,10 +150,9 @@ void NUIWindow::Initialize(CefString url)
 		m_client = client;
 	}
 
-	m_usingSharedTextures = nuiSharedResourcesEnabled;
 	CefWindowInfo info;
 	info.SetAsWindowless(NULL);
-	info.shared_texture_enabled = m_usingSharedTextures;
+	info.shared_texture_enabled = true;
 	info.bounds.x = 0;
 	info.bounds.y = 0;
 	info.bounds.width = m_width;
@@ -174,7 +160,7 @@ void NUIWindow::Initialize(CefString url)
 
 	CefBrowserSettings settings;
 	settings.javascript_close_windows = STATE_DISABLED;
-	settings.windowless_frame_rate = 240; //GetPrimaryMonitorRefreshRate(); // 240;
+	settings.windowless_frame_rate = GetPrimaryMonitorRefreshRate(); // 240;
 	CefString(&settings.default_encoding).FromString("utf-8");
 
 	CefRefPtr<CefRequestContext> rc;
@@ -196,11 +182,6 @@ void NUIWindow::Initialize(CefString url)
 	}
 
 	CefBrowserHost::CreateBrowser(info, m_client, url, settings, {}, rc);
-
-	if (!m_usingSharedTextures)
-	{
-		m_renderBuffer = new char[4 * m_roundedWidth * m_roundedHeight];
-	}
 }
 
 void NUIWindow::InitializeRenderBacking()
@@ -236,16 +217,11 @@ void NUIWindow::InitializeRenderBacking()
 		}
 		else
 		{
-			trace("failed to create m_swapTexture, height: %i, width: %i, error: 0x%x\n", m_width, m_height, hr);
+			trace("Failed to create DUI texture, height: %i, width: %i, error: 0x%x\n", m_width, m_height, hr);
 			m_swapTexture = nullptr;
 		}
 	}
 #endif
-}
-
-void NUIWindow::AddDirtyRect(const CefRect& rect)
-{
-	m_dirtyRects.push(rect);
 }
 
 CefBrowser* NUIWindow::GetBrowser()
@@ -313,19 +289,8 @@ void NUIWindow::UpdateFrame()
 		{
 			m_width = resX;
 			m_height = resY;
-
-			{
-				auto _ = GetRenderBufferLock();
-				m_roundedHeight = roundUp(m_height, 16);
-				m_roundedWidth = roundUp(m_width, 16);
-
-				if (m_renderBuffer)
-				{
-					delete[] m_renderBuffer;
-					m_renderBuffer = new char[4 * m_roundedWidth * m_roundedHeight];
-				}
-			}
-
+			m_roundedHeight = roundUp(m_height, 16);
+			m_roundedWidth = roundUp(m_width, 16);
 			if (m_client)
 			{
 				if (!m_nuiTexture.GetRef())
@@ -561,76 +526,6 @@ void NUIWindow::UpdateFrame()
 		}
 #endif
 	}
-	else if (m_renderBuffer)
-	{
-		if (InterlockedExchange(&m_dirtyFlag, 0) > 0)
-		{
-			void* pBits = nullptr;
-			int pitch;
-			bool discarded = false;
-
-			nui::GILockedTexture lockedTexture;
-
-			if (GetTexture()->Map(0, 0, &lockedTexture, nui::GILockFlags::Write))
-			{
-				pBits = lockedTexture.pBits;
-				pitch = lockedTexture.pitch;
-			}
-			else if (GetTexture()->Map(0, 0, &lockedTexture, nui::GILockFlags::WriteDiscard))
-			{
-				pBits = lockedTexture.pBits;
-				pitch = lockedTexture.pitch;
-
-				discarded = true;
-			}
-			else
-			{
-				// really
-				pBits = nullptr;
-			}
-
-			if (pBits)
-			{
-				if (!discarded)
-				{
-					while (!m_dirtyRects.empty())
-					{
-						auto _ = GetRenderBufferLock();
-						CefRect rect = m_dirtyRects.front();
-						m_dirtyRects.pop();
-
-						if (pitch >= (rect.width * 4))
-						{
-							int height = m_height;
-
-							// ignore invalid height/width
-							if (((rect.y + rect.height) > height) || ((rect.x + rect.width) > m_roundedWidth))
-							{
-								continue;
-							}
-
-							for (int y = rect.y; y < (rect.y + rect.height); y++)
-							{
-								int* src = &((int*)(m_renderBuffer))[(y * m_roundedWidth) + rect.x];
-								int* dest = &((int*)(pBits))[(y * (pitch / 4)) + rect.x];
-
-								memcpy(dest, src, (static_cast<size_t>(rect.width) * 4));
-							}
-						}
-					}
-				}
-				else
-				{
-					auto _ = GetRenderBufferLock();
-					m_dirtyRects = std::queue<CefRect>();
-
-					memcpy(pBits, m_renderBuffer, static_cast<size_t>(m_height) * pitch);
-				}
-
-				GetTexture()->Unmap(&lockedTexture);
-			}
-		}
-	}
 }
 
 void NUIWindow::SignalPoll(std::string& argument)
@@ -740,7 +635,7 @@ void NUIWindow::UpdateSharedResource(CefRenderHandler::PaintElementType type)
 			g_nuiGi->UpdateTexture(sharedHandle, texRef, w, h, std::make_pair(frame->token_high, frame->token_low), [sharedHandle, frameSeq, this, type](void* srv)
 			{
 #ifdef GTA_FIVE
-				// if srv is passed this cb is for DUI.
+				// Update DUI srv if we recieve one
 				if (srv)
 				{
 					if (!IsPrimary())

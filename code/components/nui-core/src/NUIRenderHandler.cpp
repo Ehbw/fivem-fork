@@ -23,7 +23,7 @@ extern OsrImeHandlerWin* g_imeHandler;
 extern OsrDragHandlerWin g_dragHandler;
 
 NUIRenderHandler::NUIRenderHandler(NUIClient* client)
-	: m_paintingPopup(false), m_owner(client), m_currentDragOp(DRAG_OPERATION_NONE)
+	: m_owner(client), m_currentDragOp(DRAG_OPERATION_NONE)
 {
 }
 
@@ -85,36 +85,10 @@ void NUIRenderHandler::OnImeCompositionRangeChanged(CefRefPtr<CefBrowser> browse
 
 void NUIRenderHandler::OnPaint(CefRefPtr<CefBrowser> browser, PaintElementType type, const RectList& dirtyRects, const void* buffer, int width, int height)
 {
-	if (m_owner->GetWindowValid() && m_owner->GetWindow()->GetRenderBuffer())
-	{
-		// lock the window lock
-		auto& lock = m_owner->GetWindowLock();
-		lock.lock();
-
-		// paint the buffer
-		if (type == PET_VIEW)
-		{
-			PaintView(dirtyRects, buffer, width, height);
-		}
-		else if (type == PET_POPUP)
-		{
-			PaintPopup(buffer, width, height);
-		}
-
-		// invalidate and paint the popup
-		UpdatePopup();
-
-		// mark the render buffer as dirty
-		if (auto w = m_owner->GetWindow())
-		{
-			w->MarkRenderBufferDirty();
-		}
-
-		// unlock the lock
-		lock.unlock();
-	}
+	// OnPaint hasn't worked as intended since M103 
+	// With inconsistent texture updates and incorrect dirty rect leading to partily stale frames.
+	trace("NUIRenderHandler::OnPaint was called, this may be a sign that the CEF process has fatally errored and isn't recoverable\n");
 }
-
 
 void NUIRenderHandler::OnPopupShow(CefRefPtr<CefBrowser> browser, bool show)
 {
@@ -179,100 +153,6 @@ void NUIRenderHandler::OnPopupSize(CefRefPtr<CefBrowser> browser, const CefRect&
 	m_owner->GetWindow()->SetPopupRect(m_popupRect);
 }
 
-void NUIRenderHandler::UpdatePopup()
-{
-	if (!m_paintingPopup)
-	{
-		if (!m_popupRect.IsEmpty())
-		{
-			m_paintingPopup = true;
-
-			m_owner->GetBrowser()->GetHost()->Invalidate(PET_POPUP);
-
-			m_paintingPopup = false;
-		}
-	}
-}
-
-void NUIRenderHandler::PaintView(const RectList& dirtyRects, const void* buffer, int width, int height)
-{
-	NUIWindow* window = m_owner->GetWindow();
-	auto lock = window->GetRenderBufferLock();
-	void* renderBuffer = window->GetRenderBuffer();
-	int roundedWidth = window->GetRoundedWidth();
-	int wheight = window->GetHeight();
-
-	for (auto& rect : dirtyRects)
-	{
-		if ((rect.x + rect.width) > roundedWidth || (rect.y + rect.height) > wheight)
-		{
-			continue;
-		}
-
-		{
-			for (int y = rect.y; y < (rect.y + rect.height); y++)
-			{
-				int* src = &((int*)(buffer))[(y * width) + rect.x];
-				int* dest = &((int*)(renderBuffer))[(y * roundedWidth) + rect.x];
-
-				memcpy(dest, src, (rect.width * 4));
-			}
-		}
-
-		window->AddDirtyRect(rect);
-	}
-}
-
-void NUIRenderHandler::PaintPopup(const void* buffer, int width, int height)
-{
-	NUIWindow* window = m_owner->GetWindow();
-
-	// clean popup rectangle
-	int skip_pixels = 0, x = m_popupRect.x;
-	int skip_rows = 0, yy = m_popupRect.y;
-
-	int w = width;
-	int h = height;
-
-	if (x < 0)
-	{
-		skip_pixels = -x;
-		x = 0;
-	}
-
-	if (yy < 0)
-	{
-		skip_rows = -yy;
-		yy = 0;
-	}
-
-	if ((x + w) > window->GetWidth())
-	{
-		w -= ((x + w) - window->GetWidth());
-	}
-
-	if ((yy + h) > window->GetHeight())
-	{
-		h -= ((yy + h) - window->GetHeight());
-	}
-
-	// do rendering
-	void* renderBuffer = window->GetRenderBuffer();
-	int roundedWidth = window->GetRoundedWidth();
-
-	{
-		for (int y = yy; y < (yy + h); y++)
-		{
-			int* src = &((int*)(buffer))[((y - yy) * width)];
-			int* dest = &((int*)(renderBuffer))[(y * roundedWidth) + x];
-
-			memcpy(dest, src, (w * 4));
-		}
-	}
-
-	// add dirty rect
-	window->AddDirtyRect(m_popupRect);
-}
 
 bool NUIRenderHandler::StartDragging(CefRefPtr<CefBrowser> browser, CefRefPtr<CefDragData> drag_data, CefRenderHandler::DragOperationsMask allowed_ops, int x, int y)
 {

@@ -60,15 +60,6 @@ private:
 	uint32_t m_lastFrameTime;
 	uint32_t m_lastMessageTime;
 
-	unsigned long m_dirtyFlag;
-
-	bool m_usingSharedTextures;
-	RECT m_lastDirtyRect;
-	std::shared_mutex m_renderBufferLock;
-	char* m_renderBuffer;
-
-	std::queue<CefRect> m_dirtyRects;
-
 	std::set<std::string> m_pollQueue;
 
 	fwRefContainer<nui::GITexture> m_nuiTexture;
@@ -99,12 +90,6 @@ public:
 	inline int GetWidth() const { return m_width; }
 	inline int GetHeight() const { return m_height; }
 
-	inline auto GetRenderBufferLock()
-	{
-		return std::unique_lock{ m_renderBufferLock };
-	}
-
-	inline void* GetRenderBuffer() const { return m_renderBuffer; }
 	inline int GetRoundedWidth() const { return m_roundedWidth; }
 
 	void TouchMessage();
@@ -143,11 +128,6 @@ public:
 
 private:
 	std::string m_name;
-
-public:
-	void			AddDirtyRect(const CefRect& rect);
-
-	inline void		MarkRenderBufferDirty() { InterlockedIncrement(&m_dirtyFlag); }
 
 public:
 	static fwRefContainer<NUIWindow> Create(bool primary, int width, int height, CefString url, bool instant, const std::string& context = {});
