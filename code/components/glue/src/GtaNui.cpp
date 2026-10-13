@@ -1500,12 +1500,10 @@ static InitFunction initFunction([]()
 		nuiGi.OnInitRenderer();
 	});
 
-#ifdef GTA_FIVE
 	OnBackbufferCreation.Connect([]()
 	{
 		nui::g_texCache.Clear();
 	});
-#endif
 
 	OnPostFrontendRender.Connect([]()
 	{

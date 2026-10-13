@@ -62,6 +62,7 @@ void GFX_EXPORT SetScissorRect(int x, int y, int z, int w);
 
 extern GFX_EXPORT fwEvent<> OnPostFrontendRender;
 extern GFX_EXPORT fwEvent<> OnGrcCreateDevice;
+extern GFX_EXPORT fwEvent<> OnBackbufferCreation;
 
 enum class GraphicsAPI
 {
